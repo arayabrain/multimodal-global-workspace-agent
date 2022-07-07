@@ -134,20 +134,74 @@ cd sound-spaces
 pip install -e .
 ```
 
-Next, as per the README instructions, either manually download the datasets:
+### Downloading the `scene_datasets` for SS 2.0 habitat audio visual simulations
+Requires access to the `download_mp` tool from official Matterport3D.
+See https://github.com/facebookresearch/habitat-lab#matterport3d
 
 ```bash
-wget http://dl.fbaipublicfiles.com/SoundSpaces/binaural_rirs.tar && tar xvf binaural_rirs.tar # 867G
+mkdir -p data/versioned_data/mp3d
+mkdir -p data/scene_datasets/mp3d
+python /path/to/download_mp.py --task habitat -o /path/to/sound-spaces/data/versioned_data/mp3d
+```
+
+This will download a ZIP file into `/path/to/sound-spaces/data/versioned_data/mp3d/v1/tasks/mp3d_habitat.zip`
+
+Unzip this file to obtain `/path/to/sound-spaces/data/versioned_data/mp3d/v1/tasks/mp3d`.
+This folder should contain files like: `17DRP5sb8fy`, `1LXtFkjw3qL`, etc...
+
+Make it so that `/path/to/sound-spaces/data/scene_datasets/mp3d` points to `/path/to/sound-spaces/data/versioned_data/mp3d/v1/tasks/mp3d`. For example:
+
+```bash
+ln -s /path/to/sound-spaces/data/versioned_data/mp3d/v1/tasks/mp3d` `/path/to/sound-spaces/data/scene_datasets/mp3d`
+```
+
+Some additional metadata that is intertwine with other datasets is also required.
+
+```bash
+# The big file can be ignore for SS 2.0
+# wget http://dl.fbaipublicfiles.com/SoundSpaces/binaural_rirs.tar && tar xvf binaural_rirs.tar # 867G
 wget http://dl.fbaipublicfiles.com/SoundSpaces/metadata.tar.xz && tar xvf metadata.tar.xz # 1M
 wget http://dl.fbaipublicfiles.com/SoundSpaces/sounds.tar.xz && tar xvf sounds.tar.xz #13M
 wget http://dl.fbaipublicfiles.com/SoundSpaces/datasets.tar.xz && tar xvf datasets.tar.xz #77M
 wget http://dl.fbaipublicfiles.com/SoundSpaces/pretrained_weights.tar.xz && tar xvf pretrained_weights.tar.xz
 ```
 
-or use the provided script to do so:
+### Testing SS 2.0
+
+SS 2.0 command provided in the Reamde are based on `mp3d` datasets.
+Upon trying to run the interactive mode command, it might throw up some error about `data/metadata/default/...` not found.
+
+This will require the following tweak:
+
+- in `sound-spaces/data/metadata`: `ln -s mp3d default`
+
+Past this point, there might be some `RLRAudioPropagationChannelLayoutType` related error when trying to run the interactive mode.
+This will require a workaround in the soundspaces simulator.
+
+Namely, comment or delete the line 125 of `sound-spaces/soundspaces/simulator_continuous.py` and add:
+
+```python
+import habitat_sim._ext.habitat_sim_bindings as hsim_bindings
+channel_layout.channelType = hsim_bindings.RLRAudioPropagationChannelLayoutType.Binaural
+```
+This workaround is adapted from `habitat-sim/examples/tutorials/audio_agent.py`.
+
+instead.
+__TODO__: For soundspaces and add the fix / raise and issue / do a PR ?
+
+Either:
+
+**[New]** Training continuous navigation agent
+```bash
+python ss_baselines/av_nav/run.py --exp-config ss_baselines/av_nav/config/audionav/mp3d/train_telephone/audiogoal_depth_ddppo.yaml --model-dir data/models/ss2/mp3d/dav_nav CONTINUOUS True
+```
+
+or
 
 ```bash
-# in sound-spaces directory
-python scripts/download_data.py --dataset replica
+python scripts/interactive_mode.
 ```
+
+should work.
+
 ## Torch
