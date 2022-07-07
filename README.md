@@ -184,9 +184,10 @@ Namely, comment or delete the line 125 of `sound-spaces/soundspaces/simulator_co
 import habitat_sim._ext.habitat_sim_bindings as hsim_bindings
 channel_layout.channelType = hsim_bindings.RLRAudioPropagationChannelLayoutType.Binaural
 ```
+instead.
+
 This workaround is adapted from `habitat-sim/examples/tutorials/audio_agent.py`.
 
-instead.
 __TODO__: For soundspaces and add the fix / raise and issue / do a PR ?
 
 Either:
