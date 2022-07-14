@@ -217,7 +217,7 @@ pip install torchvision
 
 Past this point, there might be some `RLRAudioPropagationChannelLayoutType` related error when trying to run the interactive mode.
 
-If this fork of soundspaces was used: `git clone https://github.com/dosssman/sound-spaces.git --branch ss2-tweaks`, then skip until `????????????????`.
+If this fork of soundspaces was used: `git clone https://github.com/dosssman/sound-spaces.git --branch ss2-tweaks`, then skip until the **Finally testing SS2** section.
 
 Otherwise, this will require a workaround in the soundspaces simulator.
 
