@@ -195,6 +195,11 @@ This will require the following tweak:
 
 Download from the following link: https://github.com/facebookresearch/rlr-audio-propagation/blob/main/RLRAudioPropagationPkg/data/mp3d_material_config.json and put it in `/path/to/soundspaces/data/`.
 
+This file is also expected to be found in `habitat-lab/data` and potentially `habitat-sim/data`.
+For good measure, also reflect the existence of this file in those directories, using either symbolic link or copying the actual file.
+Although not rigorously checked, it might be useful to also symlink or copy the installed dataset at /soundspaces/data/scene_dataset` in the appropriate directory under `habitat-sim` and habitat-lab`
+too, to mirror the data available to all three libraries.
+
 ## Torch
 
 The `torch` install that comes with the dependencies should work by default on something like GTX 1080 Ti.
