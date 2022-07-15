@@ -11,7 +11,9 @@ Furthermore, to use SoundSpaces 2.0 (audio visual environemnt simulation for RL 
 # System specifics
 
 - Ubuntu 20.04
-- NVIDIA RTX 3090 
+- SuperMicro X11DAI-N Motherboard
+- Intel(R) Xeon(R) Silver 4216 CPU @ 2.10GHz | 2 Sockets * 16 Cores pers sockets * 2 Threads per core
+- NVIDIA RTX 3090 GPU
 - NVIDIA 515.57 (straight from NVIDIA's website)
 - CUDA Toolkit 11.7 (also from NVIDIA's website)
 
