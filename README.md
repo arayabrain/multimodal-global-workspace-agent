@@ -195,10 +195,12 @@ This will require the following tweak:
 
 Download from the following link: https://github.com/facebookresearch/rlr-audio-propagation/blob/main/RLRAudioPropagationPkg/data/mp3d_material_config.json and put it in `/path/to/soundspaces/data/`.
 
-This file is also expected to be found in `habitat-lab/data` and potentially `habitat-sim/data`.
+<!-- This file is also expected to be found in `habitat-lab/data` and potentially `habitat-sim/data`.
 For good measure, also reflect the existence of this file in those directories, using either symbolic link or copying the actual file.
 Although not rigorously checked, it might be useful to also symlink or copy the installed dataset at /soundspaces/data/scene_dataset` in the appropriate directory under `habitat-sim` and habitat-lab`
-too, to mirror the data available to all three libraries.
+too, to mirror the data available to all three libraries. 
+NOTE: Maybe not. Maybe because I did not use the proper link when donwloading with wget, result in an HTML code source page instead of JSON.
+-->
 
 ## Torch
 
