@@ -243,20 +243,38 @@ This workaround is adapted from `habitat-sim/examples/tutorials/audio_agent.py`.
 The reason is because the soundspace author are using a version of `habitat-sim` that is more recent than `v2.2.0`, and where the   `habitat_sim.sensor.RLRAudioPropagationChannelLayoutType` object is properly defined.
 Since we clone `habitat-sim@v2.2.0`, however, we revert to using the `hsim_bindings` directly.
 
-## Finally testing SS2.0 Training or interactive mode
-
-### **[New]** Training continuous navigation agent
-```bash
-python ss_baselines/av_nav/run.py --exp-config ss_baselines/av_nav/config/audionav/mp3d/train_telephone/audiogoal_depth_ddppo.yaml --model-dir data/models/ss2/mp3d/dav_nav CONTINUOUS True
-```
-
-### Interactive mode
+### Testing SS2.0 in interactive mode
 
 For a machine with display, and with `habitat-sim` not being built with the `--headless` flag.
 
 ```bash
 python scripts/interactive_mode.py
 ```
+
+**Note**: This worked on the internal graphics of the motherboard, but not on the RTX 3090 GPU.
+It might work on an older, or not so *fancy* GPU.
+In any case, interactive mode is not that important for the RL use case.
+
+### **[New]** Training continuous navigation agent DDPPO baseline
+
+```bash
+python ss_baselines/av_nav/run.py --exp-config ss_baselines/av_nav/config/audionav/mp3d/train_telephone/audiogoal_depth_ddppo.yaml --model-dir data/models/ss2/mp3d/dav_nav CONTINUOUS True
+```
+
+### Training continuous navigation PPO baseline
+
+```bash
+python ss_baselines/av_nav/run.py --exp-config ss_baselines/av_nav/config/audionav/mp3d/train_telephone/audiogoal_depth_ddppo.yaml --model-dir data/models/ss2/mp3d/dav_nav CONTINUOUS True
+```
+
+### Generating audio and video from SS2.0 trajectories.
+
+SS2.0 supports `RGB_SENSOR` and `DEPTH_SENSOR` for agent visual percpetion.
+For the acoustic perception, it supports the `SPECTROGRAM_SENSOR` and the `AUDIOGOAL_SENSOR`, the latter returns the waveform that are initially generated in thte `observations` field of the `env.step()` method returns.
+
+A demonstration is given in the `sound-spaces/env_test.ipynb` notebook in this repository.
+Unfortunately, Tensorboard does not seem to support logging of video with incorporated audio.
+However, WANDB is capable of doing so, but the logging step will be out of sync with the actual training step (Tensorboard logging step) of the agent.
 
 # TODOs
 
