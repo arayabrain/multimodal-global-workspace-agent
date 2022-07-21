@@ -1,12 +1,11 @@
 # Soundspaces - Habitat-lab - Habitat-sim setup
 
-# General guideline as of 2022-07-13
+# General guideline as of 2022-07-21
 
-- `habitat-lab` and `habitat-sim` require python>=3.7. The documentation mentions that 3.7 is the one tested and confirmed to work.
-This can be a potential source of conflict when installing pytorch with more recent version of CUDA / Python.
-- Soundspaces (SS) recommends using `habitat-lab` and `habitat-sim` v0.2.1.
-However, the current version of `habitat-lab` and `habitat-sim` is 0.2.2.
-Furthermore, to use SoundSpaces 2.0 (audio visual environemnt simulation for RL agents) requires to build `habitat-sim` with `--audio` flag. Audio support requires at least v0.2.2 of `habitat-sim`. 
+- Soundspaces currently at commit fb68e410a4a1388e2d63279e6b92b6f082371fec
+- While `habitat-lab` and `habitat-sim` recommend using python 3.7 at leats, this procedure goes as far as python 3.9 to have better compatibility with more recent Torch libraries.
+- `habitat-lab` is built at version 0.2.2
+- `habitat-sim` is built from the commit [80f8e31140eaf50fe6c5ab488525ae1bdf250bd9](https://github.com/facebookresearch/habitat-sim/tree/80f8e31140eaf50fe6c5ab488525ae1bdf250bd9).
 
 # System specifics
 
@@ -17,16 +16,14 @@ Furthermore, to use SoundSpaces 2.0 (audio visual environemnt simulation for RL 
 - NVIDIA 515.57 (straight from NVIDIA's website)
 - CUDA Toolkit 11.7 (also from NVIDIA's website)
 
-# Conda environemnt
 
 ```bash
-conda create -n ss-hab python=3.7 cmake=3.14.0 -y
+conda create -n ss-hab-headless-py39 python=3.9 cmake=3.14.0 -y
 conda activate ss-hab
 pip install pytest-xdist
-
 ```
 
-# Habitat-lab
+# Habitat-lab Stable 0.2.2
 
 ```bash
 git clone --branch stable https://github.com/facebookresearch/habitat-lab.git # Currently @ 0f454f62e41050bc90ca468c62db35d7484923ff
@@ -56,8 +53,10 @@ cd ..
 sudo apt-get update || True
 sudo apt-get install -y --no-install-recommends libjpeg-dev libglm-dev libgl1-mesa-glx libegl1-mesa-dev mesa-utils xorg-dev freeglut3-dev # Ubuntu
 # Clone habitat-sim repository
-git clone --branch stable https://github.com/facebookresearch/habitat-sim.git # Current @ 011191f65f37587f5a5452a93d840b5684593a00
+git clone https://github.com/facebookresearch/habitat-sim.git # Current @ 80f8e31140eaf50fe6c5ab488525ae1bdf250bd9
 cd habitat-sim
+# Checkout the commit suggest by ChanganVR
+git checkout 80f8e31140eaf50fe6c5ab488525ae1bdf250bd9
 # Build habitat-sim with audio and headless support
 python setup.py install --with-cuda --bullet --audio --headless # compilation goes brrrr...
 pip install hypothesis # For the tests mainly
@@ -127,7 +126,7 @@ python src_python/habitat_sim/utils/datasets_download.py --username USERNAME --p
 ``` -->
 
 __Other notes__
-- To get `tests/test_controls.py` to pass, need to `pip install hypothesis`
+- To get `tests/test_controls.py` to pass, need to `pip install hypothesis` if not already.
 - When habitat-sim is manually compiled, it seems that commands such as `python -m habitat_sim.utils.datasets_download` do not work. Instead use `cd /path/to/habitat-sim && python src_python/utils/dowload_datasets.py`. This allegedly does not happen if `habitat-sim` was installed through `conda`.
 
 To check that both `habitat-lab` and `habitat-sim` work with each other:
@@ -143,10 +142,10 @@ It should say "... ran for 200 steps" or something similar.
 # Soundspaces 2.0
 
 ```bash
-# git clone https://github.com/facebookresearch/sound-spaces.git # Currently @ 4e400abaf65c7759a287355386dcd97de2b17e2b
-# The following fork is based on v2.2.0 @ 4e400abaf65c7759a287355386dcd97de2b17e2b and fixes various imports
-git clone https://github.com/dosssman/sound-spaces.git --branch ss2-tweaks
+# git clone https://github.com/facebookresearch/sound-spaces.git # Currently @ fb68e410a4a1388e2d63279e6b92b6f082371fec
+git clone https://github.com/facebookresearch/sound-spaces.git
 cd sound-spaces
+git checkout fb68e410a4a1388e2d63279e6b92b6f082371fec
 pip install -e .
 ```
 
@@ -206,23 +205,23 @@ NOTE: Maybe not. Maybe because I did not use the proper link when donwloading wi
 
 The `torch` install that comes with the dependencies should work by default on something like GTX 1080 Ti.
 However, because that one relies on `CUDA 10.2` it cannot be used with an RTX 3090 for example (_CUDA Error: no kernel image is available for execution on the device ..._).
-Training on an RTX 3090 as of 2022-07-14, thus requires upgrading to a `torch` version that supports `CUDA 11`.
+Training on an RTX 3090 as of 2022-07-21, thus requires upgrading to a `torch` version that supports `CUDA 11`.
 ```bash
 conda install pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch
 ```
-does the trick, but so might 
+This will install `torch==1.12.0`.
+
+CUDA 11.6 unfortunately seems to create too many conflicts with other dependencies, solving the environment ad infinitum.
 ```bash
-conda install pytorch torchvision torchaudio cudatoolkit=11.6 -c pytorch -c conda-forge
+conda install pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch
 ```
 
-Namellly, it installs `torch==1.12.0`.
-
-Also take this change to get `torchvision`:
+<!-- Also take this change to get `torchvision`:
 ```bash
 pip install torchvision
-```
+``` -->
 
-## `RLRAudioPropagationChannelLayoutType` error workaround
+## [OUTDATED as of 2022-07-21] RLRAudioPropagationChannelLayoutType` error workaround
 
 Past this point, there might be some `RLRAudioPropagationChannelLayoutType` related error when trying to run the interactive mode.
 
@@ -264,7 +263,7 @@ python ss_baselines/av_nav/run.py --exp-config ss_baselines/av_nav/config/audion
 ### Training continuous navigation PPO baseline
 
 ```bash
-python ss_baselines/av_nav/run.py --exp-config ss_baselines/av_nav/config/audionav/mp3d/train_telephone/audiogoal_depth_ddppo.yaml --model-dir data/models/ss2/mp3d/dav_nav CONTINUOUS True
+python ss_baselines/av_nav/run.py --exp-config ss_baselines/av_nav/config/audionav/mp3d/train_telephone/audiogoal_depth_ppo.yaml --model-dir data/models/ss2/mp3d/dav_nav_ppo CONTINUOUS True
 ```
 
 ### Generating audio and video from SS2.0 trajectories.
@@ -275,7 +274,3 @@ For the acoustic perception, it supports the `SPECTROGRAM_SENSOR` and the `AUDIO
 A demonstration is given in the `sound-spaces/env_test.ipynb` notebook in this repository.
 Unfortunately, Tensorboard does not seem to support logging of video with incorporated audio.
 However, WANDB is capable of doing so, but the logging step will be out of sync with the actual training step (Tensorboard logging step) of the agent.
-
-# TODOs
-
-- [ ] Maybe use the latest version of `habitat-sim` that does not require the `hsmi_bindings` direct use ?
