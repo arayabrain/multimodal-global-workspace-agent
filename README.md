@@ -221,27 +221,6 @@ conda install pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch
 pip install torchvision
 ``` -->
 
-## [OUTDATED as of 2022-07-21] RLRAudioPropagationChannelLayoutType` error workaround
-
-Past this point, there might be some `RLRAudioPropagationChannelLayoutType` related error when trying to run the interactive mode.
-
-If this fork of soundspaces was used: `git clone https://github.com/dosssman/sound-spaces.git --branch ss2-tweaks`, then skip until the **Finally testing SS2** section.
-
-Otherwise, this will require a workaround in the soundspaces simulator.
-
-Namely, comment or delete the line 125 of `sound-spaces/soundspaces/simulator_continuous.py` and add:
-
-```python
-import habitat_sim._ext.habitat_sim_bindings as hsim_bindings
-channel_layout.channelType = hsim_bindings.RLRAudioPropagationChannelLayoutType.Binaural
-```
-instead.
-
-This workaround is adapted from `habitat-sim/examples/tutorials/audio_agent.py`.
-
-The reason is because the soundspace author are using a version of `habitat-sim` that is more recent than `v2.2.0`, and where the   `habitat_sim.sensor.RLRAudioPropagationChannelLayoutType` object is properly defined.
-Since we clone `habitat-sim@v2.2.0`, however, we revert to using the `hsim_bindings` directly.
-
 ### Testing SS2.0 in interactive mode
 
 For a machine with display, and with `habitat-sim` not being built with the `--headless` flag.
@@ -274,3 +253,24 @@ For the acoustic perception, it supports the `SPECTROGRAM_SENSOR` and the `AUDIO
 A demonstration is given in the `sound-spaces/env_test.ipynb` notebook in this repository.
 Unfortunately, Tensorboard does not seem to support logging of video with incorporated audio.
 However, WANDB is capable of doing so, but the logging step will be out of sync with the actual training step (Tensorboard logging step) of the agent.
+
+### [OUTDATED as of 2022-07-21] RLRAudioPropagationChannelLayoutType` error workaround
+
+Past this point, there might be some `RLRAudioPropagationChannelLayoutType` related error when trying to run the interactive mode.
+
+If this fork of soundspaces was used: `git clone https://github.com/dosssman/sound-spaces.git --branch ss2-tweaks`, then skip until the **Finally testing SS2** section.
+
+Otherwise, this will require a workaround in the soundspaces simulator.
+
+Namely, comment or delete the line 125 of `sound-spaces/soundspaces/simulator_continuous.py` and add:
+
+```python
+import habitat_sim._ext.habitat_sim_bindings as hsim_bindings
+channel_layout.channelType = hsim_bindings.RLRAudioPropagationChannelLayoutType.Binaural
+```
+instead.
+
+This workaround is adapted from `habitat-sim/examples/tutorials/audio_agent.py`.
+
+The reason is because the soundspace author are using a version of `habitat-sim` that is more recent than `v2.2.0`, and where the   `habitat_sim.sensor.RLRAudioPropagationChannelLayoutType` object is properly defined.
+Since we clone `habitat-sim@v2.2.0`, however, we revert to using the `hsim_bindings` directly.
