@@ -242,7 +242,78 @@ python ss_baselines/av_nav/run.py --exp-config ss_baselines/av_nav/config/audion
 ### Training continuous navigation PPO baseline
 
 ```bash
-python ss_baselines/av_nav/run.py --exp-config ss_baselines/av_nav/config/audionav/mp3d/train_telephone/audiogoal_depth_ppo.yaml --model-dir data/models/ss2/mp3d/dav_nav_ppo CONTINUOUS True
+python ss_baselines/av_nav/run.py --exp-config ss_baselines/av_nav/config/audionav/mp3d/train_telephone/audiogoal_depth_ppo.yaml --model-dir data/models/ss2/mp3d/dav_nav_ppo/ CONTINUOUS True
+```
+
+### Evulating the trained agent
+
+This is done using the test confgurations suggested in the `sound-spaces/ss_baselines/av_nav/README.md` file.
+
+```
+python ss_baselines/av_nav/run.py --run-type eval --exp-config ss_baselines/av_nav/config/audionav/mp3d/test_telephone/audiogoal_depth.yaml EVAL_CKPT_PATH_DIR data/models/ss2/mp3d/dav_nav/data/ckpt.100.pth CONTINUOUS True
+```
+
+**Missing `audiogoal` in `observations` error**
+
+Runnin the commnad above will probably spit out an error related to the `audiogal` field missing in the `observations`
+directly.
+The fix is to change the base task configuration with the following:
+
+```
+TASK:
+  TYPE: AudioNav
+  SUCCESS_DISTANCE: 1.0
+
+  # Original
+  # SENSORS: ['SPECTROGRAM_SENSOR']
+  # GOAL_SENSOR_UUID: spectrogram
+
+  # For eval support
+  SENSORS: ['AUDIOGOAL_SENSOR', 'SPECTROGRAM_SENSOR']
+  GOAL_SENSOR_UUID: spectrogram # audiogoal
+```
+Basically, it adds the `AUDIOGOAL_SENSOR` to the config, which in turns generates the corresponding field in the observation of the agent
+
+**TypeError: write_gif() got an unexpected keyword argument 'verbose'**
+
+Best guess is some form of mismatch between the moviepy version that the tensorboard used here expectes and the one that is actually installed.
+Current versions are `torch==1.12.0` installed from conda according to the official pytorch website, and `moviepy==2.0.0.dev2` install from PyPI.
+
+A work around was to edit the `make_video` in `/path/to/venv/lib/python3.9/site-packages/torch/utils/tensorboard/summary.py` to add the case when `moviepy` does not support the `verbose` argument:
+
+```python
+def make_video(tensor, fps):
+    try:
+        import moviepy  # noqa: F401
+    except ImportError:
+        print("add_video needs package moviepy")
+        return
+    try:
+        from moviepy import editor as mpy
+    except ImportError:
+        print(
+            "moviepy is installed, but can't import moviepy.editor.",
+            "Some packages could be missing [imageio, requests]",
+        )
+        return
+    import tempfile
+
+    t, h, w, c = tensor.shape
+
+    # encode sequence of images into gif string
+    clip = mpy.ImageSequenceClip(list(tensor), fps=fps)
+
+    filename = tempfile.NamedTemporaryFile(suffix=".gif", delete=False).name
+    try:  # newer version of moviepy use logger instead of progress_bar argument.
+        clip.write_gif(filename, verbose=False, logger=None)
+    except TypeError:
+        try:  # older version of moviepy does not support progress_bar argument.
+            clip.write_gif(filename, verbose=False, progress_bar=False)
+        except TypeError:
+            try: # in case verebose argument is also not supported
+                clip.write_gif(filename, verbose=False)
+            except TypeError:
+                clip.write_gif(filename)
 ```
 
 ### Generating audio and video from SS2.0 trajectories.
