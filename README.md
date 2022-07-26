@@ -325,6 +325,21 @@ A demonstration is given in the `sound-spaces/env_test.ipynb` notebook in this r
 Unfortunately, Tensorboard does not seem to support logging of video with incorporated audio.
 However, WANDB is capable of doing so, but the logging step will be out of sync with the actual training step (Tensorboard logging step) of the agent.
 
+# Custom PPO Implementation
+
+## Additional dependencies
+**TODO**
+- [ ] Might want to fuse the dependency install for the whole project later on.
+
+```
+# Individual deps. install
+pip install wandb # 0.12.21
+pip install nvsmi # 0.4.2, for experimetn GPU usage configuration
+
+# One liner
+pip install wandb nvsmi
+```
+
 ### [OUTDATED as of 2022-07-21] RLRAudioPropagationChannelLayoutType` error workaround
 
 Past this point, there might be some `RLRAudioPropagationChannelLayoutType` related error when trying to run the interactive mode.
