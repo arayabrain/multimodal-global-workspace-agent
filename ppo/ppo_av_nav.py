@@ -149,17 +149,20 @@ def main():
     num_updates = args.total_steps // args.batch_size
 
     obs = envs.reset()
+    
     done = [False for _ in range(args.num_envs)]
+    done_th = th.Tensor(done).to(device)
+    masks = 1. - done_th[:, None]
+
     init_hidden_state = th.zeros((1, args.num_envs, args.hidden_size), device=device)
     rnn_hidden_state = init_hidden_state.clone()
 
     for global_step in range(1, args.total_steps+1, args.num_steps * args.num_envs):
 
         for rollout_step in range(args.num_steps):
+            # NOTE: the following line tensorize and also appends data to the rollout storage
             obs_th = tensorize_obs_dict(obs, device, observations, rollout_step)
-            done_th = th.Tensor(done).to(device)
             dones[rollout_step] = done_th
-            masks = 1. - done_th[:, None]
 
             # Sample action
             with th.no_grad():
@@ -174,16 +177,18 @@ def main():
             reward_th = th.Tensor(np.array(reward, dtype=np.float32)).to(device)
             rewards[rollout_step] = reward_th
             
+            ## This is done to update the masks that will be used to track episodic return. Anyway to make this more efficient ?
+            done_th = th.Tensor(done).to(device)
+            masks = 1. - done_th[:, None]
+
             # Tracking episode return
+            # TODO: keep this on GPU for more efficiency ? We log less than we update, so ...
             current_episode_reward += reward_th[:, None].to(current_episode_reward.device)
             running_episode_stats["reward"] += (1 - masks.to(current_episode_reward.device)) * current_episode_reward
-            running_episode_stats["count"] += (1 - masks.to(current_episode_reward.device))
+            running_episode_stats["count"] += (1. - masks.to(current_episode_reward.device))
 
             if should_log_sampling_stats(global_step) and (True in done):
-                # TODO: instead of True, make sure that there is one final episode we can 
-                # log the video and other stats of
-                done_th = done_th = th.Tensor(done).to(device) # Overrides the done for now
-
+                # TODO: additional metrics logging, log the video and other stats of
                 info_stats = {
                     "global_step": global_step,
                     "duration": time.time() - start_time,
@@ -198,12 +203,13 @@ def main():
 
                 # TODO: extract the success rate and other variables
                 episode_stats = {
-                    "episode_return": (running_episode_stats["reward"].sum() / done_th.sum()).item(),
+                    "episode_return": (running_episode_stats["reward"].sum() / done_th.sum().item()).item(),
                     "episode_count": running_episode_stats["count"].sum().item()
                 }
                 tblogger.log_stats(episode_stats, global_step, "metrics")
-
-            current_episode_reward *= masks # Resets the episodic return tracker
+            
+            # Resets the episodic return tracker
+            current_episode_reward *= masks.to(current_episode_reward.device)
 
         # Prepare for PPO update phase
         ## Bootstrap value if not done
