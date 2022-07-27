@@ -10,6 +10,8 @@ VISUALIZATION_OPTION: []
 
 CONTINUOUS: True # Make env continuous by default
 
+# TODO: consider deleting anything agent related, which 
+# we will configure directly using the argparser instead
 RL:
   PPO:
     # ppo params

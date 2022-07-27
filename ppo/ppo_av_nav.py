@@ -3,6 +3,7 @@
 ## - CleanRL's PPO LSTM: https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/ppo_atari_lstm.py
 ## - SoundSpaces AudioNav Baselines: https://github.com/facebookresearch/sound-spaces/tree/main/ss_baselines/av_nav
 
+import os
 import time
 import random
 import numpy as np
@@ -17,10 +18,9 @@ from th_logger import TBXLogger as TBLogger
 # Env deps: Soundspaces and Habitat
 from habitat.datasets import make_dataset
 from ss_baselines.av_nav.config import get_config
-from ss_baselines.common.environments import AudioNavRLEnv
 from ss_baselines.common.env_utils import construct_envs
 from ss_baselines.common.environments import get_env_class
-from ss_baselines.common.rollout_storage import RolloutStorage
+from ss_baselines.common.utils import images_to_video_with_audio
 
 # Custom ActorCritic agent for PPO
 from models import ActorCritic
@@ -39,19 +39,15 @@ def tensorize_obs_dict(obs, device, observations=None, rollout_step=None):
     return obs_th
 
 def main():
-    # Environment config
-    # TODO: Override some of the config elements through arg parse ?
-    env_config = get_config(
-        config_paths="env_configs/audiogoal_rgb.yaml",
-        # run_type="train"
-    )
-
     # region: Generating additional hyparams
     CUSTOM_ARGS = [
         # General hyepr parameters
         get_arg_dict("seed", int, 111),
         get_arg_dict("total-steps", int, 10_000_000),
         
+        # SS env config
+        get_arg_dict("config-path", str, "env_configs/audiogoal_rgb.yaml"),
+
         # PPO Hyper parameters
         get_arg_dict("num-envs", int, 10), # Number of parallel envs. 10 by default
         get_arg_dict("num-steps", int, 150), # For each env, how many steps are collected to form PPO Agent rollout.
@@ -78,6 +74,10 @@ def main():
         get_arg_dict("logdir-prefix", str, "./logs/"), # Overrides the default one
     ]
     args = generate_args(CUSTOM_ARGS)
+
+    # Load environment config
+    env_config = get_config(config_paths="env_configs/audiogoal_rgb.yaml")
+
     # Additional PPO overrides
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
@@ -89,6 +89,7 @@ def main():
     print(f"# Logdir: {tblogger.logdir}")
     # should_eval = tools.Every(args.eval_every)
     should_log_sampling_stats = tools.Every(args.log_sampling_stats_every)
+    should_log_video = tools.Every(args.log_sampling_stats_every)
     should_log_training_stats = tools.Every(args.log_training_stats_every)
     
     # Seeding
@@ -133,17 +134,6 @@ def main():
     dones = th.zeros((args.num_steps, args.num_envs), device=device)
     values = th.zeros((args.num_steps, args.num_envs), device=device)
 
-    # Variables to track episode reward
-    current_episode_reward = th.zeros(envs.num_envs, 1)
-    running_episode_stats = dict(
-        count=th.zeros(envs.num_envs, 1),
-        reward=th.zeros(envs.num_envs, 1),
-    )
-    latest_successes = deque([], env_config.RL.PPO.reward_window_size)
-    window_episode_stats = defaultdict(
-        lambda: deque(maxlen=env_config.RL.PPO.reward_window_size)
-    )
-
     # Training start
     start_time = time.time()
     num_updates = args.total_steps // args.batch_size
@@ -156,6 +146,18 @@ def main():
 
     init_hidden_state = th.zeros((1, args.num_envs, args.hidden_size), device=device)
     rnn_hidden_state = init_hidden_state.clone()
+
+    # Variables to track episodic return, videos, and other SS relevant stats
+    current_episode_return = th.zeros(envs.num_envs, 1).to(device)
+    # window_episode_stats = defaultdict(
+    #     lambda: deque(maxlen=env_config.RL.PPO.reward_window_size))
+    window_episode_stats = {}
+    train_video_data_env_0 = {
+        "rgb": [], "depth": [], 
+        "audiogoal": [], "top_down_map": [],
+        "spectrogram": []
+    }
+    n_episodes = 0
 
     for global_step in range(1, args.total_steps+1, args.num_steps * args.num_envs):
 
@@ -183,9 +185,34 @@ def main():
 
             # Tracking episode return
             # TODO: keep this on GPU for more efficiency ? We log less than we update, so ...
-            current_episode_reward += reward_th[:, None].to(current_episode_reward.device)
-            running_episode_stats["reward"] += (1 - masks.to(current_episode_reward.device)) * current_episode_reward
-            running_episode_stats["count"] += (1. - masks.to(current_episode_reward.device))
+            current_episode_return += reward_th[:, None]
+
+            if True in done: # At least one env has reached terminal state
+                # Extract the "success" and other SS relevant metrics from the env that are 'done'
+                env_done_idxs = np.where(done)[0].tolist() # Index of the envs that are done
+                for env_done_i in env_done_idxs:
+                    env_info_dict = info[env_done_i] # The info of the env that is done
+                    # Expected content: ['distance_to_goal', 'normalized_distance_to_goal', 'success', 'spl', 'softspl', 'na', 'sna', 'top_down_map']
+                    # - na: num_action
+                    # - sna: success_weight_with_num_action
+                    for k, v in env_info_dict.items():
+                        # Make sure that the info metric is of interest / loggable.
+                        if k in ["distance_to_goal", "normalized_distance_to_goal", "success", "spl", "softspl", "na", "sna"]:
+                            if k not in list(window_episode_stats.keys()):
+                                window_episode_stats[k] = deque(maxlen=env_config.RL.PPO.reward_window_size)
+                            
+                            # Append the metric of interest to the queue
+                            window_episode_stats[k].append(v)
+                    
+                    # Add episodic return too
+                    if "episodic_return" not in list(window_episode_stats.keys()):
+                        window_episode_stats["episodic_return"] = deque(maxlen=env_config.RL.PPO.reward_window_size)
+                    env_done_ep_returns = current_episode_return[env_done_idxs].flatten().tolist()
+                    # Append the episodic returns for the env that are dones to the window stats list
+                    window_episode_stats["episodic_return"].extend(env_done_ep_returns)
+                
+                # Track total number of episodes
+                n_episodes += len(env_done_idxs)
 
             if should_log_sampling_stats(global_step) and (True in done):
                 # TODO: additional metrics logging, log the video and other stats of
@@ -200,16 +227,61 @@ def main():
                         num_updates, inverse=True)
                 }
                 tblogger.log_stats(info_stats, global_step, "info")
-
-                # TODO: extract the success rate and other variables
+  
                 episode_stats = {
-                    "episode_return": (running_episode_stats["reward"].sum() / done_th.sum().item()).item(),
-                    "episode_count": running_episode_stats["count"].sum().item()
+                    # Episodic return at the current step, averaged over the envs that are done
+                    "current_episode_return": (current_episode_return.sum() / done_th.sum()).item(),
+                    "total_episodes": n_episodes,
+                    # Episodic return average over the window statistic, as well as other SS relevant metrics: 50 episodes by default
+                    **{k: np.mean(v) for k, v in window_episode_stats.items()}
                 }
                 tblogger.log_stats(episode_stats, global_step, "metrics")
             
             # Resets the episodic return tracker
-            current_episode_reward *= masks.to(current_episode_reward.device)
+            current_episode_return *= masks
+
+            # Accumulate data for video + audio rendering
+            train_video_data_env_0["rgb"].append(obs[0]["rgb"])
+            train_video_data_env_0["audiogoal"].append(obs[0]["audiogoal"])
+            # train_video_data_env_0["depth"].append(obs[0]["depth"])
+            # train_video_data_env_0["spectrogram"].append(obs[0]["spectrogram"])
+            train_video_data_env_0["top_down_map"].append(info[0]["top_down_map"]) # info[i]["top_down_map"] is a dict itself
+            
+            # Log video as soon as the ep in the first env is done
+            if done[0]:
+                if should_log_video(global_step):
+                    # TODO: video logging: fuse with top_down_map and other stats,
+                    # then save to disk, tensorboard, wandb, etc...
+                    # Video plotting is limited to the first environment
+                    base_video_name = "train_video_0"
+                    video_name = f"{base_video_name}_gstep_{global_step}"
+                    video_fullpath = os.path.join(tblogger.get_videos_savedir(), f"{video_name}.mp4")
+                    
+                    # Saves to disk
+                    images_to_video_with_audio(
+                        images=train_video_data_env_0["rgb"],
+                        audios=train_video_data_env_0["audiogoal"],
+                        output_dir=tblogger.get_videos_savedir(),
+                        video_name=video_name,
+                        sr=env_config.TASK_CONFIG.SIMULATOR.AUDIO.RIR_SAMPLING_RATE, # 16000 for mp3d dataset
+                        fps=env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS
+                    )
+                    
+                    # Save to tensorboard
+                    tblogger.log_video("train_video_0_rgb",
+                        np.array([train_video_data_env_0["rgb"]]).transpose(0, 1, 4, 2, 3), # From [1, THWC] to [1,TCHW]
+                        global_step, fps=env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS)
+                    
+                    # Upload to wandb
+                    tblogger.log_wandb_video_audio(base_video_name, video_fullpath)
+
+                # Reset the placeholder for the video
+                # If it is too early to log, then the episode data is trashed
+                train_video_data_env_0 = {
+                    "rgb": [], "depth": [], 
+                    "audiogoal": [], "top_down_map": [],
+                    "spectrogram": []
+                }
 
         # Prepare for PPO update phase
         ## Bootstrap value if not done

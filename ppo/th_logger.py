@@ -357,5 +357,10 @@ class TBXLogger(object):
         self.tb_writer.add_video(tag=fulltag, vid_tensor=video_data,
             global_step=step, fps=fps)
     
-    def log_video_audio(self, name, filepath, step, fps=4, prefix=None):
-        raise NotImplementedError("Logging video with audio not supported yet")
+    def log_wandb_video_audio(self, name, filepath):
+        if self.args.wandb:
+            # The experiment appears to be using Wandb.
+            # By default, it syncs with the tensorboard, so the 'step' cannot be overriden
+            # to exactly match the scalar metrics.
+            # NOTE: step and fps are probably useless
+            wandb.log({name: wandb.Video(filepath)})
