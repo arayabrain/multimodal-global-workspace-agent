@@ -327,10 +327,9 @@ However, WANDB is capable of doing so, but the logging step will be out of sync 
 
 # Custom PPO Implementation
 
-## Additional dependencies
-**TODO**
-- [ ] Might want to fuse the dependency install for the whole project later on.
+A simplified PPO + GRU implementation that exposes the core of the algorithm, as well interactoins with the environment.
 
+## Additional dependencies
 ```
 # Individual deps. install
 pip install wandb # 0.12.21
@@ -340,6 +339,15 @@ pip install nvsmi # 0.4.2, for experimetn GPU usage configuration
 pip install wandb nvsmi
 ```
 
+## Usage
+
+This will use RGB + Spectrogram as input for the agent, create a timestamped TensorBoard folder automatically and log training metrics as well as video, with and without audio.
+
+```bash
+python ppo_av_nav.py
+```
+
+# Other
 ### [OUTDATED as of 2022-07-21] RLRAudioPropagationChannelLayoutType` error workaround
 
 Past this point, there might be some `RLRAudioPropagationChannelLayoutType` related error when trying to run the interactive mode.
