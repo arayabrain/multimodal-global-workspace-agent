@@ -357,8 +357,25 @@ Two main features that might be of interest for this project
 
 On top of all the above steps so far for the default SS installation,
 1. Run the `python scripts/cache_observations.py`. Note that since we only use mp3d dataset for now, it will require editing that script to comment out line 105, to make it skip the `replica` data set, which proper installation is skipped in the steps above.
+Once this is done, add the symbolic link so that the training scripts can find the file at the expected path:
+```bash
+ln -s /path/to/sound-spaces/data/scene_observations/mp3d /path/to/sound-spaces/data/scene_observations/default
+```
 
 2. Run the scripts as per the README in the SAVi folder:
+
+a. First, the pre-training the goal label predictor:
+```bash
+python ss_baselines/savi/pretraining/audiogoal_trainer.py --run-type train --model-dir data/models/savi --predict-label
+```
+**TODO**: this step requires that huge binaural dataset ...
+
+a. without pre-training, continuous simulator
+```bash
+python ss_baselines/savi/run.py --exp-config ss_baselines/savi/config/semantic_audionav/savi.yaml --model-dir data/models/savi CONTINUOUS True
+```
+
+b. with pre-training
 ```bash
 
 ```
