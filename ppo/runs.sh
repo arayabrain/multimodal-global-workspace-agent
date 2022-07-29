@@ -1,6 +1,6 @@
 #!/bin/bash
-NUM_CORES=$(nproc --all)
-export MKL_NUM_THREADS=$NUM_CORES OMP_NUM_THREADS=$NUM_CORES
+# NUM_CORES=$(nproc --all)
+# export MKL_NUM_THREADS=$NUM_CORES OMP_NUM_THREADS=$NUM_CORES
 
 export LOGDIR_PREFIX=~/random/rl/exp-logs/ss-hab
 if [ ! -d $LOGDIR_PREFIX ]; then

@@ -347,6 +347,25 @@ This will use RGB + Spectrogram as input for the agent, create a timestamped Ten
 python ppo_av_nav.py
 ```
 
+# SAVi
+
+Two main features that might be of interest for this project
+- removes the limitation of only having a _ringing telephone_. Namely, adds 21 objects with their distinct sounds
+- the sound is not continuous over the whole episode, but of variable length insetad. This supposedly forces the agent to learn the association between the category of the object and its acoustic features.
+
+## Addtional setup
+
+On top of all the above steps so far for the default SS installation,
+1. Run the `python scripts/cache_observations.py`. Note that since we only use mp3d dataset for now, it will require editing that script to comment out line 105, to make it skip the `replica` data set, which proper installation is skipped in the steps above.
+
+2. Run the scripts as per the README in the SAVi folder:
+```bash
+
+```
+
+## TODO:
+- [ ] Does it support continuous mode ? or just dataset based ?
+
 # Other
 ### [OUTDATED as of 2022-07-21] RLRAudioPropagationChannelLayoutType` error workaround
 
