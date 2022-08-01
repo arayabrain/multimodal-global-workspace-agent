@@ -368,7 +368,10 @@ a. First, the pre-training the goal label predictor:
 ```bash
 python ss_baselines/savi/pretraining/audiogoal_trainer.py --run-type train --model-dir data/models/savi --predict-label
 ```
-**TODO**: this step requires that huge binaural dataset ...
+This step seems to require that huge binaural dataset that was skipped back in sound-spaces dataset acquisition section earlier.
+```
+wget http://dl.fbaipublicfiles.com/SoundSpaces/binaural_rirs.tar && tar xvf binaural_rirs.tar # 867G
+```
 
 a. without pre-training, continuous simulator
 ```bash
@@ -379,6 +382,9 @@ b. with pre-training
 ```bash
 
 ```
+
+**Additional notes**
+- THe pretrained weights will be found in `/path/to/sound-spaces/data/pretrained_weights`, assuming they were properly donwload in the dataset acquisition phase.
 
 ## TODO:
 - [ ] Does it support continuous mode ? or just dataset based ?
