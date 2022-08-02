@@ -67,7 +67,9 @@ def main():
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
 
         # Logging params
-        get_arg_dict("save-videos", bool, True, metatype="bool"),
+        # TODO: Eval that has a separate environment and is called eval-every 100K steps to generate a single
+        # video to disk / TB / Wandb ?
+        get_arg_dict("save-videos", bool, False, metatype="bool"),
         get_arg_dict("save-model", bool, True, metatype="bool"),
         get_arg_dict("log-sampling-stats-every", int, int(1.5e4)), # Every X frames || steps sampled
         get_arg_dict("log-training-stats-every", int, int(10)), # Every X model update
@@ -143,9 +145,7 @@ def main():
     done = [False for _ in range(args.num_envs)]
     done_th = th.Tensor(done).to(device)
     masks = 1. - done_th[:, None]
-
-    init_hidden_state = th.zeros((1, args.num_envs, args.hidden_size), device=device)
-    rnn_hidden_state = init_hidden_state.clone()
+    rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size), device=device)
 
     # Variables to track episodic return, videos, and other SS relevant stats
     current_episode_return = th.zeros(envs.num_envs, 1).to(device)
@@ -162,6 +162,10 @@ def main():
     for global_step in range(1, args.total_steps+1, args.num_steps * args.num_envs):
 
         for rollout_step in range(args.num_steps):
+            # Copy the rnn_hidden_state at the start of the rollout.
+            # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
+            init_rnn_state = rnn_hidden_state.clone()
+        
             # NOTE: the following line tensorize and also appends data to the rollout storage
             obs_th = tensorize_obs_dict(obs, device, observations, rollout_step)
             dones[rollout_step] = done_th
@@ -215,7 +219,6 @@ def main():
                 n_episodes += len(env_done_idxs)
 
             if should_log_sampling_stats(global_step) and (True in done):
-                # TODO: additional metrics logging, log the video and other stats of
                 info_stats = {
                     "global_step": global_step,
                     "duration": time.time() - start_time,
@@ -240,48 +243,49 @@ def main():
             # Resets the episodic return tracker
             current_episode_return *= masks
 
-            # Accumulate data for video + audio rendering
-            train_video_data_env_0["rgb"].append(obs[0]["rgb"])
-            train_video_data_env_0["audiogoal"].append(obs[0]["audiogoal"])
-            # train_video_data_env_0["depth"].append(obs[0]["depth"])
-            # train_video_data_env_0["spectrogram"].append(obs[0]["spectrogram"])
-            train_video_data_env_0["top_down_map"].append(info[0]["top_down_map"]) # info[i]["top_down_map"] is a dict itself
-            
-            # Log video as soon as the ep in the first env is done
-            if done[0]:
-                if should_log_video(global_step):
-                    # TODO: video logging: fuse with top_down_map and other stats,
-                    # then save to disk, tensorboard, wandb, etc...
-                    # Video plotting is limited to the first environment
-                    base_video_name = "train_video_0"
-                    video_name = f"{base_video_name}_gstep_{global_step}"
-                    video_fullpath = os.path.join(tblogger.get_videos_savedir(), f"{video_name}.mp4")
-                    
-                    # Saves to disk
-                    images_to_video_with_audio(
-                        images=train_video_data_env_0["rgb"],
-                        audios=train_video_data_env_0["audiogoal"],
-                        output_dir=tblogger.get_videos_savedir(),
-                        video_name=video_name,
-                        sr=env_config.TASK_CONFIG.SIMULATOR.AUDIO.RIR_SAMPLING_RATE, # 16000 for mp3d dataset
-                        fps=env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS
-                    )
-                    
-                    # Save to tensorboard
-                    tblogger.log_video("train_video_0_rgb",
-                        np.array([train_video_data_env_0["rgb"]]).transpose(0, 1, 4, 2, 3), # From [1, THWC] to [1,TCHW]
-                        global_step, fps=env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS)
-                    
-                    # Upload to wandb
-                    tblogger.log_wandb_video_audio(base_video_name, video_fullpath)
+            if args.save_videos:
+                # Accumulate data for video + audio rendering
+                train_video_data_env_0["rgb"].append(obs[0]["rgb"])
+                train_video_data_env_0["audiogoal"].append(obs[0]["audiogoal"])
+                # train_video_data_env_0["depth"].append(obs[0]["depth"])
+                # train_video_data_env_0["spectrogram"].append(obs[0]["spectrogram"])
+                train_video_data_env_0["top_down_map"].append(info[0]["top_down_map"]) # info[i]["top_down_map"] is a dict itself
+                
+                # Log video as soon as the ep in the first env is done
+                if done[0]:
+                    if should_log_video(global_step):
+                        # TODO: video logging: fuse with top_down_map and other stats,
+                        # then save to disk, tensorboard, wandb, etc...
+                        # Video plotting is limited to the first environment
+                        base_video_name = "train_video_0"
+                        video_name = f"{base_video_name}_gstep_{global_step}"
+                        video_fullpath = os.path.join(tblogger.get_videos_savedir(), f"{video_name}.mp4")
+                        
+                        # Saves to disk
+                        images_to_video_with_audio(
+                            images=train_video_data_env_0["rgb"],
+                            audios=train_video_data_env_0["audiogoal"],
+                            output_dir=tblogger.get_videos_savedir(),
+                            video_name=video_name,
+                            sr=env_config.TASK_CONFIG.SIMULATOR.AUDIO.RIR_SAMPLING_RATE, # 16000 for mp3d dataset
+                            fps=env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS
+                        )
+                        
+                        # Save to tensorboard
+                        # tblogger.log_video("train_video_0_rgb",
+                        #     np.array([train_video_data_env_0["rgb"]]).transpose(0, 1, 4, 2, 3), # From [1, THWC] to [1,TCHW]
+                        #     global_step, fps=env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS)
+                        
+                        # Upload to wandb
+                        tblogger.log_wandb_video_audio(base_video_name, video_fullpath)
 
-                # Reset the placeholder for the video
-                # If it is too early to log, then the episode data is trashed
-                train_video_data_env_0 = {
-                    "rgb": [], "depth": [], 
-                    "audiogoal": [], "top_down_map": [],
-                    "spectrogram": []
-                }
+                    # Reset the placeholder for the video
+                    # If it is too early to log, then the episode data is trashed
+                    train_video_data_env_0 = {
+                        "rgb": [], "depth": [], 
+                        "audiogoal": [], "top_down_map": [],
+                        "spectrogram": []
+                    }
 
         # Prepare for PPO update phase
         ## Bootstrap value if not done
@@ -334,9 +338,9 @@ def main():
                 # Make a minibatch of observation dict
                 mb_observations = {k: v[mb_inds] for k, v in b_observations.items()}
 
+                # NOTE: should the RNN hit states be reused when recomputiong ?
                 _, newlogprob, entropy, newvalue, _ = \
-                    agent.act(
-                        mb_observations, init_hidden_state[:, mbenvinds],
+                    agent.act(mb_observations, init_rnn_state[:, mbenvinds],
                         masks=1-b_dones[mb_inds], actions=b_actions[mb_inds])
 
                 newlogprob = newlogprob.sum(-1) # From [B * T, 1] -> [B * T]

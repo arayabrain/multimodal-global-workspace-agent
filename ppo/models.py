@@ -283,9 +283,7 @@ class RNNStateEncoder(nn.Module):
 
     @property
     def num_recurrent_layers(self):
-        return self._num_recurrent_layers * (
-            2 if "LSTM" in self._rnn_type else 1
-        )
+        return self._num_recurrent_layers * (2 if "LSTM" in self._rnn_type else 1)
 
     def _pack_hidden(self, hidden_states):
         if "LSTM" in self._rnn_type:

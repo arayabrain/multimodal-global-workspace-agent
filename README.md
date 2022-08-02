@@ -242,7 +242,7 @@ python ss_baselines/av_nav/run.py --exp-config ss_baselines/av_nav/config/audion
 ### Training continuous navigation PPO baseline
 
 ```bash
-python ss_baselines/av_nav/run.py --exp-config ss_baselines/av_nav/config/audionav/mp3d/train_telephone/audiogoal_depth_ppo.yaml --model-dir data/models/ss2/mp3d/dav_nav_ppo/ CONTINUOUS True
+python ss_baselines/av_nav/run.py --exp-config ss_baselines/av_nav/config/audionav/mp3d/train_telephone/audiogoal_depth.yaml --model-dir data/models/ss2/mp3d/dav_nav_ppo/ CONTINUOUS True
 ```
 
 ### Evulating the trained agent

@@ -14,28 +14,29 @@ fi
 
 # region: Custom PPO based on ss_baselines
     # region: RGB based task
-    for seed in 111; do
-        (sleep 1s && python ppo_av_nav.py \
-            --exp-name "ppo_av_nav__rgb" \
-            --num-envs 8 \
-            --wandb --wandb-project ss-hab --wandb-entity hierworm \
-            --logdir-prefix $LOGDIR_PREFIX \
-            --seed $seed \
-        ) & # >& /dev/null &
-    done
-    # endregion: RGB based task
-
-    # region: RGB based task
     # for seed in 111; do
     #     (sleep 1s && python ppo_av_nav.py \
-    #         --exp-name "ppo_av_nav__depth" \
-    #         --config-path "env_configs/audigoal_depth.yaml" \
-    #         --wandb --wandb-project ss-hab --wandb-entity hierworm \
+    #         --exp-name "ppo_av_nav__rgb" \
+    #         --num-envs 8 \
+    #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
     #         --logdir-prefix $LOGDIR_PREFIX \
     #         --seed $seed \
     #     ) & # >& /dev/null &
     # done
     # endregion: RGB based task
+
+    # region: Depth based task
+    # for seed in 111; do
+    #     (sleep 1s && python ppo_av_nav.py \
+    #         --exp-name "ppo_av_nav__depth__rnn_hid_fix__num_envs_8" \
+    #         --config-path "env_configs/audigoal_depth.yaml" \
+    #         --num-envs 8 \
+    #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #         --logdir-prefix $LOGDIR_PREFIX \
+    #         --seed $seed \
+    #     ) & # >& /dev/null &
+    # done
+    # endregion: Depth based task
 # endregion: Custom PPO based on ss_baselines
 
 # Clean up env vars
