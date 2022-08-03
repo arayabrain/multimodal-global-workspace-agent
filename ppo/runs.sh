@@ -28,9 +28,8 @@ fi
     # region: Depth based task
     # for seed in 111; do
     #     (sleep 1s && python ppo_av_nav.py \
-    #         --exp-name "ppo_av_nav__depth__rnn_hid_fix__num_envs_8" \
-    #         --config-path "env_configs/audigoal_depth.yaml" \
-    #         --num-envs 8 \
+    #         --exp-name "ppo_av_nav__depth__rnn_hid_fix" \
+    #         --config-path "env_configs/audiogoal_depth.yaml" \
     #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
     #         --logdir-prefix $LOGDIR_PREFIX \
     #         --seed $seed \

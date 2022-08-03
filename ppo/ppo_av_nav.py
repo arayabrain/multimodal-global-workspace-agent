@@ -78,7 +78,7 @@ def main():
     args = generate_args(CUSTOM_ARGS)
 
     # Load environment config
-    env_config = get_config(config_paths="env_configs/audiogoal_rgb.yaml")
+    env_config = get_config(config_paths=args.config_path)
 
     # Additional PPO overrides
     args.batch_size = int(args.num_envs * args.num_steps)
@@ -124,12 +124,12 @@ def main():
     agent = ActorCritic(single_observation_space, single_action_space, 512).to(device)
     optimizer = th.optim.Adam(agent.parameters(), lr=args.lr, eps=1e-5)
     
-    # Rollout storage setup
-    observations = {
-        "rgb": th.zeros((args.num_steps, args.num_envs) + single_observation_space["rgb"].shape, device=device),
-        "spectrogram": th.zeros((args.num_steps, args.num_envs) + single_observation_space["spectrogram"].shape, device=device),
-        "audiogoal": th.zeros((args.num_steps, args.num_envs) + single_observation_space["audiogoal"].shape, device=device)
-    }
+    # Rollout storage setup # TODO: make this systematic for a
+    observations = {}
+    for obs_sensor in single_observation_space.keys():
+        observations[obs_sensor] = th.zeros((args.num_steps, args.num_envs) + 
+            single_observation_space[obs_sensor].shape, device=device)
+    
     actions = th.zeros((args.num_steps, args.num_envs), dtype=th.int64, device=device)
     logprobs = th.zeros((args.num_steps, args.num_envs), device=device)
     rewards = th.zeros((args.num_steps, args.num_envs), device=device)
@@ -152,11 +152,14 @@ def main():
     # window_episode_stats = defaultdict(
     #     lambda: deque(maxlen=env_config.RL.PPO.reward_window_size))
     window_episode_stats = {}
+    # NOTE: by enabling RGB frame generation, it is possible that the env sampling
+    # gets slower
     train_video_data_env_0 = {
         "rgb": [], "depth": [], 
         "audiogoal": [], "top_down_map": [],
         "spectrogram": []
     }
+    
     n_episodes = 0
 
     for global_step in range(1, args.total_steps+1, args.num_steps * args.num_envs):
