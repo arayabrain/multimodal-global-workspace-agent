@@ -453,5 +453,69 @@ class ActorCritic(nn.Module):
 
         return self.critic(features)
 
+
+## ActorCritic based on the Deep Ethorlogy Virtual Rodent paper
+class ActorCritic_DeepEthologyVirtualRodent(nn.Module):
+    def __init__(self, observation_space, action_space, hidden_size):
+        super().__init__()
+        self.hidden_size = hidden_size
+
+        # TODO: later, we might want to augment the RGB info with the depth.
+        self.visual_encoder = VisualCNN(observation_space, hidden_size, extra_rgb=False)
+        self.audio_encoder = AudioCNN(observation_space, hidden_size, "spectrogram")
+        
+        self.core_state_encoder = RNNStateEncoder(hidden_size * 2, hidden_size)
+        self.policy_state_encoder = RNNStateEncoder(hidden_size * 3, hidden_size)
+
+        self.action_distribution = CategoricalNet(hidden_size, action_space.n) # Policy fn
+        self.critic = CriticHead(hidden_size) # Value fn
+
+        self.train()
+    
+    def forward(self, observations, rnn_hidden_states, masks):
+        video_features = self.visual_encoder(observations)
+        audio_features = self.audio_encoder(observations)
+
+        x1 = th.cat([audio_features, video_features], dim=1)
+        # Current state, current rnn hidden states, respectively
+        # Core module RNN step
+        core_rnn_hidden_states = rnn_hidden_states[:, :, :self.hidden_size]
+        core_x2, core_rnn_hidden_states2 = self.core_state_encoder(x1, core_rnn_hidden_states, masks)
+        # Policy module RNN step
+        policy_rnn_hidden_states = rnn_hidden_states[:, :, self.hidden_size:]
+        policy_x1 = th.cat([x1, core_rnn_hidden_states2[0].detach()], dim=1) # They mention this in Fig 2.3 in the paper
+        policy_x2, policy_rnn_hidden_states2 = self.policy_state_encoder(policy_x1, policy_rnn_hidden_states, masks)
+        
+        return core_x2, policy_x2, core_rnn_hidden_states2, policy_rnn_hidden_states2
+    
+    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None):
+        core_features, policy_features, core_rnn_hidden_states, policy_rnn_hidden_states = \
+            self(observations, rnn_hidden_states, masks)
+
+        # Estimate the value function
+        values = self.critic(core_features)
+
+        # Estimate the policy as distribution to sample actions from
+        distribution = self.action_distribution(policy_features)
+
+        if actions is None:
+            if deterministic:
+                actions = distribution.mode()
+            else:
+                actions = distribution.sample()
+        # TODO: maybe some assert on the 
+        action_log_probs = distribution.log_probs(actions)
+
+        distribution_entropy = distribution.entropy().mean()
+
+        return actions, action_log_probs, distribution_entropy, values, \
+            th.cat([core_rnn_hidden_states, policy_rnn_hidden_states], dim=2) # Very workaround-y method
+    
+    def get_value(self, observations, rnn_hidden_states, masks):
+        core_features, _, _, _ = \
+            self(observations, rnn_hidden_states, masks)
+
+        return self.critic(core_features)
+
 # endregion: Actor Critic modules       #
 #########################################

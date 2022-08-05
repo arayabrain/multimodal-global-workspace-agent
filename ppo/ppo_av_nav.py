@@ -23,7 +23,7 @@ from ss_baselines.common.environments import get_env_class
 from ss_baselines.common.utils import images_to_video_with_audio
 
 # Custom ActorCritic agent for PPO
-from models import ActorCritic
+from models import ActorCritic, ActorCritic_DeepEthologyVirtualRodent
 
 # Helpers
 # Tensorize current observation, store to rollout data
@@ -64,6 +64,8 @@ def main():
         get_arg_dict("target-kl", float, None),
         get_arg_dict("lr", float, 2.5e-4), # Learning rate
         ## Agent network params
+        get_arg_dict("agent-type", str, "ss-default", metatype="choice",
+            choices=["ss-default", "deep-etho"]),
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
 
         # Logging params
@@ -121,7 +123,17 @@ def main():
     single_action_space = envs.action_spaces[0]
     
     # TODO: make the ActorCritic components parameterizable through comand line ?
-    agent = ActorCritic(single_observation_space, single_action_space, 512).to(device)
+    if args.agent_type == "ss-default":
+        agent = ActorCritic(single_observation_space, single_action_space, 512).to(device)
+    elif args.agent_type == "deep-etho":
+        raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+        # TODO: support for storing the rnn_hidden_statse, so that the policy 
+        # that takes in the 'core_modules' 's rnn hidden output can also work.
+        agent = ActorCritic_DeepEthologyVirtualRodent(single_observation_space,
+                single_action_space, 512).to(device)
+    else:
+        raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+
     optimizer = th.optim.Adam(agent.parameters(), lr=args.lr, eps=1e-5)
     
     # Rollout storage setup # TODO: make this systematic for a
@@ -145,7 +157,12 @@ def main():
     done = [False for _ in range(args.num_envs)]
     done_th = th.Tensor(done).to(device)
     masks = 1. - done_th[:, None]
-    rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size), device=device)
+    if args.agent_type == "ss-default":
+        rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size), device=device)
+    elif args.agent_type == "deep-etho":
+        rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size * 2), device=device)
+    else:
+        raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 
     # Variables to track episodic return, videos, and other SS relevant stats
     current_episode_return = th.zeros(envs.num_envs, 1).to(device)

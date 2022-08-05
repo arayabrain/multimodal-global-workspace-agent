@@ -208,9 +208,10 @@ def main():
                     # Expected content: ['distance_to_goal', 'normalized_distance_to_goal', 'success', 'spl', 'softspl', 'na', 'sna', 'top_down_map']
                     # - na: num_action
                     # - sna: success_weight_with_num_action
+                    # - sws: success when silent, specific to SAVi setting
                     for k, v in env_info_dict.items():
                         # Make sure that the info metric is of interest / loggable.
-                        if k in ["distance_to_goal", "normalized_distance_to_goal", "success", "spl", "softspl", "na", "sna"]:
+                        if k in ["distance_to_goal", "normalized_distance_to_goal", "success", "spl", "softspl", "na", "sna", "sws"]:
                             if k not in list(window_episode_stats.keys()):
                                 window_episode_stats[k] = deque(maxlen=env_config.RL.PPO.reward_window_size)
                             
@@ -228,6 +229,8 @@ def main():
                 n_episodes += len(env_done_idxs)
 
             if should_log_sampling_stats(global_step) and (True in done):
+                print(f"Step {global_step} / {args.total_steps}")
+
                 info_stats = {
                     "global_step": global_step,
                     "duration": time.time() - start_time,
@@ -262,7 +265,7 @@ def main():
                 
                 # Log video as soon as the ep in the first env is done
                 if done[0]:
-                    if should_log_video(global_step) and len(train_video_data_env_0["rgb"]) >= 40:
+                    if should_log_video(global_step): # and len(train_video_data_env_0["rgb"]) >= 40: # Later, we might want to avoid too short videos.
                         # TODO: video logging: fuse with top_down_map and other stats,
                         # then save to disk, tensorboard, wandb, etc...
                         # Video plotting is limited to the first environment
@@ -281,11 +284,11 @@ def main():
                         )
                         
                         # Save to tensorboard
-                        # tblogger.log_video("train_video_0_rgb",
-                        #     np.array([train_video_data_env_0["rgb"]]).transpose(0, 1, 4, 2, 3), # From [1, THWC] to [1,TCHW]
-                        #     global_step, fps=env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS)
+                        tblogger.log_video("train_video_0_rgb",
+                            np.array([train_video_data_env_0["rgb"]]).transpose(0, 1, 4, 2, 3), # From [1, THWC] to [1,TCHW]
+                            global_step, fps=env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS)
                         
-                        # Upload to wandb
+                        # Upload to wandb, will check if wandb is enable internally first
                         tblogger.log_wandb_video_audio(base_video_name, video_fullpath)
 
                     # Reset the placeholder for the video
