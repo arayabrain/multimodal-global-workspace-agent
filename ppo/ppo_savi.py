@@ -69,7 +69,7 @@ def main():
         # Logging params
         # TODO: Eval that has a separate environment and is called eval-every 100K steps to generate a single
         # video to disk / TB / Wandb ?
-        get_arg_dict("save-videos", bool, False, metatype="bool"),
+        get_arg_dict("save-videos", bool, True, metatype="bool"),
         get_arg_dict("save-model", bool, True, metatype="bool"),
         get_arg_dict("log-sampling-stats-every", int, int(1.5e4)), # Every X frames || steps sampled
         get_arg_dict("log-training-stats-every", int, int(10)), # Every X model update
@@ -138,7 +138,7 @@ def main():
 
     # Training start
     start_time = time.time()
-    num_updates = args.total_steps // args.batch_size
+    num_updates = args.total_steps // args.batch_size # Total number of updates that will take place in this experiment.
 
     obs = envs.reset()
     # SAVi Work around: detph has shape (NUM_ENVS, 128, 128, 1, 1); TODO: find cleaner fix
@@ -164,6 +164,7 @@ def main():
     }
     
     n_episodes = 0
+    n_updates = 0 # Count how many updates so far. Not to confuse with "num_updatesy"
 
     for global_step in range(1, args.total_steps+1, args.num_steps * args.num_envs):
 
@@ -235,11 +236,12 @@ def main():
                     "global_step": global_step,
                     "duration": time.time() - start_time,
                     "fps": tblogger.track_duration("fps", global_step),
+                    "n_updates": n_updates,
                     "env_step_duration": tblogger.track_duration("fps_inv", global_step, inverse=True),
                     "model_updates_per_sec": tblogger.track_duration("model_updates",
-                        num_updates),
+                        n_updates),
                     "model_update_step_duration": tblogger.track_duration("model_updates_inv",
-                        num_updates, inverse=True)
+                        n_updates, inverse=True)
                 }
                 tblogger.log_stats(info_stats, global_step, "info")
   
@@ -251,7 +253,15 @@ def main():
                     **{k: np.mean(v) for k, v in window_episode_stats.items()}
                 }
                 tblogger.log_stats(episode_stats, global_step, "metrics")
-            
+
+                      # Save the model
+                if args.save_model:
+                    model_save_dir = tblogger.get_models_savedir()
+                    model_save_name = f"ppo_agent.{global_step}.ckpt.pth"
+                    model_save_fullpath = os.path.join(model_save_dir, model_save_name)
+
+                    th.save(agent.state_dict(), model_save_fullpath)
+      
             # Resets the episodic return tracker
             current_episode_return *= masks
 
@@ -284,9 +294,9 @@ def main():
                         )
                         
                         # Save to tensorboard
-                        tblogger.log_video("train_video_0_rgb",
-                            np.array([train_video_data_env_0["rgb"]]).transpose(0, 1, 4, 2, 3), # From [1, THWC] to [1,TCHW]
-                            global_step, fps=env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS)
+                        # tblogger.log_video("train_video_0_rgb",
+                        #     np.array([train_video_data_env_0["rgb"]]).transpose(0, 1, 4, 2, 3), # From [1, THWC] to [1,TCHW]
+                        #     global_step, fps=env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS)
                         
                         # Upload to wandb, will check if wandb is enable internally first
                         tblogger.log_wandb_video_audio(base_video_name, video_fullpath)
@@ -397,7 +407,7 @@ def main():
                 nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
                 optimizer.step()
 
-            num_updates += 1
+            n_updates += 1
             
             if args.target_kl is not None:
                 if approx_kl > args.target_kl:
@@ -407,7 +417,7 @@ def main():
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
 
-        if num_updates > 0 and should_log_training_stats(num_updates):
+        if n_updates > 0 and should_log_training_stats(n_updates):
             train_stats = {
                 "value_loss": v_loss.item(),
                 "policy_loss": pg_loss.item(),
