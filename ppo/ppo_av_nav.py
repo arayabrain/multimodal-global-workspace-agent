@@ -69,8 +69,8 @@ def main():
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
 
         # Logging params
-        # TODO: Eval that has a separate environment and is called eval-every 100K steps to generate a single
-        # video to disk / TB / Wandb ?
+        # NOTE: While supported, video logging is expensive because the RGB generation in the
+        # envs hogs a lot of GPU, especially with multiple envs 
         get_arg_dict("save-videos", bool, False, metatype="bool"),
         get_arg_dict("save-model", bool, True, metatype="bool"),
         get_arg_dict("log-sampling-stats-every", int, int(1.5e4)), # Every X frames || steps sampled
@@ -114,6 +114,17 @@ def main():
     # Overriding some envs parametes from the .yaml env config
     env_config.defrost()
     env_config.NUM_PROCESSES = args.num_envs # Corresponds to number of envs, makes script startup faster for debugs
+    ## In caes video saving is enabled, make sure there is also the rgb videos
+    agent_extra_rgb = False
+    if args.save_videos:
+        # For RGB video sensors
+        if "RGB_SENSOR" not in env_config.SENSORS:
+            env_config.SENSORS.append("RGB_SENSOR")
+            # Indicates to the agent that RGB obs should not be used as observational inputs
+            agent_extra_rgb = True
+        # For Waveform to generate audio over the videos
+        if "AUDIOGOAL_SENSOR" not in env_config.TASK_CONFIG.TASK.SENSORS:
+            env_config.TASK_CONFIG.TASK.SENSORS.append("AUDIOGOAL_SENSOR")
     env_config.freeze()
     # print(env_config)
     
@@ -124,7 +135,8 @@ def main():
     
     # TODO: make the ActorCritic components parameterizable through comand line ?
     if args.agent_type == "ss-default":
-        agent = ActorCritic(single_observation_space, single_action_space, 512).to(device)
+        agent = ActorCritic(single_observation_space, single_action_space,
+            512, extra_rgb=agent_extra_rgb).to(device)
     elif args.agent_type == "deep-etho":
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
         # TODO: support for storing the rnn_hidden_statse, so that the policy 
@@ -150,7 +162,7 @@ def main():
 
     # Training start
     start_time = time.time()
-    num_updates = args.total_steps // args.batch_size
+    num_updates = args.total_steps // args.batch_size # Total number of updates that will take place in this experiment.
 
     obs = envs.reset()
     
@@ -178,6 +190,7 @@ def main():
     }
     
     n_episodes = 0
+    n_updates = 0 # Count how many updates so far. Not to confuse with "num_updatesy"
 
     for global_step in range(1, args.total_steps+1, args.num_steps * args.num_envs):
 
@@ -243,11 +256,12 @@ def main():
                     "global_step": global_step,
                     "duration": time.time() - start_time,
                     "fps": tblogger.track_duration("fps", global_step),
+                    "n_updates": n_updates,
                     "env_step_duration": tblogger.track_duration("fps_inv", global_step, inverse=True),
                     "model_updates_per_sec": tblogger.track_duration("model_updates",
-                        num_updates),
+                        n_updates),
                     "model_update_step_duration": tblogger.track_duration("model_updates_inv",
-                        num_updates, inverse=True)
+                        n_updates, inverse=True)
                 }
                 tblogger.log_stats(info_stats, global_step, "info")
   
@@ -259,7 +273,15 @@ def main():
                     **{k: np.mean(v) for k, v in window_episode_stats.items()}
                 }
                 tblogger.log_stats(episode_stats, global_step, "metrics")
-            
+
+                # Save the model
+                if args.save_model:
+                    model_save_dir = tblogger.get_models_savedir()
+                    model_save_name = f"ppo_agent.{global_step}.ckpt.pth"
+                    model_save_fullpath = os.path.join(model_save_dir, model_save_name)
+
+                    th.save(agent.state_dict(), model_save_fullpath)
+
             # Resets the episodic return tracker
             current_episode_return *= masks
 
@@ -405,7 +427,7 @@ def main():
                 nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
                 optimizer.step()
 
-            num_updates += 1
+            n_updates += 1
             
             if args.target_kl is not None:
                 if approx_kl > args.target_kl:
@@ -415,7 +437,7 @@ def main():
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
 
-        if num_updates > 0 and should_log_training_stats(num_updates):
+        if n_updates > 0 and should_log_training_stats(n_updates):
             train_stats = {
                 "value_loss": v_loss.item(),
                 "policy_loss": pg_loss.item(),

@@ -394,12 +394,13 @@ class RNNStateEncoder(nn.Module):
 # A simplified actor critic that assumes the few following points:
 ## - Not blind: there is always a visual observation, and it is RGB by default
 ## - Not deaf: there is always an acoustic observation, and it is Spectrogram by default
+## - extra_rgb: make the VisualCNN ignore the rgb observations even if they are in the observations
 class ActorCritic(nn.Module):
-    def __init__(self, observation_space, action_space, hidden_size):
+    def __init__(self, observation_space, action_space, hidden_size, extra_rgb=False):
         super().__init__()
 
         # TODO: later, we might want to augment the RGB info with the depth.
-        self.visual_encoder = VisualCNN(observation_space, hidden_size, extra_rgb=False)
+        self.visual_encoder = VisualCNN(observation_space, hidden_size, extra_rgb=extra_rgb)
         self.audio_encoder = AudioCNN(observation_space, hidden_size, "spectrogram")
         
         self.state_encoder = RNNStateEncoder(hidden_size * 2, hidden_size)

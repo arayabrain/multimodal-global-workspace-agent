@@ -26,7 +26,8 @@ fi
     # endregion: RGB based task
 
     # region: Depth based task
-    # for seed in 111; do
+    for seed in 111; do
+    # for seed in 222; do
     #     (sleep 1s && python ppo_av_nav.py \
     #         --exp-name "ppo_av_nav__depth__rnn_hid_fix" \
     #         --config-path "env_configs/audiogoal_depth.yaml" \
@@ -38,16 +39,16 @@ fi
     # endregion: Depth based task
 
     # region: Depth based task, with Deep Etho agent structure
-    for seed in 111; do
-        (sleep 1s && python ppo_av_nav.py \
-            --exp-name "ppo_av_nav__depth__deep_etho" \
-            --config-path "env_configs/audiogoal_depth.yaml" \
-            --agent-type "deep-etho" \
-            --wandb --wandb-project ss-hab --wandb-entity dosssman \
-            --logdir-prefix $LOGDIR_PREFIX \
-            --seed $seed \
-        ) & # >& /dev/null &
-    done
+    # for seed in 111; do
+    #     (sleep 1s && python ppo_av_nav.py \
+    #         --exp-name "ppo_av_nav__depth__deep_etho" \
+    #         --config-path "env_configs/audiogoal_depth.yaml" \
+    #         --agent-type "deep-etho" \
+    #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #         --logdir-prefix $LOGDIR_PREFIX \
+    #         --seed $seed \
+    #     ) & # >& /dev/null &
+    # done
     # endregion: Depth based task, with Deep Etho agent structure
 
     # region: SAVi Env: Depth based task
