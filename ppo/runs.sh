@@ -55,6 +55,7 @@ fi
     # for seed in 111; do
     #     (sleep 1s && python ppo_savi.py \
     #         --exp-name "ppo_savi" \
+    #         --total-steps 40000000 \
     #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
     #         --logdir-prefix $LOGDIR_PREFIX \
     #         --seed $seed \
