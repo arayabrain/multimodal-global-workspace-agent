@@ -142,8 +142,8 @@ def main():
 
     obs = envs.reset()
     # SAVi Work around: detph has shape (NUM_ENVS, 128, 128, 1, 1); TODO: find cleaner fix
-    for env_obs in obs:
-        env_obs["depth"] = env_obs["depth"][:, :, 0]
+    # for env_obs in obs:
+    #     env_obs["depth"] = env_obs["depth"][:, :, 0]
 
     done = [False for _ in range(args.num_envs)]
     done_th = th.Tensor(done).to(device)
@@ -188,8 +188,8 @@ def main():
             outputs = envs.step([a[0].item() for a in action])
             obs, reward, done, info = [list(x) for x in zip(*outputs)]
             # SAVi Work around: detph has shape (NUM_ENVS, 128, 128, 1, 1); TODO: find cleaner fix
-            for env_obs in obs:
-                env_obs["depth"] = env_obs["depth"][:, :, 0]
+            # for env_obs in obs:
+            #     env_obs["depth"] = env_obs["depth"][:, :, 0]
             reward_th = th.Tensor(np.array(reward, dtype=np.float32)).to(device)
             rewards[rollout_step] = reward_th
             

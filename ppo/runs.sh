@@ -1,6 +1,6 @@
 #!/bin/bash
-# NUM_CORES=$(nproc --all)
-# export MKL_NUM_THREADS=$NUM_CORES OMP_NUM_THREADS=$NUM_CORES
+NUM_CORES=$(nproc --all)
+export MKL_NUM_THREADS=$NUM_CORES OMP_NUM_THREADS=$NUM_CORES
 
 export LOGDIR_PREFIX=~/random/rl/exp-logs/ss-hab
 if [ ! -d $LOGDIR_PREFIX ]; then
@@ -54,12 +54,12 @@ fi
     # region: SAVi Env: Depth based task
     # for seed in 111; do
     #     (sleep 1s && python ppo_savi.py \
-    #         --exp-name "ppo_savi" \
-    #         --total-steps 40000000 \
+    #         --exp-name "ppo_savi_continuous" \
+    #         --total-steps 10000000 \
     #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
     #         --logdir-prefix $LOGDIR_PREFIX \
     #         --seed $seed \
-    #     ) & # >& /dev/null &
+    #     ) # & # >& /dev/null &
     # done
     # endregion: SAVi Env: Depth based task
 # endregion: Custom PPO based on ss_baselines
