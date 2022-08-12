@@ -1,9 +1,12 @@
-from importlib_metadata import distribution
+
 import numpy as np
-from ss_baselines.av_nav.ppo.policy import CriticHead
+from copy import deepcopy
 
 import torch as th
 import torch.nn as nn
+import torch.nn.functional as F
+
+from ss_baselines.av_nav.ppo.policy import CriticHead
 
 
 ###################################
@@ -236,6 +239,74 @@ class AudioCNN(nn.Module):
 
         return self.cnn(cnn_input)
 
+# From AudioCLIP
+from typing import Optional, OrderedDict
+from audioclip_esresnet import ESResNeXtFBSP
+
+embed_dim: int = 1024
+n_fft: int = 2048
+hop_length: Optional[int] = 561
+win_length: Optional[int] = 1654
+window: Optional[str] = 'blackmanharris'
+normalized: bool = True
+onesided: bool = True
+spec_height: int = -1
+spec_width: int = -1
+apply_attention: bool = True
+multilabel: bool = True
+
+class ESResNeXtFBSP_Binaural(nn.Module):
+    def __init__(self, pretrained=None):
+        super().__init__()
+        monoraul_net = ESResNeXtFBSP(
+            n_fft=n_fft,
+            hop_length=hop_length,
+            win_length=win_length,
+            window=window,
+            normalized=normalized,
+            onesided=onesided,
+            spec_height=spec_height,
+            spec_width=spec_width,
+            num_classes=embed_dim,
+            apply_attention=apply_attention,
+            pretrained=False
+        )
+        if pretrained is not None and isinstance(pretrained, str):
+            # Loads pre-trained weights from AudioCLIP's audio encoder only
+            audioclip_statedict = th.load(pretrained, map_location="cpu")
+            # Extract the audio module's weight only
+            audio_statedict = OrderedDict()
+            for param_name, param_v in audioclip_statedict.items():
+                if param_name.startswith("audio."):
+                    stripped_param_name = param_name.replace("audio.", "")
+
+                    audio_statedict[stripped_param_name] = param_v
+            
+            monoraul_net.load_state_dict(audio_statedict)
+            # NOTE: is this necessary ?
+            audioclip_statedict, audio_statedict = None, None
+
+        # TODO: Any more efficient way of re-using the model ?
+        self.left_net = monoraul_net
+        self.right_net = deepcopy(monoraul_net)
+
+        self.fuse_nn = nn.Sequential(*[
+            nn.Linear(2048, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 512)
+        ])
+    
+    def forward(self, x):
+        x_left, x_right = x[:, 0, :], x[:, 1, :]
+
+        x_left = self.left_net(x_left)
+        x_right = self.right_net(x_right)
+
+        x = th.cat([x_left, x_right], dim=-1)
+        x = self.fuse_nn(x)
+
+        return x
+
 # endregion: Audio modules           #
 ###################################
 
@@ -455,6 +526,12 @@ class ActorCritic(nn.Module):
         return self.critic(features)
 
 
+class ActorCritic_AudioCLIP_AudioEncoder(ActorCritic):
+    def __init__(self, observation_space, action_space, hidden_size, extra_rgb=False, pretrained_audioclip=None):
+        super().__init__(observation_space, action_space, hidden_size)
+        # Overrides the audio encoder with the one adapted from AudioCLIP
+        self.audio_encoder = ESResNeXtFBSP_Binaural(pretrained=pretrained_audioclip)
+    
 ## ActorCritic based on the Deep Ethorlogy Virtual Rodent paper
 class ActorCritic_DeepEthologyVirtualRodent(nn.Module):
     def __init__(self, observation_space, action_space, hidden_size):

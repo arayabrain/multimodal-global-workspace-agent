@@ -389,6 +389,14 @@ b. with pre-training
 ## TODO:
 - [ ] Does it support continuous mode ? or just dataset based ?
 
+# AudiCLIP
+
+Attempt at using the pre-trained audo encoder for av_nav / SAVi tasks in SS baselines
+
+## Additional dependencies
+- The pytorch-ignite used in AudioCLIP is v0.3.0, but since we are using py39.
+Have yet to find a way to install it so that we can use the it.AbstractNet that is require to instantiate the audio encoder from AudioCLIP.
+
 # Other
 ### [OUTDATED as of 2022-07-21] RLRAudioPropagationChannelLayoutType` error workaround
 

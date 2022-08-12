@@ -12,7 +12,7 @@ if [ ! -d $WANDB_DIR ]; then
   mkdir -p $WANDB_DIR
 fi
 
-# region: Custom PPO based on ss_baselines
+# region: Custom PPO based on ss_baselinesg
     # region: RGB based task
     # for seed in 111; do
     #     (sleep 1s && python ppo_av_nav.py \
@@ -52,15 +52,15 @@ fi
     # endregion: Depth based task, with Deep Etho agent structure
 
     # region: SAVi Env: Depth based task
-    # for seed in 111; do
-    #     (sleep 1s && python ppo_savi.py \
-    #         --exp-name "ppo_savi_continuous" \
-    #         --total-steps 10000000 \
-    #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
-    #         --logdir-prefix $LOGDIR_PREFIX \
-    #         --seed $seed \
-    #     ) # & # >& /dev/null &
-    # done
+    for seed in 111; do
+        (sleep 1s && python ppo_savi.py \
+            --exp-name "ppo_savi_continuous" \
+            --total-steps 10000000 \
+            --wandb --wandb-project ss-hab --wandb-entity dosssman \
+            --logdir-prefix $LOGDIR_PREFIX \
+            --seed $seed
+        ) # & # >& /dev/null &
+    done
     # endregion: SAVi Env: Depth based task
 # endregion: Custom PPO based on ss_baselines
 
