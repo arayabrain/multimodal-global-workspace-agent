@@ -297,10 +297,9 @@ class ESResNeXtFBSP_Binaural(nn.Module):
         ])
     
     def forward(self, x):
-        x_left, x_right = x[:, 0, :], x[:, 1, :]
-
-        x_left = self.left_net(x_left)
-        x_right = self.right_net(x_right)
+        # "x" is expected as a dict of tensorized obs
+        x_left = self.left_net(x["audiogoal"][:, 0, :][:, None])
+        x_right = self.right_net(x["audiogoal"][:, 1, :][:, None])
 
         x = th.cat([x_left, x_right], dim=-1)
         x = self.fuse_nn(x)
@@ -531,6 +530,7 @@ class ActorCritic_AudioCLIP_AudioEncoder(ActorCritic):
         super().__init__(observation_space, action_space, hidden_size)
         # Overrides the audio encoder with the one adapted from AudioCLIP
         self.audio_encoder = ESResNeXtFBSP_Binaural(pretrained=pretrained_audioclip)
+        pass
     
 ## ActorCritic based on the Deep Ethorlogy Virtual Rodent paper
 class ActorCritic_DeepEthologyVirtualRodent(nn.Module):
