@@ -68,6 +68,7 @@ fi
     #   (sleep 1s && python ppo_av_nav_audioclip.py \
     #       --num-envs 2 --num-steps 60 \
     #       --exp-name "ppo_av_nav_depth_audioclip__audioenc_pretrained" \
+    #       --pretrained-audioclip "data/audioclip_assets/AudioCLIP-Full-Training.pt" \
     #       --wandb --wandb-project ss-hab --wandb-entity dosssman \
     #       --logdir-prefix $LOGDIR_PREFIX \
     #       --seed $seed \

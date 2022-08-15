@@ -255,6 +255,51 @@ spec_width: int = -1
 apply_attention: bool = True
 multilabel: bool = True
 
+class ESResNeXtFBSP_Custom(nn.Module):
+    def __init__(self, pretrained=None):
+        super().__init__()
+        self.esresnext = ESResNeXtFBSP(
+            n_fft=n_fft,
+            hop_length=hop_length,
+            win_length=win_length,
+            window=window,
+            normalized=normalized,
+            onesided=onesided,
+            spec_height=spec_height,
+            spec_width=spec_width,
+            num_classes=embed_dim,
+            apply_attention=apply_attention,
+            pretrained=False
+        )
+        if pretrained is not None and isinstance(pretrained, str):
+            # Loads pre-trained weights from AudioCLIP's audio encoder only
+            audioclip_statedict = th.load(pretrained, map_location="cpu")
+            # Extract the audio module's weight only
+            audio_statedict = OrderedDict()
+            for param_name, param_v in audioclip_statedict.items():
+                if param_name.startswith("audio."):
+                    stripped_param_name = param_name.replace("audio.", "")
+
+                    audio_statedict[stripped_param_name] = param_v
+            
+            self.esresnext.load_state_dict(audio_statedict)
+            # NOTE: is this necessary ?
+            audioclip_statedict, audio_statedict = None, None
+
+        self.fc = nn.Sequential(*[
+            nn.ReLU(),
+            nn.Linear(1024, 512)
+        ])
+    
+    def forward(self, x):
+        # "x" is expected as a dict of tensorized obs
+        x = self.esresnext(x["audiogoal"])
+        x = self.fc(x)
+
+        return x
+
+## NOTE: This model below should be disregarded as it duplicates the ESResNeXt,
+## which already supports multi channel audio ...
 class ESResNeXtFBSP_Binaural(nn.Module):
     def __init__(self, pretrained=None):
         super().__init__()
@@ -529,7 +574,7 @@ class ActorCritic_AudioCLIP_AudioEncoder(ActorCritic):
     def __init__(self, observation_space, action_space, hidden_size, extra_rgb=False, pretrained_audioclip=None):
         super().__init__(observation_space, action_space, hidden_size)
         # Overrides the audio encoder with the one adapted from AudioCLIP
-        self.audio_encoder = ESResNeXtFBSP_Binaural(pretrained=pretrained_audioclip)
+        self.audio_encoder = ESResNeXtFBSP_Custom(pretrained=pretrained_audioclip)
 
 ## ActorCritic based on the Deep Ethorlogy Virtual Rodent paper
 class ActorCritic_DeepEthologyVirtualRodent(nn.Module):
