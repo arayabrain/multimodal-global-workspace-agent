@@ -51,17 +51,29 @@ fi
     # done
     # endregion: Depth based task, with Deep Etho agent structure
 
-    # region: SAVi Env: Depth based task
-    for seed in 111; do
-        (sleep 1s && python ppo_savi.py \
-            --exp-name "ppo_savi_continuous" \
-            --total-steps 10000000 \
-            --wandb --wandb-project ss-hab --wandb-entity dosssman \
-            --logdir-prefix $LOGDIR_PREFIX \
-            --seed $seed
-        ) # & # >& /dev/null &
-    done
-    # endregion: SAVi Env: Depth based task
+    # # region: SAVi Env: Depth based task
+    # for seed in 111; do
+    #     (sleep 1s && python ppo_savi.py \
+    #         --exp-name "ppo_savi_continuous" \
+    #         --total-steps 10000000 \
+    #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #         --logdir-prefix $LOGDIR_PREFIX \
+    #         --seed $seed
+    #     ) # & # >& /dev/null &
+    # done
+    # # endregion: SAVi Env: Depth based task
+
+    # region: Depth based task, with waveform audio and AudioCLIP's audio encode based RIR Audio feature extractor
+    # for seed in 111; do
+    #   (sleep 1s && python ppo_av_nav_audioclip.py \
+    #       --num-envs 2 --num-steps 60 \
+    #       --exp-name "ppo_av_nav_depth_audioclip__audioenc_pretrained" \
+    #       --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #       --logdir-prefix $LOGDIR_PREFIX \
+    #       --seed $seed \
+    #   ) & # >& /dev/null &
+    # done
+    # endregion: Depth based task, with waveform audio and AudioCLIP's audio encode based RIR Audio feature extractor
 # endregion: Custom PPO based on ss_baselines
 
 # Clean up env vars

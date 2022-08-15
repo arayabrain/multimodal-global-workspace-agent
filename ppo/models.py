@@ -530,8 +530,7 @@ class ActorCritic_AudioCLIP_AudioEncoder(ActorCritic):
         super().__init__(observation_space, action_space, hidden_size)
         # Overrides the audio encoder with the one adapted from AudioCLIP
         self.audio_encoder = ESResNeXtFBSP_Binaural(pretrained=pretrained_audioclip)
-        pass
-    
+
 ## ActorCritic based on the Deep Ethorlogy Virtual Rodent paper
 class ActorCritic_DeepEthologyVirtualRodent(nn.Module):
     def __init__(self, observation_space, action_space, hidden_size):

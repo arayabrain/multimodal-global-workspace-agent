@@ -1,2 +1,8 @@
 __pycache__/
 */__pycache__/
+logs
+sound-spaces
+AudioCLIP
+habitat-lab
+habitat-sim
+ignite

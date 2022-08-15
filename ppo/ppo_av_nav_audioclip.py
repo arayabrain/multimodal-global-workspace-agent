@@ -46,7 +46,7 @@ def main():
         get_arg_dict("total-steps", int, 10_000_000),
         
         # SS env config
-        get_arg_dict("config-path", str, "env_configs/audiogoal_rgb_waveform.yaml"),
+        get_arg_dict("config-path", str, "env_configs/audiogoal_depth_waveform.yaml"),
         # PPO Hyper parameters
         get_arg_dict("num-envs", int, 10), # Number of parallel envs. 10 by default
         get_arg_dict("num-steps", int, 150), # For each env, how many steps are collected to form PPO Agent rollout.
@@ -68,7 +68,7 @@ def main():
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
 
         # AudioCLIP pretraiend path
-        get_arg_dict("pretrained-audiocip", str, None),
+        get_arg_dict("pretrained-audioclip", str, None),
 
         # Logging params
         # NOTE: While supported, video logging is expensive because the RGB generation in the
@@ -138,7 +138,7 @@ def main():
     # TODO: make the ActorCritic components parameterizable through comand line ?
     if args.agent_type == "ss-default":
         agent = ActorCritic_AudioCLIP_AudioEncoder(single_observation_space, single_action_space,
-            512, extra_rgb=agent_extra_rgb).to(device)
+            512, extra_rgb=agent_extra_rgb, pretrained_audioclip=args.pretrained_audioclip).to(device)
     elif args.agent_type == "deep-etho":
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
         # TODO: support for storing the rnn_hidden_statse, so that the policy 
