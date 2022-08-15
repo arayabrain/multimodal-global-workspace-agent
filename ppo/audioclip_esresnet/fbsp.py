@@ -5,9 +5,9 @@ import torch.nn.functional as F
 
 import torchvision as tv
 
-from utils import transforms
-from model.esresnet.base import _ESResNet
-from model.esresnet.base import Bottleneck
+from audioclip_utils import transforms
+from audioclip_esresnet.base import _ESResNet
+from audioclip_esresnet.base import Bottleneck
 
 from typing import cast
 from typing import List
