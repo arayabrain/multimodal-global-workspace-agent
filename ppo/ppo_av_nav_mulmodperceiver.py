@@ -9,7 +9,8 @@ import random
 import numpy as np
 import torch as th
 import torch.nn as nn
-from collections import deque
+import torch.nn.functional as F
+from collections import deque, defaultdict
 
 import tools
 from configurator import generate_args, get_arg_dict
@@ -23,18 +24,26 @@ from ss_baselines.common.environments import get_env_class
 from ss_baselines.common.utils import images_to_video_with_audio
 
 # Custom ActorCritic agent for PPO
-from models import ActorCritic, ActorCritic_AudioCLIP_AudioEncoder
+from models import MulModPerceiverIO_ActorCritic
 
 # Helpers
 # Tensorize current observation, store to rollout data
-def tensorize_obs_dict(obs, device, observations=None, rollout_step=None):
+def tensorize_obs_dict(obs, prev_action, device, observations=None, rollout_step=None):
     obs_th = {}
     for obs_field, _ in obs[0].items():
         v_th = th.Tensor(np.array([step_obs[obs_field] for step_obs in obs], dtype=np.float32)).to(device)
+        if obs_field == "audiogoal":
+            v_th = v_th.permute(0, 2, 1)
         obs_th[obs_field] = v_th
+
         # Special case when doing the rollout, also stores the 
         if observations is not None:
             observations[obs_field][rollout_step] = v_th
+        
+    # Special perceiver: add the previous action to the observation
+    obs_th["action"] = prev_action
+    if observations is not None:
+        observations["action"][rollout_step] = prev_action
     
     return obs_th
 
@@ -47,10 +56,11 @@ def main():
         
         # SS env config
         get_arg_dict("config-path", str, "env_configs/audiogoal_depth_waveform.yaml"),
+
         # PPO Hyper parameters
         get_arg_dict("num-envs", int, 10), # Number of parallel envs. 10 by default
         get_arg_dict("num-steps", int, 150), # For each env, how many steps are collected to form PPO Agent rollout.
-        get_arg_dict("num-minibatches", int, 1), # Number of mini-batches the rollout data is split into to make the updates
+        get_arg_dict("num-minibatches", int, 30), # Number of mini-batches the rollout data is split into to make the updates
         get_arg_dict("update-epochs", int, 4), # Number of gradient step for the policy and value networks
         get_arg_dict("gamma", float, 0.99),
         get_arg_dict("gae-lambda", float, 0.95),
@@ -63,12 +73,9 @@ def main():
         get_arg_dict("target-kl", float, None),
         get_arg_dict("lr", float, 2.5e-4), # Learning rate
         ## Agent network params
-        get_arg_dict("agent-type", str, "ss-default", metatype="choice",
-            choices=["ss-default", "deep-etho"]),
+        get_arg_dict("agent-type", str, "mulmod-perceiver", metatype="choice",
+            choices=["mulmod-perceiver"]),
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
-
-        # AudioCLIP pretraiend path
-        get_arg_dict("pretrained-audioclip", str, None),
 
         # Logging params
         # NOTE: While supported, video logging is expensive because the RGB generation in the
@@ -136,15 +143,9 @@ def main():
     single_action_space = envs.action_spaces[0]
     
     # TODO: make the ActorCritic components parameterizable through comand line ?
-    if args.agent_type == "ss-default":
-        agent = ActorCritic_AudioCLIP_AudioEncoder(single_observation_space, single_action_space,
-            512, extra_rgb=agent_extra_rgb, pretrained_audioclip=args.pretrained_audioclip).to(device)
-    elif args.agent_type == "deep-etho":
-        raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
-        # TODO: support for storing the rnn_hidden_statse, so that the policy 
-        # that takes in the 'core_modules' 's rnn hidden output can also work.
-        agent = ActorCritic_DeepEthologyVirtualRodent(single_observation_space,
-                single_action_space, 512).to(device)
+    if args.agent_type == "mulmod-perceiver":
+        agent = MulModPerceiverIO_ActorCritic(single_observation_space, single_action_space,
+            hidden_size=512, extra_rgb=agent_extra_rgb).to(device)
     else:
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 
@@ -153,14 +154,23 @@ def main():
     # Rollout storage setup # TODO: make this systematic for a
     observations = {}
     for obs_sensor in single_observation_space.keys():
-        observations[obs_sensor] = th.zeros((args.num_steps, args.num_envs) + 
-            single_observation_space[obs_sensor].shape, device=device)
+        if obs_sensor == "audiogoal":
+            # Channels as last dim for PerceiverIO
+            observations[obs_sensor] = th.zeros((args.num_steps, args.num_envs) + 
+                (11600, 2), device=device)
+        else:
+            observations[obs_sensor] = th.zeros((args.num_steps, args.num_envs) + 
+                single_observation_space[obs_sensor].shape, device=device)
+        # Perceiver related: store the previous action
+        observations["action"] = th.zeros((args.num_steps, args.num_envs, 1, single_action_space.n), device=device)
     
     actions = th.zeros((args.num_steps, args.num_envs), dtype=th.int64, device=device)
     logprobs = th.zeros((args.num_steps, args.num_envs), device=device)
     rewards = th.zeros((args.num_steps, args.num_envs), device=device)
-    dones = th.zeros((args.num_steps, args.num_envs), device=device)
+    dones = th.zeros((args.num_steps, args.num_envs), device=device) # TODO: not used for updates, clean up to save some mem ?
     values = th.zeros((args.num_steps, args.num_envs), device=device)
+    # PerceiverIO related
+    prev_queries = th.zeros((args.num_steps, args.num_envs, 1, args.hidden_size), device=device)
 
     # Training start
     start_time = time.time()
@@ -171,10 +181,9 @@ def main():
     done = [False for _ in range(args.num_envs)]
     done_th = th.Tensor(done).to(device)
     masks = 1. - done_th[:, None]
-    if args.agent_type == "ss-default":
-        rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size), device=device)
-    elif args.agent_type == "deep-etho":
-        rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size * 2), device=device)
+    if args.agent_type == "mulmod-perceiver":
+        perceiver_queries = th.zeros((args.num_envs, 1, args.hidden_size), dtype=th.float32, device=device)
+        prev_action_oh = th.zeros((args.num_envs, 1, single_action_space.n), dtype=th.float32, device=device)
     else:
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 
@@ -184,7 +193,7 @@ def main():
     #     lambda: deque(maxlen=env_config.RL.PPO.reward_window_size))
     window_episode_stats = {}
     # NOTE: by enabling RGB frame generation, it is possible that the env sampling
-    # gets slower
+    # gets slowerprev_action
     train_video_data_env_0 = {
         "rgb": [], "depth": [], 
         "audiogoal": [], "top_down_map": [],
@@ -195,20 +204,17 @@ def main():
     n_updates = 0 # Count how many updates so far. Not to confuse with "num_updatesy"
 
     for global_step in range(1, args.total_steps+1, args.num_steps * args.num_envs):
-        # Copy the rnn_hidden_state at the start of the rollout.
-        # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
-        init_rnn_state = rnn_hidden_state.clone()
-        
         for rollout_step in range(args.num_steps):
-        
             # NOTE: the following line tensorize and also appends data to the rollout storage
-            obs_th = tensorize_obs_dict(obs, device, observations, rollout_step)
+            obs_th = tensorize_obs_dict(obs, prev_action_oh, device, observations, rollout_step)
             dones[rollout_step] = done_th
+            # Perceiver related
+            prev_queries[rollout_step] = perceiver_queries # Shifted one step left
 
             # Sample action
             with th.no_grad():
-                action, action_logprobs, _, value, rnn_hidden_state = \
-                    agent.act(obs_th, rnn_hidden_state, masks=masks)
+                action, action_logprobs, _, value, perceiver_queries = \
+                    agent.act(obs_th, perceiver_queries)
                 values[rollout_step] = value.flatten()
             actions[rollout_step] = action.squeeze(-1) # actions: [T, B] but action: [B, 1]
             logprobs[rollout_step] = action_logprobs.sum(-1)
@@ -221,6 +227,14 @@ def main():
             ## This is done to update the masks that will be used to track episodic return. Anyway to make this more efficient ?
             done_th = th.Tensor(done).to(device)
             masks = 1. - done_th[:, None]
+
+            # Special for Perceiver, use next step
+            # TODO: factor done_th[:, None, None]
+            prev_action_oh = F.one_hot(action, single_action_space.n)
+            prev_action_oh = prev_action_oh * (1. - done_th[:, None, None]) + \
+                th.zeros_like(prev_action_oh) * done_th[:, None, None]
+            perceiver_queries = perceiver_queries * (1 - done_th[:, None, None]) + \
+                th.zeros_like(perceiver_queries) * done_th[:, None, None]
 
             # Tracking episode return
             # TODO: keep this on GPU for more efficiency ? We log less than we update, so ...
@@ -334,9 +348,10 @@ def main():
         # Prepare for PPO update phase
         ## Bootstrap value if not done
         with th.no_grad():
-            obs_th = tensorize_obs_dict(obs, device)
+            obs_th = tensorize_obs_dict(obs, prev_action_oh, device)
             done_th = th.Tensor(done).to(device)
-            value = agent.get_value(obs_th, rnn_hidden_state, masks=1.-done_th[:, None]).flatten()
+
+            value = agent.get_value(obs_th, perceiver_queries).flatten()
             # By default, use GAE
             advantages = th.zeros_like(rewards)
             lastgaelam = 0.
@@ -355,37 +370,33 @@ def main():
         b_observations = {}
         for k, v in observations.items():
             b_observations[k] = th.flatten(v, start_dim=0, end_dim=1)
-        # b_observations = observations.reshape()
-        b_logprobs = logprobs.reshape(-1) # From [B, T] -> [B * T]
-        b_actions = actions.reshape(-1) # From [B, T] -> [B * T]
-        b_dones = dones.reshape(-1) # From [B, T] -> [B * T]
-        b_advantages = advantages.reshape(-1) # From [B, T] -> [B * T]
-        b_returns = returns.reshape(-1) # From [B, T] -> [B * T]
-        b_values = values.reshape(-1) # From [B, T] -> [B * T]
+        b_logprobs = logprobs.reshape(-1) # From [T, B] -> [B * T]
+        b_actions = actions.reshape(-1) # From [T, B] -> [B * T]
+        b_dones = dones.reshape(-1) # From [T, B] -> [B * T]
+        b_advantages = advantages.reshape(-1) # From [T, B] -> [B * T]
+        b_returns = returns.reshape(-1) # From [T, B] -> [B * T]
+        b_values = values.reshape(-1) # From [T, B] -> [B * T]
+        # Perceiver related
+        b_prev_queries = prev_queries.reshape(-1, *prev_queries.shape[2:]) # From [T, B, 1, hidden_size] -> [T*B, ...]
         
         # PPO Update Phase: actor and critic network updates
-        assert args.num_envs % args.num_minibatches == 0
-        envsperbatch = args.num_envs // args.num_minibatches
-        envinds = np.arange(args.num_envs)
-        flatinds = np.arange(args.batch_size).reshape(args.num_steps, args.num_envs)
+        b_inds = np.arange(args.batch_size) # num_envs * num_steps
         clipfracs = []
 
         for _ in range(args.update_epochs):
-            np.random.shuffle(envinds)
+            np.random.shuffle(b_inds)
             # Why minibatch ? Some empirical evidence that using smaller batch around 32 or 64
             # are generally better. Also, LeCun.
-            for start in range(0, args.num_envs, envsperbatch):
-                end = start + envsperbatch
-                mbenvinds = envinds[start:end]
-                mb_inds = flatinds[:, mbenvinds].ravel()  # be really careful about the index
+            for start in range(0, args.batch_size, args.minibatch_size):
+                end = start + args.minibatch_size
+                mb_inds = b_inds[start:end]
 
                 # Make a minibatch of observation dict
                 mb_observations = {k: v[mb_inds] for k, v in b_observations.items()}
 
                 # NOTE: should the RNN hit states be reused when recomputiong ?
                 _, newlogprob, entropy, newvalue, _ = \
-                    agent.act(mb_observations, init_rnn_state[:, mbenvinds],
-                        masks=1-b_dones[mb_inds], actions=b_actions[mb_inds])
+                    agent.act(mb_observations, b_prev_queries[mb_inds], actions=b_actions[mb_inds])
 
                 newlogprob = newlogprob.sum(-1) # From [B * T, 1] -> [B * T]
                 logratio = newlogprob - b_logprobs[mb_inds]

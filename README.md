@@ -389,6 +389,17 @@ b. with pre-training
 ## TODO:
 - [ ] Does it support continuous mode ? or just dataset based ?
 
+# Perceiver
+The base impelementation of Perceiver and PerceiverIO that I planned to use was from [lucidrains/perceiver-pytorch](https://github.com/lucidrains/perceiver-pytorch) repository.
+However it did not have support for multiple modality as input.
+Found the [oepnclimatefix/perceiver-pytorch](https://github.com/openclimatefix/perceiver-pytorch) fork that seems to have a owrking multi modal PerceiverIO, so using that as a base instead.
+After forking into [dosssman/perceiver-pytorch](https://github.com/dosssman/perceiver-pytorch), install the `main-ofc` branch for PerceiverIO with multi-modal support.
+```
+git clone git@github.com:dosssman/perceiver-pytorch.git --branch main-ocf
+cd perceiver-pytorch
+pip install -e .
+```
+
 # AudiCLIP
 
 Attempt at using the pre-trained audo encoder for av_nav / SAVi tasks in SS baselines
@@ -405,6 +416,9 @@ Might require a downgrade of Numpy version to <= 1.22 .
 - Said seems to have been trained on monoraul data from the ECS50 and US8K sound datasets.
 - In this variant, the pre-trained ESResNeXt is duplicazted at the beginning of the training, with each instance processing the left and right channel of the audio stream, respectively.
 While this is relatively straight foward to implement, the downside is that the memory cost of maintaining two of such wide model is non-negligible
+
+As of 2022-08-18, after running the PPO based on SS's baselines on AvNav task, while the reference run reaches around 20% success rate within 1M steps, the variant that uses AudioCLIP's audio encoder iterates at least 5 times slower, hogs the hole RTX 3090 GPU memory, and has success rate near 0 for around 600K steps, show now sign of improvement.
+And avenue left to explore later.
 
 ## Prototype 2:
 Motivated by memory capacity limit.

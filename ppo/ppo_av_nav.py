@@ -193,11 +193,11 @@ def main():
     n_updates = 0 # Count how many updates so far. Not to confuse with "num_updatesy"
 
     for global_step in range(1, args.total_steps+1, args.num_steps * args.num_envs):
+        # Copy the rnn_hidden_state at the start of the rollout.
+        # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
+        init_rnn_state = rnn_hidden_state.clone()
 
         for rollout_step in range(args.num_steps):
-            # Copy the rnn_hidden_state at the start of the rollout.
-            # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
-            init_rnn_state = rnn_hidden_state.clone()
         
             # NOTE: the following line tensorize and also appends data to the rollout storage
             obs_th = tensorize_obs_dict(obs, device, observations, rollout_step)
