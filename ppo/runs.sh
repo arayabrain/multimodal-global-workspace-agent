@@ -38,6 +38,19 @@ fi
     # done
     # endregion: Depth based task
 
+    # region: PPO + Perceiver, Depth & Waveform based task
+    # for seed in 111; do
+    # # for seed in 222; do
+    #     (sleep 1s && python ppo_av_nav_mulmodperceiver.py \
+    #         --exp-name "ppo_av_nav_mulmodperceiver__depth_audiogoal" \
+    #         --max-grad-norm 0 \
+    #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #         --logdir-prefix $LOGDIR_PREFIX \
+    #         --seed $seed \
+    #     ) & # >& /dev/null &
+    # done
+    # endregion: Depth based task
+
     # region: Depth based task, with Deep Etho agent structure
     # for seed in 111; do
     #     (sleep 1s && python ppo_av_nav.py \
