@@ -49,7 +49,20 @@ fi
     #         --seed $seed \
     #     ) & # >& /dev/null &
     # done
-    # endregion: Depth based task
+    # endregion: PPO + Perceiver, Depth & Waveform based task
+
+    # region: PPO + Perceiver No queries, Depth & Waveform based task
+    # # for seed in 222; do
+    # for seed in 111; do
+    #     (sleep 1s && python ppo_av_nav_mulmodperceiver_noqueries.py \
+    #         --exp-name "ppo_av_nav_mulmodperceiver_noqueries__depth_audiogoal" \
+    #         --max-grad-norm 0 \
+    #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #         --logdir-prefix $LOGDIR_PREFIX \
+    #         --seed $seed \
+    #     ) & # >& /dev/null &
+    # done
+    # endregion: PPO + Perceiver No queries, Depth & Waveform based task
 
     # region: Depth based task, with Deep Etho agent structure
     # for seed in 111; do
@@ -64,7 +77,7 @@ fi
     # done
     # endregion: Depth based task, with Deep Etho agent structure
 
-    # # region: SAVi Env: Depth based task
+    # region: SAVi Env: Depth based task
     # for seed in 111; do
     #     (sleep 1s && python ppo_savi.py \
     #         --exp-name "ppo_savi_continuous" \
@@ -74,7 +87,7 @@ fi
     #         --seed $seed
     #     ) # & # >& /dev/null &
     # done
-    # # endregion: SAVi Env: Depth based task
+    # endregion: SAVi Env: Depth based task
 
     # region: Depth based task, with waveform audio and AudioCLIP's audio encode based RIR Audio feature extractor
     # for seed in 111; do

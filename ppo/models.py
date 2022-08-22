@@ -355,7 +355,7 @@ class ESResNeXtFBSP_Binaural(nn.Module):
 ###################################
 
 ###################################
-# region: Recurrent modules       #
+# region: Recukrrent modules       #
 
 # From ss_baselines/av_nav/models/rnn_state_encoder.py
 class RNNStateEncoder(nn.Module):
@@ -676,6 +676,114 @@ class MulModPerceiverIO_ActorCritic(nn.Module):
 
     def get_value(self, observations, perceiver_queries):
         features, _ = self(observations, perceiver_queries)
+
+        return self.critic(features)
+
+class MulModPerceiverIO_NoQueries_ActorCritic(nn.Module):
+    def __init__(self, observation_space, action_space, hidden_size, extra_rgb=False):
+        super().__init__()
+
+        input_modalities = []
+        # TODO: dynamics / modular modalities depending on what is in "observation_space"
+        # - vision can be "depth" or "rgb", or even hold both
+        # - audio can be "audiogoal" (waveform) or "spectrogram"
+        # - could have other fields like dimension and so on.
+        # Vision: depth modality
+        input_modalities.append(
+            InputModality(
+                name="depth",
+                input_channels=1,
+                input_axis=2,
+                num_freq_bands=6, # TODO: appropriate number for RGB / Depth image
+                max_freq=10., # TODO: appropriate number for RGB / Depth image
+                fourier_encode=True # Important for positional encoding (?)
+            )
+        )
+        # Audio: audiogoal
+        input_modalities.append(
+            InputModality(
+                name="audiogoal",
+                input_channels=2, # RIR
+                input_axis=1,
+                num_freq_bands=6, # TODO: appropriate number for RIR audio
+                max_freq=10., # TODO: appropriate number for RIR audio
+                fourier_encode=True # Important for positional encoding (?)
+            )
+        )
+        # Previous step's action
+        input_modalities.append(
+            InputModality(
+                name="action",
+                input_channels=4,
+                input_axis=1,
+                num_freq_bands=6, # TODO: appropriate value ?
+                max_freq=10., # TODO: appropriate value ?
+                fourier_encode=True
+            )
+        )
+        # TODO: GPS / Position, etc...
+
+        # Sample of the expected observation
+        # obs_dict = {
+        #     "depth": th.zeros(10, 64, 64, 1),
+        #     "audiogoal": th.zeros(10, 11600, 2),
+        #     "action": th.zeros(10, 1, 4)
+        # }
+
+        # TODO: Add script level parameterization for the perceiver too
+        self.mulmod_perceiver = MultiPerceiver(
+            # MultiPerceier args
+            modalities = input_modalities,
+            fourier_encode_data = True,
+            output_channels = 16,
+            # PerceiverIO args
+            depth = 6, # Consider making this shallower to hasten iteration time.
+            # logits_dim = 512, # Overriden in MultiPerceiver
+            output_shape = 32,
+            # For our MultiModal RL agent, output_shape * output_channels and 
+            # queries_dim must match
+            # In this variant, the num_latents * latent_dim should match the hidden_size
+            # The flattened output of the PerceiverIO will be used as state representation
+            queries_dim = hidden_size,
+            num_latents = 16,
+            latent_dim = 32,
+            # decoder_ff=True
+        )
+
+        self.action_distribution = CategoricalNet(hidden_size, action_space.n) # Policy fn
+        self.critic = CriticHead(hidden_size) # Value fn
+
+        self.train()
+
+    def forward(self, observations):
+        features = self.mulmod_perceiver(observations)
+
+        return features.flatten(start_dim=1) # [B, num_latents * latent_dim]
+    
+    def act(self, observations, deterministic=False, actions=None):
+        features = self(observations)
+        
+        # Estimate the value function
+        values = self.critic(features)
+
+        # Estimate the policy as distribution to sample actions from
+        distribution = self.action_distribution(features)
+
+        if actions is None:
+            if deterministic:
+                actions = distribution.mode()
+            else:
+                actions = distribution.sample()
+        
+        # TODO: maybe some assert on the 
+        action_log_probs = distribution.log_probs(actions)
+        
+        distribution_entropy = distribution.entropy().mean()
+
+        return actions, action_log_probs, distribution_entropy, values
+
+    def get_value(self, observations):
+        features = self(observations)
 
         return self.critic(features)
 
