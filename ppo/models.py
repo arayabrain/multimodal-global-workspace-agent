@@ -637,8 +637,9 @@ class MulModPerceiverIO_ActorCritic(nn.Module):
             # For our MultiModal RL agent, output_shape * output_channels and 
             # queries_dim must match
             queries_dim = hidden_size,
-            num_latents = 512,
-            latent_dim = 512,
+            # Origianl was 512 for both fields below, but quite costly GPU wise
+            num_latents = 128,
+            latent_dim = 128,
             # decoder_ff=True
         )
 

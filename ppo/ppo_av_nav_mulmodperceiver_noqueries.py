@@ -190,7 +190,7 @@ def main():
     #     lambda: deque(maxlen=env_config.RL.PPO.reward_window_size))
     window_episode_stats = {}
     # NOTE: by enabling RGB frame generation, it is possible that the env sampling
-    # gets slowerprev_action
+    # gets slower
     train_video_data_env_0 = {
         "rgb": [], "depth": [], 
         "audiogoal": [], "top_down_map": [],
@@ -428,7 +428,8 @@ def main():
 
                 optimizer.zero_grad()
                 loss.backward()
-                nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
+                if args.max_grad_norm > 0:
+                    nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
                 optimizer.step()
 
             n_updates += 1
