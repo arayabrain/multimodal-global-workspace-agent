@@ -1,0 +1,94 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            
+            // SoundSpaces Fiddling
+            // "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/sound-spaces",
+            // "args": [
+            //     "--exp-config", "ss_baselines/av_nav/config/audionav/mp3d/train_telephone/audiogoal_depth_ddppo.yaml",
+            //     "--model-dir", "data/models/ss2/mp3d/dav_nav", "CONTINUOUS", "True"
+            // ],
+            // "env": {}
+
+            // Custom PPO Debug + Perceiver
+            "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/ppo",
+            "args": [
+                // Environment config
+                // "USE_VECENV", "False",
+                // "USE_SYNC_VECENV", "False",
+                // PPO Agent cofnig
+                "--num-envs", "2",
+                "--num-minibatches", "10",
+                // Logging config
+                "--logdir-prefix", "/tmp/ppo-av-nav-perceiver-dbg",
+                // "--wandb", "--wandb-entity", "dosssman", "--wandb-project", "ss-hab"
+            ],
+            // "env": {
+            //     // "MASTER_PORT": ""
+            // }
+            
+            // Custom PPO Debug
+            // "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/ppo",
+            // "args": [
+            //     // Environment config
+            //     // "USE_VECENV", "False",
+            //     // "USE_SYNC_VECENV", "False",
+
+            //     // PPO Agent cofnig
+            //     "--num-envs", "2",
+            //     "--agent-type", "deep-etho",
+
+            //     // Logging config
+            //     "--logdir-prefix", "/tmp/ppo-av-nav-dbg",
+            //     // "--wandb", "--wandb-entity", "dosssman", "--wandb-project", "ss-hab"
+            // ]
+
+            // Custom PPO Debug with AudioCLIP audio encoder
+            // "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/ppo",
+            // "args": [
+            //     // Environment config
+            //     // "USE_VECENV", "False",
+            //     // "USE_SYNC_VECENV", "False",
+
+            //     // PPO Agent cofnig
+            //     "--num-envs", "2",
+            //     "--pretrained-audioclip", "data/audioclip_assets/AudioCLIP-Full-Training.pt",
+            //     // "--agent-type", "deep-etho",
+
+            //     // Logging config
+            //     "--logdir-prefix", "/tmp/ppo-av-nav-audiclip-encoder-dbg",
+            //     // "--wandb", "--wandb-entity", "dosssman", "--wandb-project", "ss-hab"
+            // ]
+
+            // SAVi Baseline Tests
+            // "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/sound-spaces",
+            // "args": [
+            //     "--exp-config", "ss_baselines/savi/config/semantic_audionav/savi_pretraining.yaml",
+            //     "--model-dir", "data/models/savi-dbg",
+            //     "NUM_PROCESSES", "2"
+            // ],
+            // "env": {}
+
+            // Custom PPO Simplified SAVi Dbg
+            // "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/ppo",
+            // "args": [
+            //     // PPO Agent config
+            //     "--num-envs", "1",
+
+            //     // Logging config
+            //     "--logdir-prefix", "/tmp/ppo-savi-dbg",
+            //     // "--wandb", "--wandb-entity", "dosssman", "--wandb-project", "ss-hab"
+            // ]
+        }
+    ]
+}
