@@ -332,7 +332,7 @@ A simplified PPO + GRU implementation that exposes the core of the algorithm, as
 ## Additional dependencies
 ```
 # Individual deps. install
-pip install wandb # 0.12.21
+pip install wandb # 0.13.1
 pip install nvsmi # 0.4.2, for experimetn GPU usage configuration
 
 # One liner
