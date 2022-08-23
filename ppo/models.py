@@ -569,93 +569,54 @@ class ActorCritic(nn.Module):
 
         return self.critic(features)
 
-# Perceiver-based ActorCritic Architecture
-from perceiver_pytorch import MultiPerceiver
-from perceiver_pytorch.modalities import InputModality
+# Actor critic variant that uses Perceiver as an RNN internally
+# This variant uses the same visual and audio encoder as SS baseline
+from perceiver_gwt import Perceiver_GWT
+from perceiverio_gwt import PerceiverIO_GWT
 
-class MulModPerceiverIO_ActorCritic(nn.Module):
-    def __init__(self, observation_space, action_space, hidden_size, extra_rgb=False):
+class Perceiver_GWT_ActorCritic(nn.Module):
+    def __init__(self, observation_space, action_space, config, extra_rgb=False):
         super().__init__()
+        self.config = config
 
-        input_modalities = []
-        # TODO: dynamics / modular modalities depending on what is in "observation_space"
-        # - vision can be "depth" or "rgb", or even hold both
-        # - audio can be "audiogoal" (waveform) or "spectrogram"
-        # - could have other fields like dimension and so on.
-        # Vision: depth modality
-        input_modalities.append(
-            InputModality(
-                name="depth",
-                input_channels=1,
-                input_axis=2,
-                num_freq_bands=6, # TODO: appropriate number for RGB / Depth image
-                max_freq=10., # TODO: appropriate number for RGB / Depth image
-                fourier_encode=True # Important for positional encoding (?)
-            )
-        )
-        # Audio: audiogoal
-        input_modalities.append(
-            InputModality(
-                name="audiogoal",
-                input_channels=2, # RIR
-                input_axis=1,
-                num_freq_bands=6, # TODO: appropriate number for RIR audio
-                max_freq=10., # TODO: appropriate number for RIR audio
-                fourier_encode=True # Important for positional encoding (?)
-            )
-        )
-        # Previous step's action
-        input_modalities.append(
-            InputModality(
-                name="action",
-                input_channels=4,
-                input_axis=1,
-                num_freq_bands=6, # TODO: appropriate value ?
-                max_freq=10., # TODO: appropriate value ?
-                fourier_encode=True
-            )
-        )
-        # TODO: GPS / Position, etc...
+        # TODO: later, we might want to augment the RGB info with the depth.
+        self.visual_encoder = VisualCNN(observation_space, config.hidden_size, extra_rgb=extra_rgb)
+        self.audio_encoder = AudioCNN(observation_space, config.hidden_size, "spectrogram")
 
-        # Sample of the expected observation
-        # obs_dict = {
-        #     "depth": th.zeros(10, 64, 64, 1),
-        #     "audiogoal": th.zeros(10, 11600, 2),
-        #     "action": th.zeros(10, 1, 4)
-        # }
-
-        # TODO: Add script level parameterization for the perceiver too
-        self.mulmod_perceiver = MultiPerceiver(
-            # MultiPerceier args
-            modalities = input_modalities,
-            fourier_encode_data = True,
-            output_channels = 16,
-            # PerceiverIO args
-            depth = 6,
-            # logits_dim = 512, # Overriden in MultiPerceiver
-            output_shape = 32,
-            # For our MultiModal RL agent, output_shape * output_channels and 
-            # queries_dim must match
-            queries_dim = hidden_size,
-            # Origianl was 512 for both fields below, but quite costly GPU wise
-            num_latents = 128,
-            latent_dim = 128,
-            # decoder_ff=True
+        self.state_encoder = Perceiver_GWT(
+            depth = config.pgwt_depth, # Our default: 4; Perceiver default: 6
+            input_dim = config.hidden_size * 2,
+            num_latents = config.pgwt_num_latents, # Our default: 32, Perceiver: 512
+            latent_dim = config.pgwt_latent_dim, # Our default: 32, Perceiver default: 512
+            cross_heads = config.pgwt_cross_heads, # Default: 1
+            latent_heads = config.pgwt_latent_heads, # Default: 8
+            cross_dim_head = config.pgwt_cross_dim_head, # Default: 64
+            latent_dim_head = config.pgwt_latent_dim_head, # Default: 64
+            attn_dropout = 0.,
+            ff_dropout = 0.,
+            self_per_cross_attn = 1,
+            weight_tie_layers = config.pgwt_weight_tie_layers # Default: False
         )
 
-        self.action_distribution = CategoricalNet(hidden_size, action_space.n) # Policy fn
-        self.critic = CriticHead(hidden_size) # Value fn
+        # input_dim for policy / value is num_latents * latent_dim of the Perceiver
+        self.action_distribution = CategoricalNet(config.pgwt_num_latents * config.pgwt_latent_dim,
+            action_space.n) # Policy fn
+        self.critic = CriticHead(config.pgwt_num_latents * config.pgwt_latent_dim) # Value fn
 
         self.train()
 
-    def forward(self, observations, perceiver_queries):
-        features = self.mulmod_perceiver(observations, queries=perceiver_queries)
+    def forward(self, observations, prev_latents, masks):
+        video_features = self.visual_encoder(observations)
+        audio_features = self.audio_encoder(observations)
 
-        return features.squeeze(1), features # [B, hidden_size], [B, 1, hidden_size]
-    
-    def act(self, observations, perceiver_queries, deterministic=False, actions=None):
-        features, queries = self(observations, perceiver_queries)
-        
+        obs_feat = th.cat([audio_features, video_features], dim=1)
+        state_feat, latents = self.state_encoder(obs_feat, prev_latents, masks) # [B, num_latents, latent_dim]
+
+        return state_feat, latents
+
+    def act(self, observations, prev_latents, masks, deterministic=False, actions=None):
+        features, latents = self(observations, prev_latents, masks)
+
         # Estimate the value function
         values = self.critic(features)
 
@@ -667,128 +628,35 @@ class MulModPerceiverIO_ActorCritic(nn.Module):
                 actions = distribution.mode()
             else:
                 actions = distribution.sample()
-        
         # TODO: maybe some assert on the 
         action_log_probs = distribution.log_probs(actions)
-        
+
         distribution_entropy = distribution.entropy().mean()
 
-        return actions, action_log_probs, distribution_entropy, values, queries
-
-    def get_value(self, observations, perceiver_queries):
-        features, _ = self(observations, perceiver_queries)
+        return actions, action_log_probs, distribution_entropy, values, latents
+    
+    def get_value(self, observations, prev_latents, masks):
+        features, _ = self(observations, prev_latents, masks)
 
         return self.critic(features)
 
-class MulModPerceiverIO_NoQueries_ActorCritic(nn.Module):
-    def __init__(self, observation_space, action_space, hidden_size, extra_rgb=False):
-        super().__init__()
+class PerceiverIO_GWT_ActorCritic(Perceiver_GWT_ActorCritic):
+    def __init__(self, observation_space, action_space, config, extra_rgb=False):
+        super().__init__(observation_space, action_space, config, extra_rgb)
 
-        input_modalities = []
-        # TODO: dynamics / modular modalities depending on what is in "observation_space"
-        # - vision can be "depth" or "rgb", or even hold both
-        # - audio can be "audiogoal" (waveform) or "spectrogram"
-        # - could have other fields like dimension and so on.
-        # Vision: depth modality
-        input_modalities.append(
-            InputModality(
-                name="depth",
-                input_channels=1,
-                input_axis=2,
-                num_freq_bands=6, # TODO: appropriate number for RGB / Depth image
-                max_freq=10., # TODO: appropriate number for RGB / Depth image
-                fourier_encode=True # Important for positional encoding (?)
-            )
-        )
-        # Audio: audiogoal
-        input_modalities.append(
-            InputModality(
-                name="audiogoal",
-                input_channels=2, # RIR
-                input_axis=1,
-                num_freq_bands=6, # TODO: appropriate number for RIR audio
-                max_freq=10., # TODO: appropriate number for RIR audio
-                fourier_encode=True # Important for positional encoding (?)
-            )
-        )
-        # Previous step's action
-        input_modalities.append(
-            InputModality(
-                name="action",
-                input_channels=4,
-                input_axis=1,
-                num_freq_bands=6, # TODO: appropriate value ?
-                max_freq=10., # TODO: appropriate value ?
-                fourier_encode=True
-            )
-        )
-        # TODO: GPS / Position, etc...
-
-        # Sample of the expected observation
-        # obs_dict = {
-        #     "depth": th.zeros(10, 64, 64, 1),
-        #     "audiogoal": th.zeros(10, 11600, 2),
-        #     "action": th.zeros(10, 1, 4)
-        # }
-
-        # TODO: Add script level parameterization for the perceiver too
-        self.mulmod_perceiver = MultiPerceiver(
-            # MultiPerceier args
-            modalities = input_modalities,
-            fourier_encode_data = True,
-            output_channels = 16,
-            # PerceiverIO args
-            depth = 6, # Consider making this shallower to hasten iteration time.
-            # logits_dim = 512, # Overriden in MultiPerceiver
-            output_shape = 32,
-            # For our MultiModal RL agent, output_shape * output_channels and 
-            # queries_dim must match
-            # In this variant, the num_latents * latent_dim should match the hidden_size
-            # The flattened output of the PerceiverIO will be used as state representation
-            queries_dim = hidden_size,
-            num_latents = 16,
-            latent_dim = 32,
-            # decoder_ff=True
+        # Override the state encoder with a custom PerceiverIO
+        self.state_encoder = PerceiverIO_GWT(
+            depth = config.pgwt_depth, # Our default: 4; Perceiver default: 6
+            input_dim = config.hidden_size * 2,
+            num_latents = config.pgwt_num_latents, # Our default: 32, Perceiver: 512
+            latent_dim = config.pgwt_latent_dim, # Our default: 32, Perceiver default: 512
+            cross_heads = config.pgwt_cross_heads, # Default: 1
+            latent_heads = config.pgwt_latent_heads, # Default: 8
+            cross_dim_head = config.pgwt_cross_dim_head, # Default: 64
+            latent_dim_head = config.pgwt_latent_dim_head, # Default: 64
+            weight_tie_layers = config.pgwt_weight_tie_layers # Default: False
         )
 
-        self.action_distribution = CategoricalNet(hidden_size, action_space.n) # Policy fn
-        self.critic = CriticHead(hidden_size) # Value fn
-
-        self.train()
-
-    def forward(self, observations):
-        features = self.mulmod_perceiver(observations)
-
-        return features.flatten(start_dim=1) # [B, num_latents * latent_dim]
-    
-    def act(self, observations, deterministic=False, actions=None):
-        features = self(observations)
-        
-        # Estimate the value function
-        values = self.critic(features)
-
-        # Estimate the policy as distribution to sample actions from
-        distribution = self.action_distribution(features)
-
-        if actions is None:
-            if deterministic:
-                actions = distribution.mode()
-            else:
-                actions = distribution.sample()
-        
-        # TODO: maybe some assert on the 
-        action_log_probs = distribution.log_probs(actions)
-        
-        distribution_entropy = distribution.entropy().mean()
-
-        return actions, action_log_probs, distribution_entropy, values
-
-    def get_value(self, observations):
-        features = self(observations)
-
-        return self.critic(features)
-
-    
 class ActorCritic_AudioCLIP_AudioEncoder(ActorCritic):
     def __init__(self, observation_space, action_space, hidden_size, extra_rgb=False, pretrained_audioclip=None):
         super().__init__(observation_space, action_space, hidden_size)
