@@ -6,6 +6,7 @@
 import os
 import time
 import random
+import einops
 import numpy as np
 import torch as th
 import torch.nn as nn
@@ -23,7 +24,8 @@ from ss_baselines.common.environments import get_env_class
 from ss_baselines.common.utils import images_to_video_with_audio
 
 # Custom ActorCritic agent for PPO
-from models import ActorCritic, ActorCritic_DeepEthologyVirtualRodent
+from models import ActorCritic, ActorCritic_DeepEthologyVirtualRodent, \
+    Perceiver_GWT_ActorCritic, PerceiverIO_GWT_ActorCritic
 
 # Helpers
 # Tensorize current observation, store to rollout data
@@ -46,7 +48,7 @@ def main():
         get_arg_dict("total-steps", int, 10_000_000),
         
         # SS env config
-        get_arg_dict("config-path", str, "env_configs/audiogoal_rgb.yaml"),
+        get_arg_dict("config-path", str, "env_configs/audiogoal_depth.yaml"),
 
         # PPO Hyper parameters
         get_arg_dict("num-envs", int, 10), # Number of parallel envs. 10 by default
@@ -65,8 +67,17 @@ def main():
         get_arg_dict("lr", float, 2.5e-4), # Learning rate
         ## Agent network params
         get_arg_dict("agent-type", str, "ss-default", metatype="choice",
-            choices=["ss-default", "deep-etho"]),
+            choices=["ss-default", "perceiver-gwt", "perceiverio-gwt", "deep-etho"]),
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
+        ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
+        get_arg_dict("pgwt-depth", int, 4), # Depth of the Perceiver
+        get_arg_dict("pgwt-num-latents", int, 32),
+        get_arg_dict("pgwt-latent-dim", int, 32),
+        get_arg_dict("pgwt-cross-heads", int, 1),
+        get_arg_dict("pgwt-latent-heads", int, 8),
+        get_arg_dict("pgwt-cross-dim-head", int, 64),
+        get_arg_dict("pgwt-latent-dim-head", int, 64),
+        get_arg_dict("pgwt-weight-tie-layers", bool, False, metatype="bool"),
 
         # Logging params
         # NOTE: While supported, video logging is expensive because the RGB generation in the
@@ -136,7 +147,13 @@ def main():
     # TODO: make the ActorCritic components parameterizable through comand line ?
     if args.agent_type == "ss-default":
         agent = ActorCritic(single_observation_space, single_action_space,
-            512, extra_rgb=agent_extra_rgb).to(device)
+            args.hidden_size, extra_rgb=agent_extra_rgb).to(device)
+    elif args.agent_type == "perceiver-gwt":
+        agent = Perceiver_GWT_ActorCritic(single_observation_space, single_action_space,
+            args, extra_rgb=agent_extra_rgb).to(device)
+    elif args.agent_type == "perceiverio-gwt":
+        agent = PerceiverIO_GWT_ActorCritic(single_observation_space, single_action_space,
+            args, extra_rgb=agent_extra_rgb).to(device)
     elif args.agent_type == "deep-etho":
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
         # TODO: support for storing the rnn_hidden_statse, so that the policy 
@@ -171,6 +188,8 @@ def main():
     masks = 1. - done_th[:, None]
     if args.agent_type == "ss-default":
         rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size), device=device)
+    elif args.agent_type in ["perceiver-gwt", "perceiverio-gwt"]:
+        rnn_hidden_state = einops.repeat(agent.state_encoder.latents.clone(), 'n d -> b n d', b = args.num_envs)
     elif args.agent_type == "deep-etho":
         rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size * 2), device=device)
     else:
@@ -381,8 +400,15 @@ def main():
                 mb_observations = {k: v[mb_inds] for k, v in b_observations.items()}
 
                 # NOTE: should the RNN hit states be reused when recomputiong ?
+                if args.agent_type in ["ss-default"]:
+                    b_init_rnn_state = init_rnn_state[:, mbenvinds]
+                elif args.agent_type in ["perceiver-gwt", "perceiverio-gwt"]:
+                    b_init_rnn_state = init_rnn_state[mbenvinds, :, :]
+                else:
+                    raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+                
                 _, newlogprob, entropy, newvalue, _ = \
-                    agent.act(mb_observations, init_rnn_state[:, mbenvinds],
+                    agent.act(mb_observations, b_init_rnn_state,
                         masks=1-b_dones[mb_inds], actions=b_actions[mb_inds])
 
                 newlogprob = newlogprob.sum(-1) # From [B * T, 1] -> [B * T]

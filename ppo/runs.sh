@@ -13,69 +13,46 @@ if [ ! -d $WANDB_DIR ]; then
 fi
 
 # region: Custom PPO based on ss_baselinesg
-    # region: RGB based task
+    # region: Custom PPO; Depth + Spectrogram based task
+    # export MASTER_PORT=8738 # Default port is 8738
     # for seed in 111; do
     #     (sleep 1s && python ppo_av_nav.py \
-    #         --exp-name "ppo_av_nav__rgb" \
-    #         --num-envs 8 \
-    #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
-    #         --logdir-prefix $LOGDIR_PREFIX \
-    #         --seed $seed \
-    #     ) & # >& /dev/null &
-    # done
-    # endregion: RGB based task
-
-    # region: Depth based task
-    # for seed in 111; do
-    # for seed in 222; do
-    #     (sleep 1s && python ppo_av_nav.py \
-    #         --exp-name "ppo_av_nav__depth__rnn_hid_fix" \
+    #         --exp-name "ppo_av_nav__depth_spectro" \
     #         --config-path "env_configs/audiogoal_depth.yaml" \
     #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
     #         --logdir-prefix $LOGDIR_PREFIX \
     #         --seed $seed \
     #     ) & # >& /dev/null &
     # done
-    # endregion: Depth based task
+    # endregion: Custom PPO; Depth + Spectrogram based task
 
-    # region: PPO + Perceiver, Depth & Waveform based task
-    # for seed in 222; do
-    # for seed in 111; do
-    #     (sleep 1s && python ppo_av_nav_mulmodperceiver.py \
-    #         --exp-name "ppo_av_nav_mulmodperceiver__depth_audiogoal" \
-    #         --max-grad-norm 0 \
-    #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
-    #         --logdir-prefix $LOGDIR_PREFIX \
-    #         --seed $seed \
-    #     ) & # >& /dev/null &
-    # done
-    # endregion: PPO + Perceiver, Depth & Waveform based task
-
-    # region: PPO + Perceiver No queries, Depth & Waveform based task
-    # # for seed in 222; do
-    # for seed in 111; do
-    #     (sleep 1s && python ppo_av_nav_mulmodperceiver_noqueries.py \
-    #         --exp-name "ppo_av_nav_mulmodperceiver_noqueries__depth_audiogoal" \
-    #         --max-grad-norm 0 \
-    #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
-    #         --logdir-prefix $LOGDIR_PREFIX \
-    #         --seed $seed \
-    #     ) & # >& /dev/null &
-    # done
-    # endregion: PPO + Perceiver No queries, Depth & Waveform based task
-
-    # region: Depth based task, with Deep Etho agent structure
+    # region: Custom PPO + Perceiver GWT; Depth + Spectrogram based task
+    # export MASTER_PORT=8748 # Default port is 8738
     # for seed in 111; do
     #     (sleep 1s && python ppo_av_nav.py \
-    #         --exp-name "ppo_av_nav__depth__deep_etho" \
+    #         --exp-name "ppo_av_nav__depth_spectro__pgwt" \
+    #         --agent-type "perceiver-gwt" \
     #         --config-path "env_configs/audiogoal_depth.yaml" \
-    #         --agent-type "deep-etho" \
     #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
     #         --logdir-prefix $LOGDIR_PREFIX \
     #         --seed $seed \
     #     ) & # >& /dev/null &
     # done
-    # endregion: Depth based task, with Deep Etho agent structure
+    # endregion: Custom PPO + Perceiver GWT; Depth + Spectrogram based task
+
+    # region: Custom PPO + Perceiver GWT; Depth + Spectrogram based task
+    # export MASTER_PORT=8758 # Default port is 8738
+    # for seed in 111; do
+    #     (sleep 1s && python ppo_av_nav.py \
+    #         --exp-name "ppo_av_nav__depth_spectro__piogwt" \
+    #         --agent-type "perceiverio-gwt" \
+    #         --config-path "env_configs/audiogoal_depth.yaml" \
+    #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #         --logdir-prefix $LOGDIR_PREFIX \
+    #         --seed $seed \
+    #     ) & # >& /dev/null &
+    # done
+    # endregion: Custom PPO + Perceiver GWT; Depth + Spectrogram based task
 
     # region: SAVi Env: Depth based task
     # for seed in 111; do
@@ -88,22 +65,10 @@ fi
     #     ) # & # >& /dev/null &
     # done
     # endregion: SAVi Env: Depth based task
-
-    # region: Depth based task, with waveform audio and AudioCLIP's audio encode based RIR Audio feature extractor
-    # for seed in 111; do
-    #   (sleep 1s && python ppo_av_nav_audioclip.py \
-    #       --num-envs 2 --num-steps 60 \
-    #       --exp-name "ppo_av_nav_depth_audioclip__audioenc_pretrained" \
-    #       --pretrained-audioclip "data/audioclip_assets/AudioCLIP-Full-Training.pt" \
-    #       --wandb --wandb-project ss-hab --wandb-entity dosssman \
-    #       --logdir-prefix $LOGDIR_PREFIX \
-    #       --seed $seed \
-    #   ) & # >& /dev/null &
-    # done
-    # endregion: Depth based task, with waveform audio and AudioCLIP's audio encode based RIR Audio feature extractor
 # endregion: Custom PPO based on ss_baselines
 
 # Clean up env vars
 export CUDA_VISIBLE_DEVICES=
 export LOGDIR_PREFIX=
+export MASTER_PORT=
 export WANDB_DIR=

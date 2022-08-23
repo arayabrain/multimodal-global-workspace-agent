@@ -21,18 +21,18 @@
             // "env": {}
 
             // Custom PPO Debug + Perceiver
-            "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/ppo",
-            "args": [
-                // Environment config
-                // "USE_VECENV", "False",
-                // "USE_SYNC_VECENV", "False",
-                // PPO Agent cofnig
-                "--num-envs", "2",
-                "--num-minibatches", "10",
-                // Logging config
-                "--logdir-prefix", "/tmp/ppo-av-nav-perceiver-dbg",
-                // "--wandb", "--wandb-entity", "dosssman", "--wandb-project", "ss-hab"
-            ],
+            // "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/ppo",
+            // "args": [
+            //     // Environment config
+            //     // "USE_VECENV", "False",
+            //     // "USE_SYNC_VECENV", "False",
+            //     // PPO Agent cofnig
+            //     "--num-envs", "2",
+            //     "--num-minibatches", "10",
+            //     // Logging config
+            //     "--logdir-prefix", "/tmp/ppo-av-nav-perceiver-dbg",
+            //     // "--wandb", "--wandb-entity", "dosssman", "--wandb-project", "ss-hab"
+            // ],
             // "env": {
             //     // "MASTER_PORT": ""
             // }
@@ -52,6 +52,23 @@
             //     "--logdir-prefix", "/tmp/ppo-av-nav-dbg",
             //     // "--wandb", "--wandb-entity", "dosssman", "--wandb-project", "ss-hab"
             // ]
+
+            // Custom PPO + Perceiver GWT Modules Debugs
+            "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/ppo",
+            "args": [
+                // Environment config
+                // "USE_VECENV", "False",
+                // "USE_SYNC_VECENV", "False",
+
+                // PPO Agent cofnig
+                "--num-envs", "2",
+                "--num-steps", "20",
+                "--agent-type", "perceiver-gwt",
+
+                // Logging config
+                "--logdir-prefix", "/tmp/ppo-av-nav-dbg",
+                // "--wandb", "--wandb-entity", "dosssman", "--wandb-project", "ss-hab"
+            ]
 
             // Custom PPO Debug with AudioCLIP audio encoder
             // "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/ppo",
