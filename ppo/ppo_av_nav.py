@@ -11,6 +11,7 @@ import numpy as np
 import torch as th
 import torch.nn as nn
 from collections import deque, defaultdict
+from torchinfo import summary
 
 import tools
 from configurator import generate_args, get_arg_dict
@@ -164,6 +165,12 @@ def main():
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 
     optimizer = th.optim.Adam(agent.parameters(), lr=args.lr, eps=1e-5)
+    
+    # Info logging
+    summary(agent)
+    print("")
+    print(agent)
+    print("")
     
     # Rollout storage setup # TODO: make this systematic for a
     observations = {}

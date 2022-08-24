@@ -26,6 +26,23 @@ fi
     # done
     # endregion: Custom PPO; Depth + Spectrogram based task
 
+    # region: Custom PPO + Perceiver GWT Fair architecture; Depth + Spectrogram based task
+    # export MASTER_PORT=8748 # Default port is 8738
+    # for seed in 111; do
+    #     (sleep 1s && python ppo_av_nav.py \
+    #         --exp-name "ppo_av_nav__depth_spectro__pgwt__dpth_1_nlats_8_latdim_64" \
+    #         --agent-type "perceiver-gwt" \
+    #         --pgwt-depth 1 \
+    #         --pgwt-num-latents 8 \
+    #         --pgwt-latent-dim 64 \
+    #         --config-path "env_configs/audiogoal_depth.yaml" \
+    #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #         --logdir-prefix $LOGDIR_PREFIX \
+    #         --seed $seed \
+    #     ) & # >& /dev/null &
+    # done
+    # region: Custom PPO + Perceiver GWT Fair architecture; Depth + Spectrogram based task
+
     # region: Custom PPO + Perceiver GWT; Depth + Spectrogram based task
     # export MASTER_PORT=8748 # Default port is 8738
     # for seed in 111; do
