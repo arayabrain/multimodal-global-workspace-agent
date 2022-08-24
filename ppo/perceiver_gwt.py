@@ -193,8 +193,8 @@ class Perceiver_GWT(nn.Module):
             masks = masks[:, :, None] # [NUM_ENVS, 1] -> [NUM_ENVS, 1, 1] to match prev_latnets.shape
         # If the current step is the start of a new episode,
         # the the mask will contain 0
-        prev_latents = (1. - masks) * prev_latents + \
-            masks * repeat(self.latents.clone(), 'n d -> b n d', b = b)
+        prev_latents = masks * prev_latents + \
+            (1. - masks) * repeat(self.latents.clone(), 'n d -> b n d', b = b)
         
         x = prev_latents
 
