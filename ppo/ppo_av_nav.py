@@ -71,6 +71,9 @@ def main():
             choices=["ss-default", "perceiver-gwt", "perceiverio-gwt", "deep-etho"]),
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
         ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
+        get_arg_dict("pgwt-latent-type", str, "randn", metatype="choice",
+            choices=["randn", "zeros"]), # Depth of the Perceiver
+        get_arg_dict("pgwt-latent-learned", bool, True, metatype="bool"),
         get_arg_dict("pgwt-depth", int, 4), # Depth of the Perceiver
         get_arg_dict("pgwt-num-latents", int, 32),
         get_arg_dict("pgwt-latent-dim", int, 32),

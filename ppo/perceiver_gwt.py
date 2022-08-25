@@ -116,6 +116,8 @@ class Perceiver_GWT(nn.Module):
         *,
         depth,
         input_dim,
+        latent_type = "randn",
+        latent_learned = True,
         num_latents = 512,
         latent_dim = 512,
         cross_heads = 1,
@@ -131,7 +133,12 @@ class Perceiver_GWT(nn.Module):
         self.input_dim = input_dim
 
         # Latent vector, supposedly equivalent to an RNN's hidden state
-        self.latents = nn.Parameter(torch.randn(num_latents, latent_dim))
+        if latent_type == "randn":
+            self.latents = torch.randn(num_latents, latent_dim)
+        elif latent_type == "zeros":
+            self.latents = torch.zeros(num_latents, latent_dim)
+        
+        self.latents = nn.Parameter(self.latents, requires_grad=latent_learned)
 
         # Defines the cross-attention and self-attention layers
         get_cross_attn = lambda: PreNorm(latent_dim, Attention(latent_dim, input_dim, heads = cross_heads, dim_head = cross_dim_head, dropout = attn_dropout), context_dim = input_dim)

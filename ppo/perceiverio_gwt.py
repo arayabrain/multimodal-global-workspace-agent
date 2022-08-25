@@ -109,6 +109,8 @@ class PerceiverIO_GWT(nn.Module):
     def __init__(self, 
         depth,
         input_dim,
+        latent_type = "randn",
+        latent_learned = True,
         num_latents = 512,
         latent_dim = 512,
         cross_heads = 1,
@@ -118,8 +120,17 @@ class PerceiverIO_GWT(nn.Module):
         weight_tie_layers = False
     ):
         super().__init__()
-        self.latents = nn.Parameter(torch.randn(num_latents, latent_dim))
-
+        # Latent vector, supposedly equivalent to an RNN's hidden state
+        if latent_type == "randn":
+            self.latents = torch.randn(num_latents, latent_dim)
+        elif latent_type == "zeros":
+            self.latents = torch.zeros(num_latents, latent_dim)
+        
+        if latent_learned:
+            self.latents = nn.Parameter(self.latents)
+        else:
+            self.register_buffer("latents", self.latents)
+        
         self.cross_attend_blocks = nn.ModuleList([
             PreNorm(latent_dim, Attention(latent_dim, input_dim, heads = cross_heads, dim_head = cross_dim_head), context_dim = input_dim),
             PreNorm(latent_dim, FeedForward(latent_dim))

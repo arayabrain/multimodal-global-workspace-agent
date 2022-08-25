@@ -586,6 +586,8 @@ class Perceiver_GWT_ActorCritic(nn.Module):
         self.state_encoder = Perceiver_GWT(
             depth = config.pgwt_depth, # Our default: 4; Perceiver default: 6
             input_dim = config.hidden_size * 2,
+            latent_type = config.pgwt_latent_type,
+            latent_learned = config.pgwt_latent_learned,
             num_latents = config.pgwt_num_latents, # Our default: 32, Perceiver: 512
             latent_dim = config.pgwt_latent_dim, # Our default: 32, Perceiver default: 512
             cross_heads = config.pgwt_cross_heads, # Default: 1
@@ -648,6 +650,8 @@ class PerceiverIO_GWT_ActorCritic(Perceiver_GWT_ActorCritic):
         self.state_encoder = PerceiverIO_GWT(
             depth = config.pgwt_depth, # Our default: 4; Perceiver default: 6
             input_dim = config.hidden_size * 2,
+            latent_type = config.pgwt_latent_type,
+            latent_learned = config.pgwt_latent_learned,
             num_latents = config.pgwt_num_latents, # Our default: 32, Perceiver: 512
             latent_dim = config.pgwt_latent_dim, # Our default: 32, Perceiver default: 512
             cross_heads = config.pgwt_cross_heads, # Default: 1
