@@ -8,6 +8,15 @@ import torch.nn.functional as F
 
 from ss_baselines.av_nav.ppo.policy import CriticHead
 
+# General helpers
+def compute_grad_norm(model: nn.Module):
+    total_norm = 0.
+    for p in model.parameters():
+        if p.grad is not None:
+            param_norm = p.grad.data.norm(2)
+            total_norm += param_norm.item() ** 2
+
+    return total_norm ** (.5)
 
 ###################################
 # region: Vision modules          #
@@ -569,6 +578,10 @@ class ActorCritic(nn.Module):
 
         return self.critic(features)
 
+    def get_grad_norms(self):
+        modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution", "critic"]
+        return {mod_name: compute_grad_norm(self.__getattr__(mod_name)) for mod_name in modules}
+
 # Actor critic variant that uses Perceiver as an RNN internally
 # This variant uses the same visual and audio encoder as SS baseline
 from perceiver_gwt import Perceiver_GWT
@@ -597,7 +610,8 @@ class Perceiver_GWT_ActorCritic(nn.Module):
             attn_dropout = 0.,
             ff_dropout = 0.,
             self_per_cross_attn = 1,
-            weight_tie_layers = config.pgwt_weight_tie_layers # Default: False
+            weight_tie_layers = config.pgwt_weight_tie_layers, # Default: False
+            use_sa = config.pgwt_use_sa
         )
 
         # input_dim for policy / value is num_latents * latent_dim of the Perceiver
@@ -642,6 +656,11 @@ class Perceiver_GWT_ActorCritic(nn.Module):
 
         return self.critic(features)
 
+    def get_grad_norms(self):
+        modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution", "critic"]
+        return {mod_name: compute_grad_norm(self.__getattr__(mod_name)) for mod_name in modules}
+
+
 class PerceiverIO_GWT_ActorCritic(Perceiver_GWT_ActorCritic):
     def __init__(self, observation_space, action_space, config, extra_rgb=False):
         super().__init__(observation_space, action_space, config, extra_rgb)
@@ -649,6 +668,27 @@ class PerceiverIO_GWT_ActorCritic(Perceiver_GWT_ActorCritic):
         # Override the state encoder with a custom PerceiverIO
         self.state_encoder = PerceiverIO_GWT(
             depth = config.pgwt_depth, # Our default: 4; Perceiver default: 6
+            input_dim = config.hidden_size * 2,
+            latent_type = config.pgwt_latent_type,
+            latent_learned = config.pgwt_latent_learned,
+            num_latents = config.pgwt_num_latents, # Our default: 32, Perceiver: 512
+            latent_dim = config.pgwt_latent_dim, # Our default: 32, Perceiver default: 512
+            cross_heads = config.pgwt_cross_heads, # Default: 1
+            latent_heads = config.pgwt_latent_heads, # Default: 8
+            cross_dim_head = config.pgwt_cross_dim_head, # Default: 64
+            latent_dim_head = config.pgwt_latent_dim_head, # Default: 64
+            weight_tie_layers = config.pgwt_weight_tie_layers # Default: False
+        )
+
+
+from perceiver_gwt_gwwm import Perceiver_GWT_GWWM
+class Perceiver_GWT_GWWM_ActorCritic(Perceiver_GWT_ActorCritic):
+    def __init__(self, observation_space, action_space, config, extra_rgb=False):
+        super().__init__(observation_space, action_space, config, extra_rgb)
+        self.config = config
+
+        # Override the state encoder with a custom PerceiverIO
+        self.state_encoder = Perceiver_GWT_GWWM(
             input_dim = config.hidden_size * 2,
             latent_type = config.pgwt_latent_type,
             latent_learned = config.pgwt_latent_learned,

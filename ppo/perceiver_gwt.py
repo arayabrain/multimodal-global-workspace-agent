@@ -1,7 +1,6 @@
 # Based on https://github.com/lucidrains/perceiver-pytorch/blob/main/perceiver_pytorch/perceiver_pytorch.py
 # This variant aims to expose the Perceiver's internal latent as the hidden state of an RNN
-# - does not support direct feed of 2D images nor 2D audio
-# - disregards fourier encoding, as we use VisualEncoder and AudioEncoder from the SS baseline
+# - does not support direct feed of 2D images, audio etc... Only pre-processed features
 import torch
 import torch as th
 from torch import nn, einsum
@@ -10,6 +9,8 @@ import torch.nn.functional as F
 from functools import wraps
 
 from einops import rearrange, repeat
+
+from math import pi
 
 # helpers
 def exists(val):
@@ -31,6 +32,18 @@ def cache_fn(f):
         cache[key] = result
         return result
     return cached_fn
+
+def fourier_encode(x, max_freq, num_bands = 4):
+    x = x.unsqueeze(-1)
+    device, dtype, orig_x = x.device, x.dtype, x
+
+    scales = torch.linspace(1., max_freq / 2, num_bands, device = device, dtype = dtype)
+    scales = scales[(*((None,) * (len(x.shape) - 1)), Ellipsis)]
+
+    x = x * scales * pi
+    x = torch.cat([x.sin(), x.cos()], dim = -1)
+    x = torch.cat((x, orig_x), dim = -1)
+    return x
 
 # helper classes
 
@@ -118,8 +131,8 @@ class Perceiver_GWT(nn.Module):
         input_dim,
         latent_type = "randn",
         latent_learned = True,
-        num_latents = 512,
-        latent_dim = 512,
+        num_latents = 8,
+        latent_dim = 64,
         cross_heads = 1,
         latent_heads = 8,
         cross_dim_head = 64,
@@ -127,10 +140,28 @@ class Perceiver_GWT(nn.Module):
         attn_dropout = 0.,
         ff_dropout = 0.,
         self_per_cross_attn = 1, # Number of self attention blocks per cross attn.
-        weight_tie_layers = False
+        weight_tie_layers = False,
+        # FF related
+        max_freq = 10.,
+        num_freq_bands = 6,
+        fourier_encode_data = False,
+        input_axis = 0,
+        use_ca = True, # Well, CA should always be used ...
+        use_sa = True
     ):
         super().__init__()
         self.input_dim = input_dim
+        self.use_ca = use_ca
+        self.use_sa = use_sa
+        assert use_ca or use_sa, f"Neither Cross Attention nor Self Attention seem to be enabled."
+
+        # Fourier Encode related
+        self.input_axis = input_axis
+        self.max_freq = max_freq
+        self.num_freq_bands = num_freq_bands
+        self.fourier_encode_data = fourier_encode_data
+        fourier_channels = (input_axis * ((num_freq_bands * 2) + 1)) if fourier_encode_data else 0
+        input_dim = fourier_channels + input_dim
 
         # Latent vector, supposedly equivalent to an RNN's hidden state
         if latent_type == "randn":
@@ -155,12 +186,15 @@ class Perceiver_GWT(nn.Module):
             cache_args = {'_cache': should_cache}
 
             self_attns = nn.ModuleList([])
-
-            for block_ind in range(self_per_cross_attn):
-                self_attns.append(nn.ModuleList([
-                    get_latent_attn(**cache_args, key = block_ind),
-                    get_latent_ff(**cache_args, key = block_ind)
-                ]))
+            
+            if self.use_sa:
+                for block_ind in range(self_per_cross_attn):
+                    self_attns.append(nn.ModuleList([
+                        get_latent_attn(**cache_args, key = block_ind),
+                        get_latent_ff(**cache_args, key = block_ind)
+                    ]))
+            else:
+                self_attns.append(nn.Identity())
 
             self.layers.append(nn.ModuleList([
                 get_cross_attn(**cache_args),
@@ -175,7 +209,7 @@ class Perceiver_GWT(nn.Module):
         B_T, feat_dim = data.shape
         B = prev_latents.shape[0]
         T = B_T // B # TODO: assert that B * T == B_T
-        latents = prev_latents.clone()
+        latents = prev_latents
 
         data = data.reshape(B, T, feat_dim)
         masks = masks.reshape(B, T, 1)
@@ -193,15 +227,27 @@ class Perceiver_GWT(nn.Module):
         return x_list, latents_list
 
     def single_forward(self, data, prev_latents, masks):
-        b, device, dtype = data.shape[0], data.device, data.dtype
+        b, *axis, _, device, dtype = *data.shape, data.device, data.dtype
+        assert len(axis) == self.input_axis, 'input data must have the right number of axis'
         
-        if data.dim() == 2:
-            data = data[:, None, :] # [NUM_ENVS, feat_dim] -> [NUM_ENVS, 1, feat_dim] as expected by Perceiver
-            masks = masks[:, :, None] # [NUM_ENVS, 1] -> [NUM_ENVS, 1, 1] to match prev_latnets.shape
+        if self.fourier_encode_data:
+            # calculate fourier encoded positions in the range of [-1, 1], for all axis
+            assert len(axis) > 0, f"Fourier features not support for axis len: {self.input_axis}"
+            axis_pos = list(map(lambda size: torch.linspace(-1., 1., steps=size, device=device, dtype=dtype), axis))
+            pos = torch.stack(torch.meshgrid(*axis_pos, indexing = 'ij'), dim = -1)
+            enc_pos = fourier_encode(pos, self.max_freq, self.num_freq_bands)
+            enc_pos = rearrange(enc_pos, '... n d -> ... (n d)')
+            enc_pos = repeat(enc_pos, '... -> b ...', b = b)
+
+            data = torch.cat((data, enc_pos), dim = -1)
+
+        # concat to channels of data and flatten axis
+        data = rearrange(data, 'b ... d -> b (...) d')
+
         # If the current step is the start of a new episode,
         # the the mask will contain 0
-        prev_latents = masks * prev_latents + \
-            (1. - masks) * repeat(self.latents.clone(), 'n d -> b n d', b = b)
+        prev_latents = masks[:, :, None] * prev_latents + \
+            (1. - masks[:, :, None]) * repeat(self.latents, 'n d -> b n d', b = b)
         
         x = prev_latents
 
@@ -210,9 +256,10 @@ class Perceiver_GWT(nn.Module):
             x = cross_attn(x, context = data, mask = None) + x
             x = cross_ff(x) + x
 
-            for self_attn, self_ff in self_attns:
-                x = self_attn(x) + x
-                x = self_ff(x) + x
+            if self.use_sa:
+                for self_attn, self_ff in self_attns:
+                    x = self_attn(x) + x
+                    x = self_ff(x) + x
         
         return x.flatten(start_dim=1), x # state_feat, latents
     
@@ -228,5 +275,3 @@ class Perceiver_GWT(nn.Module):
             return self.single_forward(data, prev_latents, masks)
         else:
             return self.seq_forward(data, prev_latents, masks)
-
-

@@ -26,7 +26,7 @@ from ss_baselines.common.utils import images_to_video_with_audio
 
 # Custom ActorCritic agent for PPO
 from models import ActorCritic, ActorCritic_DeepEthologyVirtualRodent, \
-    Perceiver_GWT_ActorCritic, PerceiverIO_GWT_ActorCritic
+    Perceiver_GWT_ActorCritic, PerceiverIO_GWT_ActorCritic, Perceiver_GWT_GWWM_ActorCritic
 
 # Helpers
 # Tensorize current observation, store to rollout data
@@ -66,29 +66,31 @@ def main():
         get_arg_dict("max-grad-norm", float, 0.5),
         get_arg_dict("target-kl", float, None),
         get_arg_dict("lr", float, 2.5e-4), # Learning rate
+        get_arg_dict("optim-wd", float, 0), # weight decay for adam optim
         ## Agent network params
         get_arg_dict("agent-type", str, "ss-default", metatype="choice",
-            choices=["ss-default", "perceiver-gwt", "perceiverio-gwt", "deep-etho"]),
+            choices=["ss-default", "perceiver-gwt", "perceiverio-gwt", "perceiver-gwt-gwwm", "deep-etho"]),
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
         ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
         get_arg_dict("pgwt-latent-type", str, "randn", metatype="choice",
             choices=["randn", "zeros"]), # Depth of the Perceiver
         get_arg_dict("pgwt-latent-learned", bool, True, metatype="bool"),
         get_arg_dict("pgwt-depth", int, 4), # Depth of the Perceiver
-        get_arg_dict("pgwt-num-latents", int, 32),
-        get_arg_dict("pgwt-latent-dim", int, 32),
+        get_arg_dict("pgwt-num-latents", int, 8),
+        get_arg_dict("pgwt-latent-dim", int, 64),
         get_arg_dict("pgwt-cross-heads", int, 1),
         get_arg_dict("pgwt-latent-heads", int, 8),
         get_arg_dict("pgwt-cross-dim-head", int, 64),
         get_arg_dict("pgwt-latent-dim-head", int, 64),
         get_arg_dict("pgwt-weight-tie-layers", bool, False, metatype="bool"),
+        get_arg_dict("pgwt-use-sa", bool, True, metatype="bool"),
 
         # Logging params
         # NOTE: While supported, video logging is expensive because the RGB generation in the
         # envs hogs a lot of GPU, especially with multiple envs 
         get_arg_dict("save-videos", bool, False, metatype="bool"),
         get_arg_dict("save-model", bool, True, metatype="bool"),
-        get_arg_dict("log-sampling-stats-every", int, int(1.5e4)), # Every X frames || steps sampled
+        get_arg_dict("log-sampling-stats-every", int, int(1.5e3)), # Every X frames || steps sampled
         get_arg_dict("log-training-stats-every", int, int(10)), # Every X model update
         get_arg_dict("logdir-prefix", str, "./logs/"), # Overrides the default one
     ]
@@ -158,6 +160,9 @@ def main():
     elif args.agent_type == "perceiverio-gwt":
         agent = PerceiverIO_GWT_ActorCritic(single_observation_space, single_action_space,
             args, extra_rgb=agent_extra_rgb).to(device)
+    elif args.agent_type == "perceiver-gwt-gwwm":
+        agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space,
+            args, extra_rgb=agent_extra_rgb).to(device)
     elif args.agent_type == "deep-etho":
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
         # TODO: support for storing the rnn_hidden_statse, so that the policy 
@@ -167,7 +172,7 @@ def main():
     else:
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 
-    optimizer = th.optim.Adam(agent.parameters(), lr=args.lr, eps=1e-5)
+    optimizer = th.optim.Adam(agent.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
     
     # Info logging
     summary(agent)
@@ -198,8 +203,8 @@ def main():
     masks = 1. - done_th[:, None]
     if args.agent_type == "ss-default":
         rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size), device=device)
-    elif args.agent_type in ["perceiver-gwt", "perceiverio-gwt"]:
-        rnn_hidden_state = einops.repeat(agent.state_encoder.latents.clone(), 'n d -> b n d', b = args.num_envs)
+    elif args.agent_type in ["perceiver-gwt", "perceiverio-gwt", "perceiver-gwt-gwwm"]:
+        rnn_hidden_state = einops.repeat(agent.state_encoder.latents, 'n d -> b n d', b = args.num_envs)
     elif args.agent_type == "deep-etho":
         rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size * 2), device=device)
     else:
@@ -412,7 +417,7 @@ def main():
                 # NOTE: should the RNN hit states be reused when recomputiong ?
                 if args.agent_type in ["ss-default"]:
                     b_init_rnn_state = init_rnn_state[:, mbenvinds]
-                elif args.agent_type in ["perceiver-gwt", "perceiverio-gwt"]:
+                elif args.agent_type in ["perceiver-gwt", "perceiverio-gwt", "perceiver-gwt-gwwm"]:
                     b_init_rnn_state = init_rnn_state[mbenvinds, :, :]
                 else:
                     raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
@@ -485,7 +490,10 @@ def main():
                 "explained_variance": explained_var
             }
             tblogger.log_stats(train_stats, global_step, prefix="train")
-        
+
+            # Logging grad norms
+            tblogger.log_stats(agent.get_grad_norms(), global_step, prefix="debug/grad_norms")
+    
     # Clean up
     envs.close()
     tblogger.close()
