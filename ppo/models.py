@@ -611,6 +611,10 @@ class Perceiver_GWT_ActorCritic(nn.Module):
             ff_dropout = 0.,
             self_per_cross_attn = 1,
             weight_tie_layers = config.pgwt_weight_tie_layers, # Default: False
+            max_freq = config.pgwt_max_freq, # Default: 10.
+            num_freq_bands = config.num_freq_bands, # Default: 6
+            fourier_encode_data = config.pgwt_ff,
+            input_axis = 1,
             use_sa = config.pgwt_use_sa
         )
 

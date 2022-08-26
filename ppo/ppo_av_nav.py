@@ -83,6 +83,9 @@ def main():
         get_arg_dict("pgwt-cross-dim-head", int, 64),
         get_arg_dict("pgwt-latent-dim-head", int, 64),
         get_arg_dict("pgwt-weight-tie-layers", bool, False, metatype="bool"),
+        get_arg_dict("pgwt-ff", bool, True, metatype="bool"),
+        get_arg_dict("pgwt-num-freq-bands", int, 6),
+        get_arg_dict("pgwt-max-freq", int, 10.),
         get_arg_dict("pgwt-use-sa", bool, True, metatype="bool"),
 
         # Logging params
@@ -492,6 +495,7 @@ def main():
             tblogger.log_stats(train_stats, global_step, prefix="train")
 
             # Logging grad norms
+            # TODO: log gradients prior to clipping in the same experiment.
             tblogger.log_stats(agent.get_grad_norms(), global_step, prefix="debug/grad_norms")
     
     # Clean up
