@@ -63,7 +63,7 @@
                 // PPO Agent cofnig
                 "--num-envs", "2",
                 "--num-steps", "20",
-                "--agent-type", "perceiver-gwt",
+                "--agent-type", "perceiver-gwt-gwwm",
 
                 // Logging config
                 "--logdir-prefix", "/tmp/ppo-av-nav-dbg",

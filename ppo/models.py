@@ -598,7 +598,7 @@ class Perceiver_GWT_ActorCritic(nn.Module):
 
         self.state_encoder = Perceiver_GWT(
             depth = config.pgwt_depth, # Our default: 4; Perceiver default: 6
-            input_dim = config.hidden_size * 2,
+            input_channels = 1, # Input is os shape [B, hidden_size * 2], which is then convereted to [B, hidden_size, 1] with single channel
             latent_type = config.pgwt_latent_type,
             latent_learned = config.pgwt_latent_learned,
             num_latents = config.pgwt_num_latents, # Our default: 32, Perceiver: 512
@@ -612,7 +612,7 @@ class Perceiver_GWT_ActorCritic(nn.Module):
             self_per_cross_attn = 1,
             weight_tie_layers = config.pgwt_weight_tie_layers, # Default: False
             max_freq = config.pgwt_max_freq, # Default: 10.
-            num_freq_bands = config.num_freq_bands, # Default: 6
+            num_freq_bands = config.pgwt_num_freq_bands, # Default: 6
             fourier_encode_data = config.pgwt_ff,
             input_axis = 1,
             use_sa = config.pgwt_use_sa

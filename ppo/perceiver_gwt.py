@@ -128,7 +128,7 @@ class Perceiver_GWT(nn.Module):
         self,
         *,
         depth,
-        input_dim,
+        input_channels,
         latent_type = "randn",
         latent_learned = True,
         num_latents = 8,
@@ -150,7 +150,7 @@ class Perceiver_GWT(nn.Module):
         use_sa = True
     ):
         super().__init__()
-        self.input_dim = input_dim
+        self.input_channels = input_channels
         self.use_ca = use_ca
         self.use_sa = use_sa
         assert use_ca or use_sa, f"Neither Cross Attention nor Self Attention seem to be enabled."
@@ -161,10 +161,7 @@ class Perceiver_GWT(nn.Module):
         self.num_freq_bands = num_freq_bands
         self.fourier_encode_data = fourier_encode_data
         fourier_channels = (input_axis * ((num_freq_bands * 2) + 1)) if fourier_encode_data else 0
-        if input_axis == 1:
-            input_dim = fourier_channels + 1 # when input_axis == 1, feed data of shape [B, feat_dim], which will be changed to [B, feat_dim, 1] before cating with fourier features
-        else:
-            input_dim = fourier_channels + input_dim
+        input_dim = fourier_channels + input_channels
 
         # Latent vector, supposedly equivalent to an RNN's hidden state
         if latent_type == "randn":
@@ -230,15 +227,14 @@ class Perceiver_GWT(nn.Module):
         return x_list, latents_list
 
     def single_forward(self, data, prev_latents, masks):
+        if data.dim() == 2:
+            data = data[:, :, None] # From [B, feat_dim] -> [B ,feat_dim, 1]
+        
         b, *axis, _, device, dtype = *data.shape, data.device, data.dtype
         # assert len(axis) == self.input_axis, 'input data must have the right number of axis'
         
         if self.fourier_encode_data:
             # calculate fourier encoded positions in the range of [-1, 1], for all axis
-            # assert len(axis) > 0, f"Fourier features not support for axis len: {self.input_axis}"
-            if len(axis) == 0: # Means that input is of shape [B, feat_dim], not image, nor audio, nor video.
-                axis = [data.shape[-1]]
-                data = data[:, :, None] # From [B, feat_dim] -> [B ,feat_dim, 1]
             axis_pos = list(map(lambda size: torch.linspace(-1., 1., steps=size, device=device, dtype=dtype), axis))
             pos = torch.stack(torch.meshgrid(*axis_pos, indexing = 'ij'), dim = -1)
             enc_pos = fourier_encode(pos, self.max_freq, self.num_freq_bands)
