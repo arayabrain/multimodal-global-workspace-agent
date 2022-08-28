@@ -26,32 +26,35 @@ fi
     # done
     # endregion: Custom PPO; Depth + Spectrogram based task
 
-    # region: Custom PPO + Perceiver GWT Fair architecture Grad Dbg; Depth + Spectrogram based task
+    # region: Custom PPO + Perceiver GWT Fair architecture no FF Grad Dbg; Depth + Spectrogram based task
     # export MASTER_PORT=8748 # Default port is 8738
     # for seed in 111; do
     #     (sleep 1s && python ppo_av_nav.py \
-    #         --exp-name "ppo_av_nav__depth_spectro__pgwt__dpth_1_nlats_8_latdim_64__blowup_dbg" \
+    #         --exp-name "ppo_av_nav__depth_spectro__pgwt__dpth_1_nlats_8_latdim_64__noff_blowup_dbg" \
     #         --agent-type "perceiver-gwt" \
     #         --pgwt-depth 1 \
     #         --pgwt-num-latents 8 \
     #         --pgwt-latent-dim 64 \
+    #         --pgwt-ff False \
     #         --config-path "env_configs/audiogoal_depth.yaml" \
     #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
     #         --logdir-prefix $LOGDIR_PREFIX \
     #         --seed $seed \
     #     ) & # >& /dev/null &
     # done
-    # endregion: Custom PPO + Perceiver GWT Fair architecture Grad Dbg; Depth + Spectrogram based task
-    
+    # endregion: Custom PPO + Perceiver GWT Fair architecture no FF Grad Dbg; Depth + Spectrogram based task
+
     # region: Custom PPO + Perceiver GWT Fair architecture Grad Dbg Num envs 5 with FF encodeing; Depth + Spectrogram based task
     # export MASTER_PORT=8748 # Default port is 8738
     for seed in 111; do
         (sleep 1s && python ppo_av_nav.py \
-            --exp-name "ppo_av_nav__depth_spectro__pgwt__dpth_1_nlats_8_latdim_64__ff_maxfreq_10_num_freq_6__blowup_dbg" \
+            --exp-name "ppo_av_nav__depth_spectro__pgwt__dpth_1_nlats_8_latdim_64_crossheads_4_selfheads_4__ff_maxfreq_10_num_freq_6__blowup_dbg" \
             --agent-type "perceiver-gwt" \
             --pgwt-depth 1 \
             --pgwt-num-latents 8 \
             --pgwt-latent-dim 64 \
+            --pgwt-cross-heads 4 \
+            --pgwt-latent-heads 4 \
             --pgwt-ff True \
             --config-path "env_configs/audiogoal_depth.yaml" \
             --wandb --wandb-project ss-hab --wandb-entity dosssman \
@@ -59,6 +62,24 @@ fi
             --seed $seed \
         ) & # >& /dev/null &
     done
+    # endregion: Custom PPO + Perceiver GWT Fair architecture Grad Dbg Num envs 5 with FF encodeing; Depth + Spectrogram based task
+
+    # region: Custom PPO + Perceiver GWT Fair architecture Grad Dbg Num envs 5 with FF encodeing; Depth + Spectrogram based task
+    # export MASTER_PORT=8748 # Default port is 8738
+    # for seed in 111; do
+    #     (sleep 1s && python ppo_av_nav.py \
+    #         --exp-name "ppo_av_nav__depth_spectro__pgwt__dpth_1_nlats_8_latdim_64__ff_maxfreq_10_num_freq_6__blowup_dbg" \
+    #         --agent-type "perceiver-gwt" \
+    #         --pgwt-depth 1 \
+    #         --pgwt-num-latents 8 \
+    #         --pgwt-latent-dim 64 \
+    #         --pgwt-ff True \
+    #         --config-path "env_configs/audiogoal_depth.yaml" \
+    #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #         --logdir-prefix $LOGDIR_PREFIX \
+    #         --seed $seed \
+    #     ) & # >& /dev/null &
+    # done
     # endregion: Custom PPO + Perceiver GWT Fair architecture Grad Dbg Num envs 5 with FF encodeing; Depth + Spectrogram based task
 
     # region: Custom PPO + Perceiver GWT Fair architecture Grad Dbg Grad Norm 10.0  Depth + Spectrogram based task
