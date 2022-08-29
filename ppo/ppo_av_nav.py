@@ -491,7 +491,10 @@ def main():
                 "old_approx_kl": old_approx_kl.item(),
                 "approx_kl": approx_kl.item(),
                 "clipfrac": np.mean(clipfracs),
-                "explained_variance": explained_var
+                "explained_variance": explained_var,
+                "state_value_avg": b_values.mean(),
+                "advantage_avg": b_advantages.mean(),
+                "returns_avg": b_returns.mean()
             }
             tblogger.log_stats(train_stats, global_step, prefix="train")
 
