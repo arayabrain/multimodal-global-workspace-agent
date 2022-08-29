@@ -468,6 +468,7 @@ def main():
 
                 optimizer.zero_grad()
                 loss.backward()
+                grad_norms_preclip = agent.get_grad_norms()
                 if args.max_grad_norm > 0:
                     nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
                 optimizer.step()
@@ -497,6 +498,7 @@ def main():
             # Logging grad norms
             # TODO: log gradients prior to clipping in the same experiment.
             tblogger.log_stats(agent.get_grad_norms(), global_step, prefix="debug/grad_norms")
+            tblogger.log_stats(grad_norms_preclip, global_step, prefix="debug/grad_norms_preclip")
     
     # Clean up
     envs.close()
