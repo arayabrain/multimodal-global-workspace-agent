@@ -45,6 +45,26 @@ fi
     # done
     # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA No Embed; Depth + Spectrogram SS1
 
+    # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Modality Embed 128; Depth + Spectrogram SS1
+    # export MASTER_PORT=8748 # Default port is 8738
+    # for seed in 111; do
+    #     (sleep 1s && python ppo_av_nav.py \
+    #         --total-steps 10000000 \
+    #         --exp-name "ppo_av_nav__ss1_depth_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_modembed_128" \
+    #         --agent-type "perceiver-gwt-gwwm" \
+    #         --pgwt-depth 1 \
+    #         --pgwt-num-latents 8 \
+    #         --pgwt-latent-dim 64 \
+    #         --pgwt-use-sa False \
+    #         --pgwt-mod-embed 128 \
+    #         --config-path "env_configs/audiogoal_depth_nocont.yaml" \
+    #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #         --logdir-prefix $LOGDIR_PREFIX \
+    #         --seed $seed \
+    #     ) & # >& /dev/null &
+    # done
+    # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Modality Embed 128; Depth + Spectrogram SS1
+
     # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA No Embed Max Grad Norm 10; Depth + Spectrogram SS1
     # export MASTER_PORT=8748 # Default port is 8738
     # for seed in 111; do
@@ -69,6 +89,7 @@ fi
     # export MASTER_PORT=8748 # Default port is 8738
     # for seed in 111; do
     #     (sleep 1s && python ppo_av_nav.py \
+    #         --total-steps 10000000 \
     #         --exp-name "ppo_av_nav__ss1_depth_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_WithSA_modembed_0" \
     #         --agent-type "perceiver-gwt-gwwm" \
     #         --pgwt-depth 1 \
@@ -83,6 +104,27 @@ fi
     #     ) & # >& /dev/null &
     # done
     # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. WithSA No Embed; Depth + Spectrogram SS1
+
+    # region: Custom PPO + Perceiver GWT GWWM Basic Arch. WithSA No Embed MaxGradNorm 10; Depth + Spectrogram SS1
+    # export MASTER_PORT=8748 # Default port is 8738
+    # for seed in 111; do
+    #     (sleep 1s && python ppo_av_nav.py \
+    #         --total-steps 10000000 \
+    #         --exp-name "ppo_av_nav__ss1_depth_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_WithSA_modembed_0_maxgradnorm_10" \
+    #         --agent-type "perceiver-gwt-gwwm" \
+    #         --pgwt-depth 1 \
+    #         --pgwt-num-latents 8 \
+    #         --pgwt-latent-dim 64 \
+    #         --pgwt-use-sa True \
+    #         --pgwt-mod-embed 0 \
+    #         --max-grad-norm 10 \
+    #         --config-path "env_configs/audiogoal_depth_nocont.yaml" \
+    #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #         --logdir-prefix $LOGDIR_PREFIX \
+    #         --seed $seed \
+    #     ) & # >& /dev/null &
+    # done
+    # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. WithSA No Embed MaxGradNorm 10; Depth + Spectrogram SS1
 
     ### PPO Perceiver GWT based on LucidRains, likely mis-implemented the Attention mechanism
 

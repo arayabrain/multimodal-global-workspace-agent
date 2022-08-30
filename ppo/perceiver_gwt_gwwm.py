@@ -91,7 +91,7 @@ class Perceiver_GWT_GWWM(nn.Module):
         self.use_sa = use_sa
         
         # Cross Attention
-        self.ca = CrossAttention(num_latents * latent_dim, input_dim, skip_q=False) # skip_q if not using SA
+        self.ca = CrossAttention(num_latents * latent_dim, input_dim + mod_embed * 2, skip_q=False) # skip_q if not using SA
         # Self Attention
         if self.use_sa:
             self.sa = SelfAttention(num_latents * latent_dim)
