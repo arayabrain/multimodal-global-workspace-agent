@@ -611,10 +611,14 @@ class Perceiver_GWT_ActorCritic(nn.Module):
             ff_dropout = 0.,
             self_per_cross_attn = 1,
             weight_tie_layers = config.pgwt_weight_tie_layers, # Default: False
+            # Fourier Features related
             max_freq = config.pgwt_max_freq, # Default: 10.
             num_freq_bands = config.pgwt_num_freq_bands, # Default: 6
             fourier_encode_data = config.pgwt_ff,
             input_axis = 1,
+            # Modality embedding related
+            mod_embed = config.pgwt_mod_embed, # Using / dimension of mdality embeddings
+            hidden_size = config.hidden_size,
             use_sa = config.pgwt_use_sa
         )
 

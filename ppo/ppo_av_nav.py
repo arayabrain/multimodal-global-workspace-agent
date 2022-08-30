@@ -49,10 +49,10 @@ def main():
     CUSTOM_ARGS = [
         # General hyepr parameters
         get_arg_dict("seed", int, 111),
-        get_arg_dict("total-steps", int, 10_000_000),
+        get_arg_dict("total-steps", int, 1_000_000),
         
         # SS env config
-        get_arg_dict("config-path", str, "env_configs/audiogoal_depth.yaml"),
+        get_arg_dict("config-path", str, "env_configs/audiogoal_depth_nocont.yaml"),
 
         # PPO Hyper parameters
         get_arg_dict("num-envs", int, 10), # Number of parallel envs. 10 by default
@@ -86,10 +86,12 @@ def main():
         get_arg_dict("pgwt-cross-dim-head", int, 64),
         get_arg_dict("pgwt-latent-dim-head", int, 64),
         get_arg_dict("pgwt-weight-tie-layers", bool, False, metatype="bool"),
-        get_arg_dict("pgwt-ff", bool, True, metatype="bool"),
+        get_arg_dict("pgwt-ff", bool, False, metatype="bool"),
         get_arg_dict("pgwt-num-freq-bands", int, 6),
         get_arg_dict("pgwt-max-freq", int, 10.),
         get_arg_dict("pgwt-use-sa", bool, True, metatype="bool"),
+        ## Peceiver Modality Embedding related
+        get_arg_dict("pgwt-mod-embed", int, 0), # Learnable modality embeddings
 
         # Logging params
         # NOTE: While supported, video logging is expensive because the RGB generation in the

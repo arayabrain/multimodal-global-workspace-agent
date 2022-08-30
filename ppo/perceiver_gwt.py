@@ -146,14 +146,18 @@ class Perceiver_GWT(nn.Module):
         num_freq_bands = 6,
         fourier_encode_data = False,
         input_axis = 1,
-        use_ca = True, # Well, CA should always be used ...
+        # Modality embeddings realted
+        hidden_size = 512, # Dim of the visual / audio encoder outputs
+        mod_embed = 0, # Dimensio of learned modality embeddings
         use_sa = True
     ):
         super().__init__()
         self.input_channels = input_channels
-        self.use_ca = use_ca
+        self.mod_embed = mod_embed
+        self.hidden_size = hidden_size
         self.use_sa = use_sa
-        assert use_ca or use_sa, f"Neither Cross Attention nor Self Attention seem to be enabled."
+
+        # NOTE: Using FF and modality embedding together ?
 
         # Fourier Encode related
         self.input_axis = input_axis
@@ -163,9 +167,18 @@ class Perceiver_GWT(nn.Module):
         fourier_channels = (input_axis * ((num_freq_bands * 2) + 1)) if fourier_encode_data else 0
         input_dim = fourier_channels + input_channels
 
+        # Modality embedding
+        if self.mod_embed:
+            self.modality_embeddings = nn.Parameter(
+                torch.randn(1, mod_embed * 2)
+            )
+        
         # Latent vector, supposedly equivalent to an RNN's hidden state
         if latent_type == "randn":
             self.latents = torch.randn(num_latents, latent_dim)
+            # As per original paper
+            with th.no_grad():
+                self.latents.normal_(0.0, 0.02).clamp_(-2.0,2.0)
         elif latent_type == "zeros":
             self.latents = torch.zeros(num_latents, latent_dim)
         
@@ -227,6 +240,13 @@ class Perceiver_GWT(nn.Module):
         return x_list, latents_list
 
     def single_forward(self, data, prev_latents, masks):
+        if self.mod_embed:
+            b = data.shape[0]
+            data = th.cat([
+                data[:, :self.hidden_size], self.modality_embeddings[:, :self.mod_embed].repeat(b, 1), # Audio feats and embeddings
+                data[:, self.hidden_size:], self.modality_embeddings[:, self.mod_embed:].repeat(b, 1), # Video feats and embeddings
+            ], dim=-1)
+        
         if data.dim() == 2:
             data = data[:, :, None] # From [B, feat_dim] -> [B ,feat_dim, 1]
         
