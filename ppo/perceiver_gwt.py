@@ -169,9 +169,7 @@ class Perceiver_GWT(nn.Module):
 
         # Modality embedding
         if self.mod_embed:
-            self.modality_embeddings = nn.Parameter(
-                torch.randn(1, mod_embed * 2)
-            )
+            self.modality_embeddings = nn.Parameter(0.1 * torch.randn(1, mod_embed * 2))
         
         # Latent vector, supposedly equivalent to an RNN's hidden state
         if latent_type == "randn":
@@ -248,7 +246,9 @@ class Perceiver_GWT(nn.Module):
             ], dim=-1)
         
         if data.dim() == 2:
-            data = data[:, :, None] # From [B, feat_dim] -> [B ,feat_dim, 1]
+            # data = data[:, :, None] # From [B, feat_dim] -> [B ,feat_dim, 1]
+            # data = data[:, None, :] # [B, feat_dim] -> [B, 1, feat_dim]
+            pass
         
         b, *axis, _, device, dtype = *data.shape, data.device, data.dtype
         # assert len(axis) == self.input_axis, 'input data must have the right number of axis'
@@ -264,7 +264,7 @@ class Perceiver_GWT(nn.Module):
             data = torch.cat((data, enc_pos), dim = -1)
 
         # concat to channels of data and flatten axis
-        data = rearrange(data, 'b ... d -> b (...) d')
+        # data = rearrange(data, 'b ... d -> b (...) d')
 
         # If the current step is the start of a new episode,
         # the the mask will contain 0

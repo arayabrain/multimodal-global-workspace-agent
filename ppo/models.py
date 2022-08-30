@@ -598,7 +598,7 @@ class Perceiver_GWT_ActorCritic(nn.Module):
 
         self.state_encoder = Perceiver_GWT(
             depth = config.pgwt_depth, # Our default: 4; Perceiver default: 6
-            input_channels = 1, # Input is os shape [B, hidden_size * 2], which is then convereted to [B, hidden_size, 1] with single channel
+            input_channels = config.hidden_size * 2, # ???
             latent_type = config.pgwt_latent_type,
             latent_learned = config.pgwt_latent_learned,
             num_latents = config.pgwt_num_latents, # Our default: 32, Perceiver: 512
@@ -702,11 +702,15 @@ class Perceiver_GWT_GWWM_ActorCritic(Perceiver_GWT_ActorCritic):
             latent_learned = config.pgwt_latent_learned,
             num_latents = config.pgwt_num_latents, # Our default: 32, Perceiver: 512
             latent_dim = config.pgwt_latent_dim, # Our default: 32, Perceiver default: 512
-            cross_heads = config.pgwt_cross_heads, # Default: 1
-            latent_heads = config.pgwt_latent_heads, # Default: 8
-            cross_dim_head = config.pgwt_cross_dim_head, # Default: 64
-            latent_dim_head = config.pgwt_latent_dim_head, # Default: 64
-            weight_tie_layers = config.pgwt_weight_tie_layers # Default: False
+            # cross_heads = config.pgwt_cross_heads, # Default: 1
+            # latent_heads = config.pgwt_latent_heads, # Default: 8
+            # cross_dim_head = config.pgwt_cross_dim_head, # Default: 64
+            # latent_dim_head = config.pgwt_latent_dim_head, # Default: 64
+            # self_per_cross_attn = 1,
+            # Modality embedding related
+            mod_embed = config.pgwt_mod_embed, # Using / dimension of mdality embeddings
+            hidden_size = config.hidden_size,
+            use_sa = config.pgwt_use_sa
         )
 
 class ActorCritic_AudioCLIP_AudioEncoder(ActorCritic):

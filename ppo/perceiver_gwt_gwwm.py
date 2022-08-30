@@ -71,38 +71,46 @@ class Perceiver_GWT_GWWM(nn.Module):
         latent_learned = True,
         num_latents = 8,
         latent_dim = 64,
-        cross_heads = 1,
-        latent_heads = 8,
-        cross_dim_head = 64,
-        latent_dim_head = 64,
-        attn_dropout = 0.,
-        ff_dropout = 0.,
-        self_per_cross_attn = 1, # Number of self attention blocks per cross attn.
-        weight_tie_layers = False
+        # cross_heads = 1,
+        # latent_heads = 8,
+        # cross_dim_head = 64,
+        # latent_dim_head = 64,
+        # self_per_cross_attn = 1, # Number of self attention blocks per cross attn.
+        # Modality embeddings realted
+        hidden_size = 512, # Dim of the visual / audio encoder outputs
+        mod_embed = 0, # Dimensio of learned modality embeddings
+        use_sa = True
     ):
         super().__init__()
         self.input_dim = input_dim
         self.num_latents = num_latents # N
         self.latent_dim = latent_dim # D
 
-        # Self Attention
-        self.sa = SelfAttention(num_latents * latent_dim)
+        self.mod_embed = mod_embed
+        self.hidden_size = hidden_size
+        self.use_sa = use_sa
+        
         # Cross Attention
         self.ca = CrossAttention(num_latents * latent_dim, input_dim, skip_q=False) # skip_q if not using SA
+        # Self Attention
+        if self.use_sa:
+            self.sa = SelfAttention(num_latents * latent_dim)
         # self.decoder = CrossAttention(self.h_size, self.s_size, skip_q=True)
 
+        # Modality embedding
+        if self.mod_embed:
+            self.modality_embeddings = nn.Parameter(0.1 * torch.randn(1, mod_embed * 2))
+        
         # Latent vector, supposedly equivalent to an RNN's hidden state
         if latent_type == "randn":
             self.latents = torch.randn(num_latents, latent_dim)
+            # As per original paper
+            with th.no_grad():
+                self.latents.normal_(0.0, 0.02).clamp_(-2.0,2.0)
         elif latent_type == "zeros":
             self.latents = torch.zeros(num_latents, latent_dim)
-        else:
-            raise NotImplementedError(f"Unsupported Perceiver Latent type: {latent_type}")
         
         self.latents = nn.Parameter(self.latents, requires_grad=latent_learned)
-        # Special PerceiverWorkspace GWWM project
-        with th.no_grad():
-            self.latents.normal_(0.0, 0.02).clamp_(-2.0,2.0)
 
     def seq_forward(self, data, prev_latents, masks):
         # TODO: a more optimal method to process sequences of same length together ?
@@ -129,12 +137,19 @@ class Perceiver_GWT_GWWM(nn.Module):
         return x_list, latents_list
 
     def single_forward(self, data, prev_latents, masks):
+        if self.mod_embed:
+            b = data.shape[0]
+            data = th.cat([
+                data[:, :self.hidden_size], self.modality_embeddings[:, :self.mod_embed].repeat(b, 1), # Audio feats and embeddings
+                data[:, self.hidden_size:], self.modality_embeddings[:, self.mod_embed:].repeat(b, 1), # Video feats and embeddings
+            ], dim=-1)
+
         b, device, dtype = data.shape[0], data.device, data.dtype
         
         # If the current step is the start of a new episode,
         # the the mask will contain 0
         prev_latents = masks[:, :, None] * prev_latents + \
-            (1. - masks[:, :, None]) * repeat(self.latents.clone(), 'n d -> b n d', b = b)
+            (1. - masks[:, :, None]) * repeat(self.latents, 'n d -> b n d', b = b)
 
         x = prev_latents.flatten(start_dim=1) # [B, N, D] -> [B, N * D]
         
@@ -142,7 +157,8 @@ class Perceiver_GWT_GWWM(nn.Module):
         x, _ = self.ca(x, data) # x: [B, N * D], x_weights: [B, ???]
 
         # Self Attention
-        x, _ = self.sa(x) # x: [B, N * D]
+        if self.use_sa:
+            x, _ = self.sa(x) # x: [B, N * D]
 
         return x, x.view(b, self.num_latents, self.latent_dim)
 
