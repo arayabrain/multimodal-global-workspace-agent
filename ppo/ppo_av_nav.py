@@ -34,6 +34,9 @@ def tensorize_obs_dict(obs, device, observations=None, rollout_step=None):
     obs_th = {}
     for obs_field, _ in obs[0].items():
         v_th = th.Tensor(np.array([step_obs[obs_field] for step_obs in obs], dtype=np.float32)).to(device)
+        # in SS1.0, the dcepth observations comes as [B, 128, 128, 1, 1], so fix that
+        if obs_field == "depth" and v_th.dim() == 5:
+            v_th = v_th.squeeze(-1)
         obs_th[obs_field] = v_th
         # Special case when doing the rollout, also stores the 
         if observations is not None:
@@ -134,6 +137,7 @@ def main():
     # Overriding some envs parametes from the .yaml env config
     env_config.defrost()
     env_config.NUM_PROCESSES = args.num_envs # Corresponds to number of envs, makes script startup faster for debugs
+    # env_config.CONTINUOUS = args.env_continuous
     ## In caes video saving is enabled, make sure there is also the rgb videos
     agent_extra_rgb = False
     if args.save_videos:
