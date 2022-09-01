@@ -26,7 +26,8 @@ from ss_baselines.common.utils import images_to_video_with_audio
 
 # Custom ActorCritic agent for PPO
 from models import ActorCritic, ActorCritic_DeepEthologyVirtualRodent, \
-    Perceiver_GWT_ActorCritic, PerceiverIO_GWT_ActorCritic, Perceiver_GWT_GWWM_ActorCritic
+    Perceiver_GWT_ActorCritic, PerceiverIO_GWT_ActorCritic, Perceiver_GWT_GWWM_ActorCritic, \
+    Perceiver_GWT_AttGRU_ActorCritic, Perceiver_GWT_GWWM_Legacy_ActorCritic
 
 # Helpers
 # Tensorize current observation, store to rollout data
@@ -72,7 +73,10 @@ def main():
         get_arg_dict("optim-wd", float, 0), # weight decay for adam optim
         ## Agent network params
         get_arg_dict("agent-type", str, "ss-default", metatype="choice",
-            choices=["ss-default", "perceiver-gwt", "perceiverio-gwt", "perceiver-gwt-gwwm", "deep-etho"]),
+            choices=["ss-default", "deep-etho",
+                     "perceiver-gwt", "perceiverio-gwt", 
+                     "perceiver-gwt-gwwm", "perceiver-gwt-attgru",
+                     "perceiver-gwt-gwwm-legacy"]),
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
         ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
         get_arg_dict("pgwt-latent-type", str, "randn", metatype="choice",
@@ -89,7 +93,7 @@ def main():
         get_arg_dict("pgwt-ff", bool, False, metatype="bool"),
         get_arg_dict("pgwt-num-freq-bands", int, 6),
         get_arg_dict("pgwt-max-freq", int, 10.),
-        get_arg_dict("pgwt-use-sa", bool, True, metatype="bool"),
+        get_arg_dict("pgwt-use-sa", bool, False, metatype="bool"),
         ## Peceiver Modality Embedding related
         get_arg_dict("pgwt-mod-embed", int, 0), # Learnable modality embeddings
 
@@ -172,6 +176,12 @@ def main():
     elif args.agent_type == "perceiver-gwt-gwwm":
         agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space,
             args, extra_rgb=agent_extra_rgb).to(device)
+    elif args.agent_type == "perceiver-gwt-attgru":
+        agent = Perceiver_GWT_AttGRU_ActorCritic(single_observation_space, single_action_space,
+            args, extra_rgb=agent_extra_rgb).to(device)
+    elif args.agent_type == "perceiver-gwt-gwwm-legacy":
+        agent = Perceiver_GWT_GWWM_Legacy_ActorCritic(single_observation_space, single_action_space,
+            args, extra_rgb=agent_extra_rgb).to(device)
     elif args.agent_type == "deep-etho":
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
         # TODO: support for storing the rnn_hidden_statse, so that the policy 
@@ -212,8 +222,8 @@ def main():
     masks = 1. - done_th[:, None]
     if args.agent_type == "ss-default":
         rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size), device=device)
-    elif args.agent_type in ["perceiver-gwt", "perceiverio-gwt", "perceiver-gwt-gwwm"]:
-        rnn_hidden_state = einops.repeat(agent.state_encoder.latents, 'n d -> b n d', b = args.num_envs)
+    elif args.agent_type in ["perceiver-gwt", "perceiverio-gwt", "perceiver-gwt-gwwm", "perceiver-gwt-attgru", "perceiver-gwt-gwwm-legacy"]:
+        rnn_hidden_state = agent.state_encoder.latents.repeat(args.num_envs, 1, 1)
     elif args.agent_type == "deep-etho":
         rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size * 2), device=device)
     else:
@@ -397,12 +407,12 @@ def main():
         for k, v in observations.items():
             b_observations[k] = th.flatten(v, start_dim=0, end_dim=1)
         # b_observations = observations.reshape()
-        b_logprobs = logprobs.reshape(-1) # From [B, T] -> [B * T]
-        b_actions = actions.reshape(-1) # From [B, T] -> [B * T]
-        b_dones = dones.reshape(-1) # From [B, T] -> [B * T]
-        b_advantages = advantages.reshape(-1) # From [B, T] -> [B * T]
-        b_returns = returns.reshape(-1) # From [B, T] -> [B * T]
-        b_values = values.reshape(-1) # From [B, T] -> [B * T]
+        b_logprobs = logprobs.reshape(-1) # From [T, B] -> [T * B]
+        b_actions = actions.reshape(-1) # From [T, B] -> [T * B]
+        b_dones = dones.reshape(-1) # From [T, B] -> [T * B]
+        b_advantages = advantages.reshape(-1) # From [T, B] -> [T * B]
+        b_returns = returns.reshape(-1) # From [T, B] -> [T * B]
+        b_values = values.reshape(-1) # From [T, B] -> [T * B]
         
         # PPO Update Phase: actor and critic network updates
         assert args.num_envs % args.num_minibatches == 0
@@ -426,16 +436,16 @@ def main():
                 # NOTE: should the RNN hit states be reused when recomputiong ?
                 if args.agent_type in ["ss-default"]:
                     b_init_rnn_state = init_rnn_state[:, mbenvinds]
-                elif args.agent_type in ["perceiver-gwt", "perceiverio-gwt", "perceiver-gwt-gwwm"]:
+                elif args.agent_type in ["perceiver-gwt", "perceiverio-gwt", "perceiver-gwt-gwwm", "perceiver-gwt-attgru", "perceiver-gwt-gwwm-legacy"]:
                     b_init_rnn_state = init_rnn_state[mbenvinds, :, :]
                 else:
                     raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
                 
-                _, newlogprob, entropy, newvalue, _ = \
+                b_new_actions, newlogprob, entropy, newvalue, b_state_feats = \
                     agent.act(mb_observations, b_init_rnn_state,
                         masks=1-b_dones[mb_inds], actions=b_actions[mb_inds])
 
-                newlogprob = newlogprob.sum(-1) # From [B * T, 1] -> [B * T]
+                newlogprob = newlogprob.sum(-1) # From [B * T, 1] -> S[B * T]
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
@@ -504,8 +514,36 @@ def main():
             }
             tblogger.log_stats(train_stats, global_step, prefix="train")
 
+            # Additional dbg stats
+            debug_stats = {
+                # Additional debug stats
+                "b_state_feats_avg": b_state_feats.flatten(start_dim=1).mean().item(),
+                "init_rnn_states_avg": init_rnn_state.flatten(start_dim=1).mean().item(),
+            }
+            if args.pgwt_mod_embed:
+                debug_stats["mod_embed_avg"] = agent.state_encoder.modality_embeddings.mean().item()
+
+            tblogger.log_stats(debug_stats, global_step, prefix="debug")
+            
+            # Logging range of values for various components
+            histograms = {
+                "b_logprobs": b_logprobs.detach().cpu().numpy(),
+                "b_probs": b_logprobs.detach().exp().cpu().numpy(),
+                "b_actions": b_actions.detach().cpu().numpy(),
+                "b_values": b_values.detach().cpu().numpy(),
+                "b_advantages": b_advantages.detach().cpu().numpy(),
+                "b_returns": b_returns.detach().cpu().numpy(),
+                "init_rnn_state": init_rnn_state.flatten(start_dim=1).detach().cpu().numpy(),
+                "b_state_feats": b_state_feats.flatten(start_dim=1).detach().cpu().numpy(),
+                "b_new_actions": b_new_actions.detach().cpu().numpy(),
+                "b_new_values": newvalue.detach().cpu().numpy()
+            }
+            if args.pgwt_mod_embed:
+                histograms["mod_embed"] = agent.state_encoder.modality_embeddings.detach().cpu().numpy()
+            
+            tblogger.log_histograms(histograms, global_step, prefix="debug/hists")
+            
             # Logging grad norms
-            # TODO: log gradients prior to clipping in the same experiment.
             tblogger.log_stats(agent.get_grad_norms(), global_step, prefix="debug/grad_norms")
             tblogger.log_stats(grad_norms_preclip, global_step, prefix="debug/grad_norms_preclip")
     

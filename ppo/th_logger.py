@@ -187,6 +187,10 @@ class TBXLogger(object):
 
         self.tb_writer.add_histogram( fieldname, hist_data, step)
     
+    def log_histograms(self, hist_dict, step, prefix=None):
+        for k, v in hist_dict.items():
+            self.log_histogram(k, v, step, prefix=prefix)
+
     # Log resume.json for resume support
     def get_git_hash(self):
         repo = git.Repo(search_parent_directories=True)
