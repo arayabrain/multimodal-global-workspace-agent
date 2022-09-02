@@ -695,8 +695,7 @@ class PerceiverIO_GWT_ActorCritic(Perceiver_GWT_ActorCritic):
             weight_tie_layers = config.pgwt_weight_tie_layers # Default: False
         )
 
-
-from perceiver_gwt_gwwm import Perceiver_GWT_GWWM, Perceiver_GWT_AttGRU, Perceiver_GWT_GWWM_Legacy
+from perceiver_gwt_gwwm import Perceiver_GWT_GWWM, Perceiver_GWT_AttGRU
 class Perceiver_GWT_GWWM_ActorCritic(Perceiver_GWT_ActorCritic):
     def __init__(self, observation_space, action_space, config, extra_rgb=False):
         super().__init__(observation_space, action_space, config, extra_rgb)
@@ -717,41 +716,8 @@ class Perceiver_GWT_GWWM_ActorCritic(Perceiver_GWT_ActorCritic):
             # Modality embedding related
             mod_embed = config.pgwt_mod_embed, # Using / dimension of mdality embeddings
             hidden_size = config.hidden_size,
-            use_sa = config.pgwt_use_sa
-        )
-
-    def get_grad_norms(self):
-        modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution", "critic"]
-        grad_norm_dict = {mod_name: compute_grad_norm(self.__getattr__(mod_name)) for mod_name in modules}
-        # More specific grad norms for the Perceiver GWT GWWM
-        if self.state_encoder.mod_embed:
-            grad_norm_dict["mod_embed"] = compute_grad_norm(self.state_encoder.modality_embeddings)
-        if self.state_encoder.latent_learned:
-            grad_norm_dict["init_rnn_states"] = compute_grad_norm(self.state_encoder.latents)
-        
-        return grad_norm_dict
-
-class Perceiver_GWT_GWWM_Legacy_ActorCritic(Perceiver_GWT_ActorCritic):
-    def __init__(self, observation_space, action_space, config, extra_rgb=False):
-        super().__init__(observation_space, action_space, config, extra_rgb)
-        self.config = config
-
-        # Override the state encoder with a custom PerceiverIO
-        self.state_encoder = Perceiver_GWT_GWWM_Legacy(
-            input_dim = config.hidden_size,
-            latent_type = config.pgwt_latent_type,
-            latent_learned = config.pgwt_latent_learned,
-            num_latents = config.pgwt_num_latents, # Our default: 32, Perceiver: 512
-            latent_dim = config.pgwt_latent_dim, # Our default: 32, Perceiver default: 512
-            cross_heads = config.pgwt_cross_heads, # Default: 1
-            latent_heads = config.pgwt_latent_heads, # Default: 8
-            # cross_dim_head = config.pgwt_cross_dim_head, # Default: 64
-            # latent_dim_head = config.pgwt_latent_dim_head, # Default: 64
-            # self_per_cross_attn = 1,
-            # Modality embedding related
-            mod_embed = config.pgwt_mod_embed, # Using / dimension of mdality embeddings
-            hidden_size = config.hidden_size,
-            use_sa = config.pgwt_use_sa
+            use_sa = config.pgwt_use_sa,
+            ca_prev_latents = config.pgwt_ca_prev_latents
         )
 
     def get_grad_norms(self):

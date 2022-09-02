@@ -66,10 +66,11 @@
                 "--config-path", "env_configs/audiogoal_depth_nocont.yaml",
                 "--num-envs", "2",
                 "--num-steps", "20",
-                "--agent-type", "perceiver-gwt-gwwm-legacy",
+                "--agent-type", "perceiver-gwt-gwwm",
                 "--pgwt-depth", "1",
                 "--pgwt-mod-embed", "0",
                 "--pgwt-use-sa", "False",
+                "--pgwt-ca-prev-latents", "True",
 
                 // Logging config
                 "--logdir-prefix", "/tmp/ppo-av-nav-dbg",

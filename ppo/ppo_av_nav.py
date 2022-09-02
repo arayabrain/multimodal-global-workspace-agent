@@ -26,8 +26,7 @@ from ss_baselines.common.utils import images_to_video_with_audio
 
 # Custom ActorCritic agent for PPO
 from models import ActorCritic, ActorCritic_DeepEthologyVirtualRodent, \
-    Perceiver_GWT_ActorCritic, PerceiverIO_GWT_ActorCritic, Perceiver_GWT_GWWM_ActorCritic, \
-    Perceiver_GWT_AttGRU_ActorCritic, Perceiver_GWT_GWWM_Legacy_ActorCritic
+    Perceiver_GWT_GWWM_ActorCritic, Perceiver_GWT_AttGRU_ActorCritic
 
 # Helpers
 # Tensorize current observation, store to rollout data
@@ -48,7 +47,7 @@ def tensorize_obs_dict(obs, device, observations=None, rollout_step=None):
 def main():
     # region: Generating additional hyparams
     CUSTOM_ARGS = [
-        # General hyepr parameters
+        # General hyper parameters
         get_arg_dict("seed", int, 111),
         get_arg_dict("total-steps", int, 1_000_000),
         
@@ -74,9 +73,7 @@ def main():
         ## Agent network params
         get_arg_dict("agent-type", str, "ss-default", metatype="choice",
             choices=["ss-default", "deep-etho",
-                     "perceiver-gwt", "perceiverio-gwt", 
-                     "perceiver-gwt-gwwm", "perceiver-gwt-attgru",
-                     "perceiver-gwt-gwwm-legacy"]),
+                     "perceiver-gwt-gwwm", "perceiver-gwt-attgru"]),
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
         ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
         get_arg_dict("pgwt-latent-type", str, "randn", metatype="choice",
@@ -96,6 +93,8 @@ def main():
         get_arg_dict("pgwt-use-sa", bool, False, metatype="bool"),
         ## Peceiver Modality Embedding related
         get_arg_dict("pgwt-mod-embed", int, 0), # Learnable modality embeddings
+        ## Additional modalities
+        get_arg_dict("pgwt-ca-prev-latents", bool, False, metatype="bool"), # if True, passes the prev latent to CA as KV input data
 
         # Logging params
         # NOTE: While supported, video logging is expensive because the RGB generation in the
@@ -104,7 +103,7 @@ def main():
         get_arg_dict("save-model", bool, True, metatype="bool"),
         get_arg_dict("log-sampling-stats-every", int, int(1.5e3)), # Every X frames || steps sampled
         get_arg_dict("log-training-stats-every", int, int(10)), # Every X model update
-        get_arg_dict("logdir-prefix", str, "./logs/"), # Overrides the default one
+        get_arg_dict("logdir-prefix", str, "./logs/") # Overrides the default one
     ]
     args = generate_args(CUSTOM_ARGS)
 
@@ -167,20 +166,11 @@ def main():
     if args.agent_type == "ss-default":
         agent = ActorCritic(single_observation_space, single_action_space,
             args.hidden_size, extra_rgb=agent_extra_rgb).to(device)
-    elif args.agent_type == "perceiver-gwt":
-        agent = Perceiver_GWT_ActorCritic(single_observation_space, single_action_space,
-            args, extra_rgb=agent_extra_rgb).to(device)
-    elif args.agent_type == "perceiverio-gwt":
-        agent = PerceiverIO_GWT_ActorCritic(single_observation_space, single_action_space,
-            args, extra_rgb=agent_extra_rgb).to(device)
     elif args.agent_type == "perceiver-gwt-gwwm":
         agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space,
             args, extra_rgb=agent_extra_rgb).to(device)
     elif args.agent_type == "perceiver-gwt-attgru":
         agent = Perceiver_GWT_AttGRU_ActorCritic(single_observation_space, single_action_space,
-            args, extra_rgb=agent_extra_rgb).to(device)
-    elif args.agent_type == "perceiver-gwt-gwwm-legacy":
-        agent = Perceiver_GWT_GWWM_Legacy_ActorCritic(single_observation_space, single_action_space,
             args, extra_rgb=agent_extra_rgb).to(device)
     elif args.agent_type == "deep-etho":
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
@@ -222,7 +212,7 @@ def main():
     masks = 1. - done_th[:, None]
     if args.agent_type == "ss-default":
         rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size), device=device)
-    elif args.agent_type in ["perceiver-gwt", "perceiverio-gwt", "perceiver-gwt-gwwm", "perceiver-gwt-attgru", "perceiver-gwt-gwwm-legacy"]:
+    elif args.agent_type in ["perceiver-gwt-gwwm", "perceiver-gwt-attgru"]:
         rnn_hidden_state = agent.state_encoder.latents.repeat(args.num_envs, 1, 1)
     elif args.agent_type == "deep-etho":
         rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size * 2), device=device)
@@ -436,7 +426,7 @@ def main():
                 # NOTE: should the RNN hit states be reused when recomputiong ?
                 if args.agent_type in ["ss-default"]:
                     b_init_rnn_state = init_rnn_state[:, mbenvinds]
-                elif args.agent_type in ["perceiver-gwt", "perceiverio-gwt", "perceiver-gwt-gwwm", "perceiver-gwt-attgru", "perceiver-gwt-gwwm-legacy"]:
+                elif args.agent_type in ["perceiver-gwt-gwwm", "perceiver-gwt-attgru"]:
                     b_init_rnn_state = init_rnn_state[mbenvinds, :, :]
                 else:
                     raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")

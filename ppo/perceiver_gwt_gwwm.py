@@ -88,7 +88,8 @@ class Perceiver_GWT_GWWM(nn.Module):
         # Modality embeddings realted
         hidden_size = 512, # Dim of the visual / audio encoder outputs
         mod_embed = 0, # Dimensio of learned modality embeddings
-        use_sa = False
+        use_sa = False,
+        ca_prev_latents = False
     ):
         super().__init__()
         self.input_dim = input_dim
@@ -100,7 +101,12 @@ class Perceiver_GWT_GWWM(nn.Module):
         self.mod_embed = mod_embed
         self.hidden_size = hidden_size
         self.use_sa = use_sa
+        self.ca_prev_latents = ca_prev_latents
+
         # Cross Attention
+        if self.ca_prev_latents:
+            assert num_latents * latent_dim == input_dim, \
+                f"input_dim=={input_dim} and num_latents * latent_dim=={num_latents * latent_dim} must match"
         self.ca = CrossAttention(latent_dim, input_dim + mod_embed,
             n_heads=cross_heads, skip_q=True) # If not skipping, usually blows
         # Self Attention
@@ -110,7 +116,7 @@ class Perceiver_GWT_GWWM(nn.Module):
 
         # Modality embedding
         if self.mod_embed:
-            self.modality_embeddings = nn.Parameter(torch.randn(1, 2, mod_embed))
+            self.modality_embeddings = nn.Parameter(torch.randn(1, 2 + int(ca_prev_latents), mod_embed))
         
         # Latent vector, supposedly equivalent to an RNN's hidden state
         if latent_type == "randn":
@@ -151,7 +157,11 @@ class Perceiver_GWT_GWWM(nn.Module):
 
         if data.dim() == 2:
             data = data.reshape(b, 2, self.hidden_size) # [B,1024] -> [B,2,512]
-            
+        
+        if self.ca_prev_latents:
+            # NOTE: flattened latents dim must equal dim of audio, vision features
+            data = th.cat([data, prev_latents.flatten(start_dim=1)[:, None, :]], dim=1) # [B, 2, H] and [B, 1, L * D] -> [B, 3, H == L * D]
+
         if self.mod_embed:
             data = th.cat([data, self.modality_embeddings.repeat(b, 1, 1)], dim=2)
         
