@@ -6,11 +6,10 @@
 import os
 import time
 import random
-import einops
 import numpy as np
 import torch as th
 import torch.nn as nn
-from collections import deque, defaultdict
+from collections import deque
 from torchinfo import summary
 
 import tools
@@ -20,6 +19,7 @@ from th_logger import TBXLogger as TBLogger
 # Env deps: Soundspaces and Habitat
 from habitat.datasets import make_dataset
 from ss_baselines.av_nav.config import get_config
+from ss_baselines.savi.config.default import get_config as get_savi_config
 from ss_baselines.common.env_utils import construct_envs
 from ss_baselines.common.environments import get_env_class
 from ss_baselines.common.utils import images_to_video_with_audio
@@ -108,7 +108,11 @@ def main():
     args = generate_args(CUSTOM_ARGS)
 
     # Load environment config
-    env_config = get_config(config_paths=args.config_path)
+    is_SAVi = str.__contains__(args.config_path, "savi")
+    if is_SAVi:
+        env_config = get_savi_config(config_paths=args.config_path)
+    else:
+        env_config = get_config(config_paths=args.config_path)
 
     # Additional PPO overrides
     args.batch_size = int(args.num_envs * args.num_steps)
@@ -277,7 +281,10 @@ def main():
                     # - sna: success_weight_with_num_action
                     for k, v in env_info_dict.items():
                         # Make sure that the info metric is of interest / loggable.
-                        if k in ["distance_to_goal", "normalized_distance_to_goal", "success", "spl", "softspl", "na", "sna"]:
+                        k_list = ["distance_to_goal", "normalized_distance_to_goal", "success", "spl", "softspl", "na", "sna"]
+                        if is_SAVi:
+                            k_list.append("sws") # SAVi metric: "Success When Silent" (???)
+                        if k in k_list:
                             if k not in list(window_episode_stats.keys()):
                                 window_episode_stats[k] = deque(maxlen=env_config.RL.PPO.reward_window_size)
                             
@@ -295,6 +302,8 @@ def main():
                 n_episodes += len(env_done_idxs)
 
             if should_log_sampling_stats(global_step) and (True in done):
+                print(f"Step {global_step} / {args.total_steps}")
+
                 info_stats = {
                     "global_step": global_step,
                     "duration": time.time() - start_time,
@@ -334,7 +343,7 @@ def main():
                 train_video_data_env_0["audiogoal"].append(obs[0]["audiogoal"])
                 # train_video_data_env_0["depth"].append(obs[0]["depth"])
                 # train_video_data_env_0["spectrogram"].append(obs[0]["spectrogram"])
-                train_video_data_env_0["top_down_map"].append(info[0]["top_down_map"]) # info[i]["top_down_map"] is a dict itself
+                # train_video_data_env_0["top_down_map"].append(info[0]["top_down_map"]) # info[i]["top_down_map"] is a dict itself
                 
                 # Log video as soon as the ep in the first env is done
                 if done[0]:
@@ -435,7 +444,7 @@ def main():
                     agent.act(mb_observations, b_init_rnn_state,
                         masks=1-b_dones[mb_inds], actions=b_actions[mb_inds])
 
-                newlogprob = newlogprob.sum(-1) # From [B * T, 1] -> S[B * T]
+                newlogprob = newlogprob.sum(-1) # From [T * B, 1] -> [T * B]
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 

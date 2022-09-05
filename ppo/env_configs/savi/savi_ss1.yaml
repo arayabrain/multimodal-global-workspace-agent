@@ -8,8 +8,7 @@ CHECKPOINT_INTERVAL: 50
 VIDEO_OPTION: []
 VISUALIZATION_OPTION: []
 
-CONTINUOUS: True
-
+# NOTE: the RL config below is ignored by custom PPO script
 RL:
   PPO:
     clip_param: 0.2
