@@ -27,6 +27,18 @@ fi
     # done
     # endregion: Custom PPO; Depth + Spectrogram based task, SS1.0
     
+    # region: Custom PPO; RGB + Spectrogram based task, SS1.0
+    # for seed in 111; do
+    #     (sleep 1s && python ppo_av_nav.py \
+    #         --exp-name "ppo_av_nav__ss1_rgb_spectro" \
+    #         --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+    #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #         --logdir-prefix $LOGDIR_PREFIX \
+    #         --seed $seed \
+    #     ) & # >& /dev/null &
+    # done
+    # endregion: Custom PPO; RGB + Spectrogram based task, SS1.0
+    
     ## CA Only
     # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0; Depth + Spectrogram SS1
     # export MASTER_PORT=8748 # Default port is 8738
@@ -96,6 +108,28 @@ fi
     #     ) & # >& /dev/null &
     # done
     # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; Depth + Spectrogram SS1
+
+    # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1
+    # export MASTER_PORT=8748 # Default port is 8738
+    # for seed in 111; do
+    #     (sleep 1s && python ppo_av_nav.py \
+    #         --exp-name "ppo_av_nav__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats" \
+    #         --agent-type "perceiver-gwt-gwwm" \
+    #         --pgwt-depth 1 \
+    #         --pgwt-num-latents 8 \
+    #         --pgwt-latent-dim 64 \
+    #         --pgwt-cross-heads 1 \
+    #         --pgwt-latent-heads 4 \
+    #         --pgwt-use-sa False \
+    #         --pgwt-mod-embed 0 \
+    #         --pgwt-ca-prev-latents True \
+    #         --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+    #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #         --logdir-prefix $LOGDIR_PREFIX \
+    #         --seed $seed \
+    #     ) & # >& /dev/null &
+    # done
+    # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1
 
     ## CA SA
     # region: Custom PPO + Perceiver GWT GWWM Basic Arch. WithSA Cross Heads 1 SA Heads 4 mod_emb 0; Depth + Spectrogram SS1
