@@ -223,12 +223,12 @@ fi
     # for seed in 111; do
     #     (sleep 1s && python ppo_av_nav.py \
     #         --config-path "env_configs/savi/savi_ss1.yaml" \
-    #         --exp-name "ppo_savi_ss1_ppo_gru" \
-    #         --total-steps 1000000 \
+    #         --exp-name "ppo_savi_ss1__ppo_gru" \
+    #         --total-steps 10000000 \
     #         --wandb --wandb-project ss-hab --wandb-entity dosssman \
     #         --logdir-prefix $LOGDIR_PREFIX \
     #         --seed $seed
-    #     ) # & # >& /dev/null &
+    #     ) & # >& /dev/null &
     # done
     # endregion: SAVi SS1: PPO GRU Default config
 
@@ -236,7 +236,8 @@ fi
     # for seed in 111; do
     #   (sleep 1s && python ppo_av_nav.py \
     #     --config-path "env_configs/savi/savi_ss1.yaml" \
-    #     --exp-name "ppo_savi__ss1__pgwt_gwwm__N_8_D_64_CA_CAPrevLatents_CAHeads_1_SAHeads_4" \
+    #     --exp-name "ppo_savi_ss1__pgwt_gwwm__N_8_D_64_CA_CAPrevLatents_CAHeads_1_SAHeads_4" \
+    #     --total-steps 10000000 \
     #     --agent-type "perceiver-gwt-gwwm" \
     #     --pgwt-depth 1 \
     #     --pgwt-num-latents 8 \
@@ -252,6 +253,28 @@ fi
     #   ) & # >& /dev/null &
     # done
     # endregion: SAVi SS1: PPO PGWT NoSA CAHeads 1 SAHeads 4 ModEmbed 0 CA WithPrevLatents
+
+    # region: SAVi SS1: PPO PGWT CA SA CAHeads 1 SAHeads 4 ModEmbed 0 CA
+    # for seed in 111; do
+    #   (sleep 1s && python ppo_av_nav.py \
+    #     --config-path "env_configs/savi/savi_ss1.yaml" \
+    #     --exp-name "ppo_savi_ss1__pgwt_gwwm__N_8_D_64_CA_SA_CAHeads_1_SAHeads_4" \
+    #     --total-steps 10000000 \
+    #     --agent-type "perceiver-gwt-gwwm" \
+    #     --pgwt-depth 1 \
+    #     --pgwt-num-latents 8 \
+    #     --pgwt-latent-dim 64 \
+    #     --pgwt-cross-heads 1 \
+    #     --pgwt-latent-heads 4 \
+    #     --pgwt-use-sa True \
+    #     --pgwt-mod-embed 0 \
+    #     --pgwt-ca-prev-latents True \
+    #     --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #     --logdir-prefix $LOGDIR_PREFIX \
+    #     --seed $seed \
+    #   ) & # >& /dev/null &
+    # done
+    # endregion: SAVi SS1: PPO PGWT CA SA CAHeads 1 SAHeads 4 ModEmbed 0 CA WithPrevLatents
 
 # endregion: Custom PPO based on SS tasks
 

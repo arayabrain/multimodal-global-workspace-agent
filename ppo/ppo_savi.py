@@ -18,15 +18,13 @@ from th_logger import TBXLogger as TBLogger
 
 # Env deps: Soundspaces and Habitat
 from habitat.datasets import make_dataset
-from ss_baselines.av_nav.config import get_config
-from ss_baselines.savi.config.default import get_config as get_savi_config
+from ss_baselines.savi.config.default import get_config
 from ss_baselines.common.env_utils import construct_envs
 from ss_baselines.common.environments import get_env_class
 from ss_baselines.common.utils import images_to_video_with_audio
 
 # Custom ActorCritic agent for PPO
-from models import ActorCritic, ActorCritic_DeepEthologyVirtualRodent, \
-    Perceiver_GWT_GWWM_ActorCritic, Perceiver_GWT_AttGRU_ActorCritic
+from models import ActorCritic
 
 # Helpers
 # Tensorize current observation, store to rollout data
@@ -34,9 +32,6 @@ def tensorize_obs_dict(obs, device, observations=None, rollout_step=None):
     obs_th = {}
     for obs_field, _ in obs[0].items():
         v_th = th.Tensor(np.array([step_obs[obs_field] for step_obs in obs], dtype=np.float32)).to(device)
-        # in SS1.0, the dcepth observations comes as [B, 128, 128, 1, 1], so fix that
-        if obs_field == "depth" and v_th.dim() == 5:
-            v_th = v_th.squeeze(-1)
         obs_th[obs_field] = v_th
         # Special case when doing the rollout, also stores the 
         if observations is not None:
@@ -47,12 +42,12 @@ def tensorize_obs_dict(obs, device, observations=None, rollout_step=None):
 def main():
     # region: Generating additional hyparams
     CUSTOM_ARGS = [
-        # General hyper parameters
+        # General hyepr parameters
         get_arg_dict("seed", int, 111),
-        get_arg_dict("total-steps", int, 1_000_000),
+        get_arg_dict("total-steps", int, 10_000_000),
         
         # SS env config
-        get_arg_dict("config-path", str, "env_configs/audiogoal_depth_nocont.yaml"),
+        get_arg_dict("config-path", str, "env_configs/savi/savi.yaml"),
 
         # PPO Hyper parameters
         get_arg_dict("num-envs", int, 10), # Number of parallel envs. 10 by default
@@ -69,50 +64,22 @@ def main():
         get_arg_dict("max-grad-norm", float, 0.5),
         get_arg_dict("target-kl", float, None),
         get_arg_dict("lr", float, 2.5e-4), # Learning rate
-        get_arg_dict("optim-wd", float, 0), # weight decay for adam optim
         ## Agent network params
-        get_arg_dict("agent-type", str, "ss-default", metatype="choice",
-            choices=["ss-default", "deep-etho",
-                     "perceiver-gwt-gwwm", "perceiver-gwt-attgru"]),
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
-        ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
-        get_arg_dict("pgwt-latent-type", str, "randn", metatype="choice",
-            choices=["randn", "zeros"]), # Depth of the Perceiver
-        get_arg_dict("pgwt-latent-learned", bool, True, metatype="bool"),
-        get_arg_dict("pgwt-depth", int, 1), # Depth of the Perceiver
-        get_arg_dict("pgwt-num-latents", int, 8),
-        get_arg_dict("pgwt-latent-dim", int, 64),
-        get_arg_dict("pgwt-cross-heads", int, 1),
-        get_arg_dict("pgwt-latent-heads", int, 4),
-        get_arg_dict("pgwt-cross-dim-head", int, 64),
-        get_arg_dict("pgwt-latent-dim-head", int, 64),
-        get_arg_dict("pgwt-weight-tie-layers", bool, False, metatype="bool"),
-        get_arg_dict("pgwt-ff", bool, False, metatype="bool"),
-        get_arg_dict("pgwt-num-freq-bands", int, 6),
-        get_arg_dict("pgwt-max-freq", int, 10.),
-        get_arg_dict("pgwt-use-sa", bool, False, metatype="bool"),
-        ## Peceiver Modality Embedding related
-        get_arg_dict("pgwt-mod-embed", int, 0), # Learnable modality embeddings
-        ## Additional modalities
-        get_arg_dict("pgwt-ca-prev-latents", bool, False, metatype="bool"), # if True, passes the prev latent to CA as KV input data
 
         # Logging params
-        # NOTE: While supported, video logging is expensive because the RGB generation in the
-        # envs hogs a lot of GPU, especially with multiple envs 
-        get_arg_dict("save-videos", bool, False, metatype="bool"),
+        # TODO: Eval that has a separate environment and is called eval-every 100K steps to generate a single
+        # video to disk / TB / Wandb ?
+        get_arg_dict("save-videos", bool, True, metatype="bool"),
         get_arg_dict("save-model", bool, True, metatype="bool"),
-        get_arg_dict("log-sampling-stats-every", int, int(1.5e3)), # Every X frames || steps sampled
+        get_arg_dict("log-sampling-stats-every", int, int(1.5e4)), # Every X frames || steps sampled
         get_arg_dict("log-training-stats-every", int, int(10)), # Every X model update
-        get_arg_dict("logdir-prefix", str, "./logs/") # Overrides the default one
+        get_arg_dict("logdir-prefix", str, "./logs/"), # Overrides the default one
     ]
     args = generate_args(CUSTOM_ARGS)
 
     # Load environment config
-    is_SAVi = str.__contains__(args.config_path, "savi")
-    if is_SAVi:
-        env_config = get_savi_config(config_paths=args.config_path)
-    else:
-        env_config = get_config(config_paths=args.config_path)
+    env_config = get_config(config_paths=args.config_path)
 
     # Additional PPO overrides
     args.batch_size = int(args.num_envs * args.num_steps)
@@ -146,18 +113,6 @@ def main():
     # Overriding some envs parametes from the .yaml env config
     env_config.defrost()
     env_config.NUM_PROCESSES = args.num_envs # Corresponds to number of envs, makes script startup faster for debugs
-    # env_config.CONTINUOUS = args.env_continuous
-    ## In caes video saving is enabled, make sure there is also the rgb videos
-    agent_extra_rgb = False
-    if args.save_videos:
-        # For RGB video sensors
-        if "RGB_SENSOR" not in env_config.SENSORS:
-            env_config.SENSORS.append("RGB_SENSOR")
-            # Indicates to the agent that RGB obs should not be used as observational inputs
-            agent_extra_rgb = True
-        # For Waveform to generate audio over the videos
-        if "AUDIOGOAL_SENSOR" not in env_config.TASK_CONFIG.TASK.SENSORS:
-            env_config.TASK_CONFIG.TASK.SENSORS.append("AUDIOGOAL_SENSOR")
     env_config.freeze()
     # print(env_config)
     
@@ -167,31 +122,8 @@ def main():
     single_action_space = envs.action_spaces[0]
     
     # TODO: make the ActorCritic components parameterizable through comand line ?
-    if args.agent_type == "ss-default":
-        agent = ActorCritic(single_observation_space, single_action_space,
-            args.hidden_size, extra_rgb=agent_extra_rgb).to(device)
-    elif args.agent_type == "perceiver-gwt-gwwm":
-        agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space,
-            args, extra_rgb=agent_extra_rgb).to(device)
-    elif args.agent_type == "perceiver-gwt-attgru":
-        agent = Perceiver_GWT_AttGRU_ActorCritic(single_observation_space, single_action_space,
-            args, extra_rgb=agent_extra_rgb).to(device)
-    elif args.agent_type == "deep-etho":
-        raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
-        # TODO: support for storing the rnn_hidden_statse, so that the policy 
-        # that takes in the 'core_modules' 's rnn hidden output can also work.
-        agent = ActorCritic_DeepEthologyVirtualRodent(single_observation_space,
-                single_action_space, 512).to(device)
-    else:
-        raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
-
-    optimizer = th.optim.Adam(agent.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
-    
-    # Info logging
-    summary(agent)
-    print("")
-    print(agent)
-    print("")
+    agent = ActorCritic(single_observation_space, single_action_space, 512).to(device)
+    optimizer = th.optim.Adam(agent.parameters(), lr=args.lr, eps=1e-5)
     
     # Rollout storage setup # TODO: make this systematic for a
     observations = {}
@@ -210,18 +142,14 @@ def main():
     num_updates = args.total_steps // args.batch_size # Total number of updates that will take place in this experiment.
 
     obs = envs.reset()
-    
+    # SAVi Work around: detph has shape (NUM_ENVS, 128, 128, 1, 1); TODO: find cleaner fix
+    # for env_obs in obs:
+    #     env_obs["depth"] = env_obs["depth"][:, :, 0]
+
     done = [False for _ in range(args.num_envs)]
     done_th = th.Tensor(done).to(device)
     masks = 1. - done_th[:, None]
-    if args.agent_type == "ss-default":
-        rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size), device=device)
-    elif args.agent_type in ["perceiver-gwt-gwwm", "perceiver-gwt-attgru"]:
-        rnn_hidden_state = agent.state_encoder.latents.repeat(args.num_envs, 1, 1)
-    elif args.agent_type == "deep-etho":
-        rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size * 2), device=device)
-    else:
-        raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+    rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size), device=device)
 
     # Variables to track episodic return, videos, and other SS relevant stats
     current_episode_return = th.zeros(envs.num_envs, 1).to(device)
@@ -240,11 +168,11 @@ def main():
     n_updates = 0 # Count how many updates so far. Not to confuse with "num_updatesy"
 
     for global_step in range(1, args.total_steps+1, args.num_steps * args.num_envs):
-        # Copy the rnn_hidden_state at the start of the rollout.
-        # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
-        init_rnn_state = rnn_hidden_state.clone()
 
         for rollout_step in range(args.num_steps):
+            # Copy the rnn_hidden_state at the start of the rollout.
+            # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
+            init_rnn_state = rnn_hidden_state.clone()
         
             # NOTE: the following line tensorize and also appends data to the rollout storage
             obs_th = tensorize_obs_dict(obs, device, observations, rollout_step)
@@ -260,6 +188,9 @@ def main():
 
             outputs = envs.step([a[0].item() for a in action])
             obs, reward, done, info = [list(x) for x in zip(*outputs)]
+            # SAVi Work around: detph has shape (NUM_ENVS, 128, 128, 1, 1); TODO: find cleaner fix
+            # for env_obs in obs:
+            #     env_obs["depth"] = env_obs["depth"][:, :, 0]
             reward_th = th.Tensor(np.array(reward, dtype=np.float32)).to(device)
             rewards[rollout_step] = reward_th
             
@@ -279,12 +210,10 @@ def main():
                     # Expected content: ['distance_to_goal', 'normalized_distance_to_goal', 'success', 'spl', 'softspl', 'na', 'sna', 'top_down_map']
                     # - na: num_action
                     # - sna: success_weight_with_num_action
+                    # - sws: success when silent, specific to SAVi setting
                     for k, v in env_info_dict.items():
                         # Make sure that the info metric is of interest / loggable.
-                        k_list = ["distance_to_goal", "normalized_distance_to_goal", "success", "spl", "softspl", "na", "sna"]
-                        if is_SAVi:
-                            k_list.append("sws") # SAVi metric: "Success When Silent" (???)
-                        if k in k_list:
+                        if k in ["distance_to_goal", "normalized_distance_to_goal", "success", "spl", "softspl", "na", "sna", "sws"]:
                             if k not in list(window_episode_stats.keys()):
                                 window_episode_stats[k] = deque(maxlen=env_config.RL.PPO.reward_window_size)
                             
@@ -326,14 +255,14 @@ def main():
                 }
                 tblogger.log_stats(episode_stats, global_step, "metrics")
 
-                # Save the model
+                      # Save the model
                 if args.save_model:
                     model_save_dir = tblogger.get_models_savedir()
                     model_save_name = f"ppo_agent.{global_step}.ckpt.pth"
                     model_save_fullpath = os.path.join(model_save_dir, model_save_name)
 
                     th.save(agent.state_dict(), model_save_fullpath)
-
+      
             # Resets the episodic return tracker
             current_episode_return *= masks
 
@@ -347,7 +276,7 @@ def main():
                 
                 # Log video as soon as the ep in the first env is done
                 if done[0]:
-                    if should_log_video(global_step):
+                    if should_log_video(global_step): # and len(train_video_data_env_0["rgb"]) >= 40: # Later, we might want to avoid too short videos.
                         # TODO: video logging: fuse with top_down_map and other stats,
                         # then save to disk, tensorboard, wandb, etc...
                         # Video plotting is limited to the first environment
@@ -370,7 +299,7 @@ def main():
                         #     np.array([train_video_data_env_0["rgb"]]).transpose(0, 1, 4, 2, 3), # From [1, THWC] to [1,TCHW]
                         #     global_step, fps=env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS)
                         
-                        # Upload to wandb
+                        # Upload to wandb, will check if wandb is enable internally first
                         tblogger.log_wandb_video_audio(base_video_name, video_fullpath)
 
                     # Reset the placeholder for the video
@@ -406,12 +335,12 @@ def main():
         for k, v in observations.items():
             b_observations[k] = th.flatten(v, start_dim=0, end_dim=1)
         # b_observations = observations.reshape()
-        b_logprobs = logprobs.reshape(-1) # From [T, B] -> [T * B]
-        b_actions = actions.reshape(-1) # From [T, B] -> [T * B]
-        b_dones = dones.reshape(-1) # From [T, B] -> [T * B]
-        b_advantages = advantages.reshape(-1) # From [T, B] -> [T * B]
-        b_returns = returns.reshape(-1) # From [T, B] -> [T * B]
-        b_values = values.reshape(-1) # From [T, B] -> [T * B]
+        b_logprobs = logprobs.reshape(-1) # From [B, T] -> [B * T]
+        b_actions = actions.reshape(-1) # From [B, T] -> [B * T]
+        b_dones = dones.reshape(-1) # From [B, T] -> [B * T]
+        b_advantages = advantages.reshape(-1) # From [B, T] -> [B * T]
+        b_returns = returns.reshape(-1) # From [B, T] -> [B * T]
+        b_values = values.reshape(-1) # From [B, T] -> [B * T]
         
         # PPO Update Phase: actor and critic network updates
         assert args.num_envs % args.num_minibatches == 0
@@ -433,18 +362,11 @@ def main():
                 mb_observations = {k: v[mb_inds] for k, v in b_observations.items()}
 
                 # NOTE: should the RNN hit states be reused when recomputiong ?
-                if args.agent_type in ["ss-default"]:
-                    b_init_rnn_state = init_rnn_state[:, mbenvinds]
-                elif args.agent_type in ["perceiver-gwt-gwwm", "perceiver-gwt-attgru"]:
-                    b_init_rnn_state = init_rnn_state[mbenvinds, :, :]
-                else:
-                    raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
-                
-                b_new_actions, newlogprob, entropy, newvalue, b_state_feats = \
-                    agent.act(mb_observations, b_init_rnn_state,
+                _, newlogprob, entropy, newvalue, _ = \
+                    agent.act(mb_observations, init_rnn_state[:, mbenvinds],
                         masks=1-b_dones[mb_inds], actions=b_actions[mb_inds])
 
-                newlogprob = newlogprob.sum(-1) # From [T * B, 1] -> [T * B]
+                newlogprob = newlogprob.sum(-1) # From [B * T, 1] -> [B * T]
                 logratio = newlogprob - b_logprobs[mb_inds]
                 ratio = logratio.exp()
 
@@ -483,9 +405,7 @@ def main():
 
                 optimizer.zero_grad()
                 loss.backward()
-                grad_norms_preclip = agent.get_grad_norms()
-                if args.max_grad_norm > 0:
-                    nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
+                nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
                 optimizer.step()
 
             n_updates += 1
@@ -506,46 +426,10 @@ def main():
                 "old_approx_kl": old_approx_kl.item(),
                 "approx_kl": approx_kl.item(),
                 "clipfrac": np.mean(clipfracs),
-                "explained_variance": explained_var,
-                "state_value_avg": b_values.mean(),
-                "advantage_avg": b_advantages.mean(),
-                "returns_avg": b_returns.mean()
+                "explained_variance": explained_var
             }
             tblogger.log_stats(train_stats, global_step, prefix="train")
-
-            # Additional dbg stats
-            debug_stats = {
-                # Additional debug stats
-                "b_state_feats_avg": b_state_feats.flatten(start_dim=1).mean().item(),
-                "init_rnn_states_avg": init_rnn_state.flatten(start_dim=1).mean().item(),
-            }
-            if args.pgwt_mod_embed:
-                debug_stats["mod_embed_avg"] = agent.state_encoder.modality_embeddings.mean().item()
-
-            tblogger.log_stats(debug_stats, global_step, prefix="debug")
-            
-            # Logging range of values for various components
-            histograms = {
-                "b_logprobs": b_logprobs.detach().cpu().numpy(),
-                "b_probs": b_logprobs.detach().exp().cpu().numpy(),
-                "b_actions": b_actions.detach().cpu().numpy(),
-                "b_values": b_values.detach().cpu().numpy(),
-                "b_advantages": b_advantages.detach().cpu().numpy(),
-                "b_returns": b_returns.detach().cpu().numpy(),
-                "init_rnn_state": init_rnn_state.flatten(start_dim=1).detach().cpu().numpy(),
-                "b_state_feats": b_state_feats.flatten(start_dim=1).detach().cpu().numpy(),
-                "b_new_actions": b_new_actions.detach().cpu().numpy(),
-                "b_new_values": newvalue.detach().cpu().numpy()
-            }
-            if args.pgwt_mod_embed:
-                histograms["mod_embed"] = agent.state_encoder.modality_embeddings.detach().cpu().numpy()
-            
-            tblogger.log_histograms(histograms, global_step, prefix="debug/hists")
-            
-            # Logging grad norms
-            tblogger.log_stats(agent.get_grad_norms(), global_step, prefix="debug/grad_norms")
-            tblogger.log_stats(grad_norms_preclip, global_step, prefix="debug/grad_norms_preclip")
-    
+        
     # Clean up
     envs.close()
     tblogger.close()
