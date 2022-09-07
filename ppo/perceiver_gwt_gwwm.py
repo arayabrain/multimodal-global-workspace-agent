@@ -1,8 +1,8 @@
 import torch
 import torch as th
 from torch import nn
-import torch.nn.functional as F
-from torch.nn.utils import weight_norm
+
+from typing import Dict, Iterable, Callable
 
 STR_TO_ACTIVATION = {
     "identity": nn.Identity(),
@@ -64,6 +64,9 @@ class CrossAttention(nn.Module):
         q_ln = self.ln_q(q)
         kv_ln = self.ln_kv(kv)
         attention_value, attn_weighting = self.mha(q_ln, kv_ln, kv_ln)
+        # TODO: how to also store the features when
+        # there is a residual connection involved ? Manually do it ?
+        # Blowy residual connection.
         if not self.skip_q:
             attention_value = attention_value + q
         attention_value = self.ff_self(attention_value) + attention_value
@@ -89,7 +92,8 @@ class Perceiver_GWT_GWWM(nn.Module):
         hidden_size = 512, # Dim of the visual / audio encoder outputs
         mod_embed = 0, # Dimensio of learned modality embeddings
         use_sa = False,
-        ca_prev_latents = False
+        ca_prev_latents = False,
+        analysis_layers=[]
     ):
         super().__init__()
         self.input_dim = input_dim
@@ -102,6 +106,8 @@ class Perceiver_GWT_GWWM(nn.Module):
         self.hidden_size = hidden_size
         self.use_sa = use_sa
         self.ca_prev_latents = ca_prev_latents
+
+        self.analysis_layers = analysis_layers
 
         # Cross Attention
         if self.ca_prev_latents:
@@ -128,6 +134,18 @@ class Perceiver_GWT_GWWM(nn.Module):
             self.latents = torch.zeros(1, num_latents, latent_dim)
         
         self.latents = nn.Parameter(self.latents, requires_grad=latent_learned)
+
+        # Hooks for intermediate features storage
+        if len(analysis_layers):
+            self._features = {layer: torch.empty(0) for layer in self.analysis_layers}
+            for layer_id in analysis_layers:
+                layer = dict([*self.model.named_modules()])[layer_id]
+                layer.register_forward_hook(self.save_outputs_hook(layer_id))
+
+    def save_outputs_hook(self, layer_id: str) -> Callable:
+        def fn(_, __, output):
+            self._features[layer_id] = output
+        return fn
 
     def seq_forward(self, data, prev_latents, masks):
         # TODO: a more optimal method to process sequences of same length together ?

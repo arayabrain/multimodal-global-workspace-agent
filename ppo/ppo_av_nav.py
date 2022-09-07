@@ -362,13 +362,15 @@ def main():
                             output_dir=tblogger.get_videos_savedir(),
                             video_name=video_name,
                             sr=env_config.TASK_CONFIG.SIMULATOR.AUDIO.RIR_SAMPLING_RATE, # 16000 for mp3d dataset
-                            fps=env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS
+                            fps=5 # env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS # Default is 10 it seems
                         )
                         
                         # Save to tensorboard
                         # tblogger.log_video("train_video_0_rgb",
                         #     np.array([train_video_data_env_0["rgb"]]).transpose(0, 1, 4, 2, 3), # From [1, THWC] to [1,TCHW]
-                        #     global_step, fps=env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS)
+                        #     global_step,
+                        #     fps=5 # env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS
+                        # )
                         
                         # Upload to wandb
                         tblogger.log_wandb_video_audio(base_video_name, video_fullpath)
