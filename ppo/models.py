@@ -416,6 +416,14 @@ class RNNStateEncoder(nn.Module):
 ## - Not blind: there is always a visual observation, and it is RGB by default
 ## - Not deaf: there is always an acoustic observation, and it is Spectrogram by default
 ## - extra_rgb: make the VisualCNN ignore the rgb observations even if they are in the observations
+GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES = [j
+    *[f"visual_encoder.cnn.{i}" for i in range(8)], # Shared arch. for GRU and PGWT
+    *[f"audio_encoder.cnn.{i}" for i in range(8)], # Shared arch. for GRU and PGWT
+    "action_distribution.linear", # Shared arch. for any type of agent
+    "critic.fc", # Shared arch. for any type of agent
+    
+    "state_encoder", # Either GRU or PGWT based. Shape different based on nature of cell though.
+]
 class ActorCritic(nn.Module):
     def __init__(self, 
                  observation_space,
@@ -521,6 +529,7 @@ class ActorCritic(nn.Module):
 
 # Actor critic variant that uses Perceiver as an RNN internally
 # This variant uses the same visual and audio encoder as SS baseline
+# TODO: clean up the followign variant, and make the PGWT GWWM one the main.
 from perceiver_gwt import Perceiver_GWT
 from perceiverio_gwt import PerceiverIO_GWT
 
@@ -605,12 +614,49 @@ class Perceiver_GWT_ActorCritic(nn.Module):
         modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution", "critic"]
         return {mod_name: compute_grad_norm(self.__getattr__(mod_name)) for mod_name in modules}
 
+    def save_outputs_hook(self, layer_id: str) -> Callable:
+        def fn(_, __, output):
+            self._features[layer_id] = output
+        return fn
+    
+# TODO: clean up and make this variant the main one.
 from perceiver_gwt_gwwm import Perceiver_GWT_GWWM, Perceiver_GWT_AttGRU
-class Perceiver_GWT_GWWM_ActorCritic(Perceiver_GWT_ActorCritic):
-    def __init__(self, observation_space, action_space, config, extra_rgb=False):
-        super().__init__(observation_space, action_space, config, extra_rgb)
+# Layer names for recording intermediate features, for a PGWT GWWM network with a single CA, no SA, no modality embeddings
+PGWT_GWWM_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES = [
+    *[f"visual_encoder.cnn.{i}" for i in range(8)], # Shared arch. for GRU and PGWT
+    *[f"audio_encoder.cnn.{i}" for i in range(8)], # Shared arch. for GRU and PGWT
+    "action_distribution.linear", # Shared arch. for any type of agent
+    "critic.fc", # Shared arch. for any type of agent
+
+    "state_encoder", # Either GRU or PGWT based. Shape different based on nature of cell though.
+    ## PGWT GWWM specific
+    "state_encoder.ca", # This will have the output of the residual conn. self.ff_self(attention_value) + attention_value
+    "state_encoder.ca.mha", # Note: output here is tuple (attention_value, attention_weight)
+    "state_encoder.ca.ln_q",
+    "state_encoder.ca.ln_kv",
+    "state_encoder.ca.ff_self", # No residual connection output
+    *[f"state_encoder.ca.ff_self.{i}" for i in range(4)], # [LayerNorm, Linear, GELU, Linear]
+    ## TODO: add support for the SA layers too
+]
+
+class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
+    def __init__(self,
+                 observation_space,
+                 action_space,
+                 config,
+                 extra_rgb=False,
+                 analysis_layers=[]):
+        
+        super().__init__()
         self.config = config
 
+        # TODO: 
+        # - support for blind agent
+        # - support for RGB + Depth as 4 channel dim (default SS / SAVi behavior)
+        # - support for RGB CNN and Depth CNN separated (geared toward PGWT modality)
+        self.visual_encoder = VisualCNN(observation_space, config.hidden_size, extra_rgb=extra_rgb)
+        self.audio_encoder = AudioCNN(observation_space, config.hidden_size, "spectrogram")
+        
         # Override the state encoder with a custom PerceiverIO
         self.state_encoder = Perceiver_GWT_GWWM(
             input_dim = config.hidden_size,
@@ -630,6 +676,21 @@ class Perceiver_GWT_GWWM_ActorCritic(Perceiver_GWT_ActorCritic):
             ca_prev_latents = config.pgwt_ca_prev_latents
         )
 
+        self.action_distribution = CategoricalNet(config.hidden_size, action_space.n) # Policy fn
+        self.critic = CriticHead(config.hidden_size) # Value fn
+
+        self.train()
+        
+        # Layers to record for neuroscience based analysis
+        self.analysis_layers = analysis_layers
+
+        # Hooks for intermediate features storage
+        if len(analysis_layers):
+            self._features = {layer: th.empty(0) for layer in self.analysis_layers}
+            for layer_id in analysis_layers:
+                layer = dict([*self.named_modules()])[layer_id]
+                layer.register_forward_hook(self.save_outputs_hook(layer_id))
+        
     def forward(self, observations, prev_latents, masks):
         x1 = []
         
@@ -652,6 +713,32 @@ class Perceiver_GWT_GWWM_ActorCritic(Perceiver_GWT_ActorCritic):
         state_feat, latents = self.state_encoder(obs_feat, prev_latents, masks) # [B, num_latents, latent_dim]
 
         return state_feat, latents
+    
+    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None):
+        features, rnn_hidden_states = self(observations, rnn_hidden_states, masks)
+
+        # Estimate the value function
+        values = self.critic(features)
+
+        # Estimate the policy as distribution to sample actions from
+        distribution = self.action_distribution(features)
+
+        if actions is None:
+            if deterministic:
+                actions = distribution.mode()
+            else:
+                actions = distribution.sample()
+        # TODO: maybe some assert on the 
+        action_log_probs = distribution.log_probs(actions)
+
+        distribution_entropy = distribution.entropy().mean()
+
+        return actions, action_log_probs, distribution_entropy, values, rnn_hidden_states
+    
+    def get_value(self, observations, rnn_hidden_states, masks):
+        features, _ = self(observations, rnn_hidden_states, masks)
+
+        return self.critic(features)
 
     def get_grad_norms(self):
         modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution", "critic"]
@@ -663,6 +750,11 @@ class Perceiver_GWT_GWWM_ActorCritic(Perceiver_GWT_ActorCritic):
             grad_norm_dict["init_rnn_states"] = compute_grad_norm(self.state_encoder.latents)
         
         return grad_norm_dict
+    
+    def save_outputs_hook(self, layer_id: str) -> Callable:
+        def fn(_, __, output):
+            self._features[layer_id] = output
+        return fn
 
 class Perceiver_GWT_AttGRU_ActorCritic(Perceiver_GWT_ActorCritic):
     def __init__(self, observation_space, action_space, config, extra_rgb=False):
@@ -697,7 +789,6 @@ class Perceiver_GWT_AttGRU_ActorCritic(Perceiver_GWT_ActorCritic):
             grad_norm_dict["init_rnn_states"] = compute_grad_norm(self.state_encoder.latents)
         
         return grad_norm_dict
-
 
 ## ActorCritic based on the Deep Ethorlogy Virtual Rodent paper
 class ActorCritic_DeepEthologyVirtualRodent(nn.Module):
