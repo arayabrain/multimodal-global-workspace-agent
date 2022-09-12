@@ -255,123 +255,12 @@ class AudioCNN(nn.Module):
 
         return self.cnn(cnn_input)
 
-# From AudioCLIP
-from typing import Optional, OrderedDict
-from audioclip_esresnet import ESResNeXtFBSP
-
-embed_dim: int = 1024
-n_fft: int = 2048
-hop_length: Optional[int] = 561
-win_length: Optional[int] = 1654
-window: Optional[str] = 'blackmanharris'
-normalized: bool = True
-onesided: bool = True
-spec_height: int = -1
-spec_width: int = -1
-apply_attention: bool = True
-multilabel: bool = True
-
-class ESResNeXtFBSP_Custom(nn.Module):
-    def __init__(self, pretrained=None):
-        super().__init__()
-        self.esresnext = ESResNeXtFBSP(
-            n_fft=n_fft,
-            hop_length=hop_length,
-            win_length=win_length,
-            window=window,
-            normalized=normalized,
-            onesided=onesided,
-            spec_height=spec_height,
-            spec_width=spec_width,
-            num_classes=embed_dim,
-            apply_attention=apply_attention,
-            pretrained=False
-        )
-        if pretrained is not None and isinstance(pretrained, str):
-            # Loads pre-trained weights from AudioCLIP's audio encoder only
-            audioclip_statedict = th.load(pretrained, map_location="cpu")
-            # Extract the audio module's weight only
-            audio_statedict = OrderedDict()
-            for param_name, param_v in audioclip_statedict.items():
-                if param_name.startswith("audio."):
-                    stripped_param_name = param_name.replace("audio.", "")
-
-                    audio_statedict[stripped_param_name] = param_v
-            
-            self.esresnext.load_state_dict(audio_statedict)
-            # NOTE: is this necessary ?
-            audioclip_statedict, audio_statedict = None, None
-
-        self.fc = nn.Sequential(*[
-            nn.ReLU(),
-            nn.Linear(1024, 512)
-        ])
-    
-    def forward(self, x):
-        # "x" is expected as a dict of tensorized obs
-        x = self.esresnext(x["audiogoal"])
-        x = self.fc(x)
-
-        return x
-
-## NOTE: This model below should be disregarded as it duplicates the ESResNeXt,
-## which already supports multi channel audio ...
-class ESResNeXtFBSP_Binaural(nn.Module):
-    def __init__(self, pretrained=None):
-        super().__init__()
-        monoraul_net = ESResNeXtFBSP(
-            n_fft=n_fft,
-            hop_length=hop_length,
-            win_length=win_length,
-            window=window,
-            normalized=normalized,
-            onesided=onesided,
-            spec_height=spec_height,
-            spec_width=spec_width,
-            num_classes=embed_dim,
-            apply_attention=apply_attention,
-            pretrained=False
-        )
-        if pretrained is not None and isinstance(pretrained, str):
-            # Loads pre-trained weights from AudioCLIP's audio encoder only
-            audioclip_statedict = th.load(pretrained, map_location="cpu")
-            # Extract the audio module's weight only
-            audio_statedict = OrderedDict()
-            for param_name, param_v in audioclip_statedict.items():
-                if param_name.startswith("audio."):
-                    stripped_param_name = param_name.replace("audio.", "")
-
-                    audio_statedict[stripped_param_name] = param_v
-            
-            monoraul_net.load_state_dict(audio_statedict)
-            # NOTE: is this necessary ?
-            audioclip_statedict, audio_statedict = None, None
-
-        # TODO: Any more efficient way of re-using the model ?
-        self.left_net = monoraul_net
-        self.right_net = deepcopy(monoraul_net)
-
-        self.fuse_nn = nn.Sequential(*[
-            nn.Linear(2048, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 512)
-        ])
-    
-    def forward(self, x):
-        # "x" is expected as a dict of tensorized obs
-        x_left = self.left_net(x["audiogoal"][:, 0, :][:, None])
-        x_right = self.right_net(x["audiogoal"][:, 1, :][:, None])
-
-        x = th.cat([x_left, x_right], dim=-1)
-        x = self.fuse_nn(x)
-
-        return x
-
 # endregion: Audio modules           #
 ###################################
 
+
 ###################################
-# region: Recukrrent modules       #
+# region: Recurrent modules       #
 
 # From ss_baselines/av_nav/models/rnn_state_encoder.py
 class RNNStateEncoder(nn.Module):
@@ -530,11 +419,19 @@ class ActorCritic(nn.Module):
     def __init__(self, observation_space, action_space, hidden_size, extra_rgb=False):
         super().__init__()
 
-        # TODO: later, we might want to augment the RGB info with the depth.
+        # TODO: 
+        # - support for blind agent
+        # - support for RGB + Depth as 4 channel dim (default SS / SAVi behavior)
+        # - support for RGB CNN and Depth CNN separated (geared toward PGWT modality)
         self.visual_encoder = VisualCNN(observation_space, hidden_size, extra_rgb=extra_rgb)
         self.audio_encoder = AudioCNN(observation_space, hidden_size, "spectrogram")
         
-        self.state_encoder = RNNStateEncoder(hidden_size * 2, hidden_size)
+        if self.visual_encoder.is_blind:
+            input_dim = hidden_size
+        else:
+            input_dim = hidden_size * 2
+
+        self.state_encoder = RNNStateEncoder(input_dim, hidden_size)
 
         self.action_distribution = CategoricalNet(hidden_size, action_space.n) # Policy fn
         self.critic = CriticHead(hidden_size) # Value fn
@@ -542,10 +439,22 @@ class ActorCritic(nn.Module):
         self.train()
     
     def forward(self, observations, rnn_hidden_states, masks):
-        video_features = self.visual_encoder(observations)
-        audio_features = self.audio_encoder(observations)
+        x1 = []
 
-        x1 = th.cat([audio_features, video_features], dim=1)
+        # Extracts audio featues
+        # TODO: consider having waveform data too ?
+        audio_features = self.audio_encoder(observations)
+        x1.append(audio_features)
+
+        # Extracts vision features
+        ## TODO: consider having
+        ## - rgb and depth simulatenous input as 4 channel dim input
+        ## - deparate encoders for rgb and depth, give one more modality to PGWT
+        if not self.visual_encoder.is_blind:
+            video_features = self.visual_encoder(observations)
+            x1.append(video_features)
+
+        x1 = th.cat(x1, dim=1)
         # Current state, current rnn hidden states, respectively
         x2, rnn_hidden_states2 = self.state_encoder(x1, rnn_hidden_states, masks)
 
