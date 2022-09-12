@@ -629,6 +629,29 @@ class Perceiver_GWT_GWWM_ActorCritic(Perceiver_GWT_ActorCritic):
             ca_prev_latents = config.pgwt_ca_prev_latents
         )
 
+    def forward(self, observations, prev_latents, masks):
+        x1 = []
+        
+        # Extracts audio featues
+        # TODO: consider having waveform data too ?
+        audio_features = self.audio_encoder(observations)
+        x1.append(audio_features[:, None, :]) # [B, H] -> [B, 1, H]
+
+        # Extracts vision features
+        ## TODO: consider having
+        ## - rgb and depth simulatenous input as 4 channel dim input
+        ## - deparate encoders for rgb and depth, give one more modality to PGWT
+        if not self.visual_encoder.is_blind:
+            video_features = self.visual_encoder(observations)
+            x1.append(video_features[:, None, :]) # [B, H] -> [B, 1, H]
+        
+        # For the transformer, prepaer the input data in the [B, N_MODALITY, H] shape
+        obs_feat = th.cat(x1, dim=1)
+
+        state_feat, latents = self.state_encoder(obs_feat, prev_latents, masks) # [B, num_latents, latent_dim]
+
+        return state_feat, latents
+
     def get_grad_norms(self):
         modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution", "critic"]
         grad_norm_dict = {mod_name: compute_grad_norm(self.__getattr__(mod_name)) for mod_name in modules}
@@ -674,11 +697,6 @@ class Perceiver_GWT_AttGRU_ActorCritic(Perceiver_GWT_ActorCritic):
         
         return grad_norm_dict
 
-class ActorCritic_AudioCLIP_AudioEncoder(ActorCritic):
-    def __init__(self, observation_space, action_space, hidden_size, extra_rgb=False, pretrained_audioclip=None):
-        super().__init__(observation_space, action_space, hidden_size)
-        # Overrides the audio encoder with the one adapted from AudioCLIP
-        self.audio_encoder = ESResNeXtFBSP_Custom(pretrained=pretrained_audioclip)
 
 ## ActorCritic based on the Deep Ethorlogy Virtual Rodent paper
 class ActorCritic_DeepEthologyVirtualRodent(nn.Module):

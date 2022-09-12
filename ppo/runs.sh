@@ -40,6 +40,19 @@ fi
     #   ) & # >& /dev/null &
     # done
     # endregion: Custom PPO; RGB + Spectrogram based task, SS1.0
+  
+    # region: Custom PPO; Blind + Spectrogram based task, SS1.0
+    # for seed in 111 222 333; do
+    #   (sleep 1s && python ppo_av_nav.py \
+    #       --exp-name "ppo_av_nav__ss1_blind_spectro" \
+    #       --config-path "env_configs/audiogoal_blind_nocont.yaml" \
+    #       --save-videos False \
+    #       --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #       --logdir-prefix $LOGDIR_PREFIX \
+    #       --seed $seed \
+    #   ) & # >& /dev/null &
+    # done
+    # endregion: Custom PPO; Blind + Spectrogram based task, SS1.0
     
     ## CA Only
     # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0; Depth + Spectrogram SS1

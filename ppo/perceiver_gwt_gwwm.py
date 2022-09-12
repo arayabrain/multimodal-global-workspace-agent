@@ -122,7 +122,9 @@ class Perceiver_GWT_GWWM(nn.Module):
 
         # Modality embedding
         if self.mod_embed:
-            self.modality_embeddings = nn.Parameter(torch.randn(1, 2 + int(ca_prev_latents), mod_embed))
+            # TODO: account for the possibility of having a blind agent with learned modality embeddings
+            n_modalities = 2 # This should check if there is really vision / audio, etc.. modalities
+            self.modality_embeddings = nn.Parameter(torch.randn(1, n_modalities + int(ca_prev_latents), mod_embed))
         
         # Latent vector, supposedly equivalent to an RNN's hidden state
         if latent_type == "randn":
@@ -172,9 +174,6 @@ class Perceiver_GWT_GWWM(nn.Module):
 
     def single_forward(self, data, prev_latents, masks):
         b = data.shape[0] # Batch size
-
-        if data.dim() == 2:
-            data = data.reshape(b, 2, self.hidden_size) # [B,1024] -> [B,2,512]
         
         if self.ca_prev_latents:
             # NOTE: flattened latents dim must equal dim of audio, vision features
