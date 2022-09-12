@@ -63,7 +63,7 @@
                 // "USE_SYNC_VECENV", "False",
 
                 // PPO Agent cofnig
-                "--config-path", "env_configs/audiogoal_depth_nocont.yaml",
+                "--config-path", "env_configs/audiogoal_blind_nocont.yaml",
                 "--num-envs", "2",
                 "--num-steps", "20",
                 "--agent-type", "perceiver-gwt-gwwm",

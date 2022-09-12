@@ -92,8 +92,7 @@ class Perceiver_GWT_GWWM(nn.Module):
         hidden_size = 512, # Dim of the visual / audio encoder outputs
         mod_embed = 0, # Dimensio of learned modality embeddings
         use_sa = False,
-        ca_prev_latents = False,
-        analysis_layers=[]
+        ca_prev_latents = False
     ):
         super().__init__()
         self.input_dim = input_dim
@@ -106,8 +105,6 @@ class Perceiver_GWT_GWWM(nn.Module):
         self.hidden_size = hidden_size
         self.use_sa = use_sa
         self.ca_prev_latents = ca_prev_latents
-
-        self.analysis_layers = analysis_layers
 
         # Cross Attention
         if self.ca_prev_latents:
@@ -137,35 +134,23 @@ class Perceiver_GWT_GWWM(nn.Module):
         
         self.latents = nn.Parameter(self.latents, requires_grad=latent_learned)
 
-        # Hooks for intermediate features storage
-        if len(analysis_layers):
-            self._features = {layer: torch.empty(0) for layer in self.analysis_layers}
-            for layer_id in analysis_layers:
-                layer = dict([*self.model.named_modules()])[layer_id]
-                layer.register_forward_hook(self.save_outputs_hook(layer_id))
-
-    def save_outputs_hook(self, layer_id: str) -> Callable:
-        def fn(_, __, output):
-            self._features[layer_id] = output
-        return fn
-
     def seq_forward(self, data, prev_latents, masks):
         # TODO: a more optimal method to process sequences of same length together ?
         x_list, latents_list = [], []
 
-        T_B, feat_dim = data.shape
+        T_B, n_mod, feat_dim = data.shape
         B = prev_latents.shape[0]
         T = T_B // B # TODO: assert that T * B == T_B exactly
         latents = prev_latents.clone()
 
-        data = data.reshape(T, B, feat_dim)
+        data = data.reshape(T, B, n_mod, feat_dim)
         masks = masks.reshape(T, B, 1)
 
         for t in range(T):
             x, latents = self.single_forward(data[t], latents, masks[t])
 
-            x_list.append(x.clone())
-            latents_list.append(latents.clone())
+            x_list.append(x)
+            latents_list.append(latents)
         
         x_list = th.stack(x_list, dim=0).flatten(start_dim=0, end_dim=1) # [B * T, feat_dim]
         latents_list = th.stack(latents_list, dim=0).flatten(start_dim=0, end_dim=1) # [B * T, num_latents, latent_dim]

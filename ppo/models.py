@@ -1,6 +1,7 @@
 
+from typing import Callable
+
 import numpy as np
-from copy import deepcopy
 
 import torch as th
 import torch.nn as nn
@@ -416,7 +417,12 @@ class RNNStateEncoder(nn.Module):
 ## - Not deaf: there is always an acoustic observation, and it is Spectrogram by default
 ## - extra_rgb: make the VisualCNN ignore the rgb observations even if they are in the observations
 class ActorCritic(nn.Module):
-    def __init__(self, observation_space, action_space, hidden_size, extra_rgb=False):
+    def __init__(self, 
+                 observation_space,
+                 action_space,
+                 hidden_size,
+                 extra_rgb=False,
+                 analysis_layers=[]):
         super().__init__()
 
         # TODO: 
@@ -437,7 +443,22 @@ class ActorCritic(nn.Module):
         self.critic = CriticHead(hidden_size) # Value fn
 
         self.train()
+
+        # Layers to record for neuroscience based analysis
+        self.analysis_layers = analysis_layers
+
+        # Hooks for intermediate features storage
+        if len(analysis_layers):
+            self._features = {layer: th.empty(0) for layer in self.analysis_layers}
+            for layer_id in analysis_layers:
+                layer = dict([*self.named_modules()])[layer_id]
+                layer.register_forward_hook(self.save_outputs_hook(layer_id))
     
+    def save_outputs_hook(self, layer_id: str) -> Callable:
+        def fn(_, __, output):
+            self._features[layer_id] = output
+        return fn
+
     def forward(self, observations, rnn_hidden_states, masks):
         x1 = []
 
@@ -583,26 +604,6 @@ class Perceiver_GWT_ActorCritic(nn.Module):
     def get_grad_norms(self):
         modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution", "critic"]
         return {mod_name: compute_grad_norm(self.__getattr__(mod_name)) for mod_name in modules}
-
-
-class PerceiverIO_GWT_ActorCritic(Perceiver_GWT_ActorCritic):
-    def __init__(self, observation_space, action_space, config, extra_rgb=False):
-        super().__init__(observation_space, action_space, config, extra_rgb)
-
-        # Override the state encoder with a custom PerceiverIO
-        self.state_encoder = PerceiverIO_GWT(
-            depth = config.pgwt_depth, # Our default: 4; Perceiver default: 6
-            input_dim = config.hidden_size * 2,
-            latent_type = config.pgwt_latent_type,
-            latent_learned = config.pgwt_latent_learned,
-            num_latents = config.pgwt_num_latents, # Our default: 32, Perceiver: 512
-            latent_dim = config.pgwt_latent_dim, # Our default: 32, Perceiver default: 512
-            cross_heads = config.pgwt_cross_heads, # Default: 1
-            latent_heads = config.pgwt_latent_heads, # Default: 8
-            cross_dim_head = config.pgwt_cross_dim_head, # Default: 64
-            latent_dim_head = config.pgwt_latent_dim_head, # Default: 64
-            weight_tie_layers = config.pgwt_weight_tie_layers # Default: False
-        )
 
 from perceiver_gwt_gwwm import Perceiver_GWT_GWWM, Perceiver_GWT_AttGRU
 class Perceiver_GWT_GWWM_ActorCritic(Perceiver_GWT_ActorCritic):
