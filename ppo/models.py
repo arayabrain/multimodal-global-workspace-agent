@@ -416,7 +416,7 @@ class RNNStateEncoder(nn.Module):
 ## - Not blind: there is always a visual observation, and it is RGB by default
 ## - Not deaf: there is always an acoustic observation, and it is Spectrogram by default
 ## - extra_rgb: make the VisualCNN ignore the rgb observations even if they are in the observations
-GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES = [j
+GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES = [
     *[f"visual_encoder.cnn.{i}" for i in range(8)], # Shared arch. for GRU and PGWT
     *[f"audio_encoder.cnn.{i}" for i in range(8)], # Shared arch. for GRU and PGWT
     "action_distribution.linear", # Shared arch. for any type of agent

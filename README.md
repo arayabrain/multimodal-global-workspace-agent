@@ -21,6 +21,7 @@
 conda create -n ss-hab-headless-py39 python=3.9 cmake=3.14.0 -y
 conda activate ss-hab
 pip install pytest-xdist
+pip install rsatoolbox # Neural activity pattern analysis
 ```
 
 # Habitat-lab Stable 0.2.2
