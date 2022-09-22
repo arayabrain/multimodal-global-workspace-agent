@@ -5,6 +5,7 @@ import os
 import uuid
 import datetime
 import pickle as pkl
+import compress_pickle as cpkl
 
 import torch
 import torch as th
@@ -44,10 +45,10 @@ def save_episode_to_dataset(ep_data_dict, dataset_path):
     ep_length = ep_data_dict["ep_length"]
 
     # TODO: consider the downside of compression if this has to be used for 
-    ep_data_filename = f"{timestamp}-{epid}-{ep_length}.pkl"
+    ep_data_filename = f"{timestamp}-{epid}-{ep_length}.bz2"
     ep_data_fullpath = os.path.join(dataset_path, ep_data_filename)
     with open(ep_data_fullpath, "wb") as f:
-        pkl.dump(ep_data_dict, f)
+        cpkl.dump(ep_data_dict, f)
 
 def main():
     # region: Generating additional hyparams
@@ -155,8 +156,8 @@ def main():
     ppo_gru_agent.load_state_dict(ppo_gru_agent_state_dict)
 
     # Parallelized dataset collection
-    DATASET_TOTAL_STEPS=int(1.5e3)
-    DATASET_DIR_PATH = f"ppo_gru_trajectories_2022_09_21__{DATASET_TOTAL_STEPS}_STEPS"
+    DATASET_TOTAL_STEPS= int(1e6) # int(1e6)
+    DATASET_DIR_PATH = f"ppo_gru_dset_2022_09_21__{DATASET_TOTAL_STEPS}_STEPS"
     MINIMUM_EP_LENGTH = 20
 
     # Placeholders for episode data
@@ -206,6 +207,9 @@ def main():
             finished_envs_idxs = np.where(next_done)[0]
 
             for i in finished_envs_idxs:
+                if not info_list[i][-1]["success"] == 1:
+                    continue
+                
                 ep_length = len(obs_list[i])
                 ep_returns = []
                 ep_success = []
