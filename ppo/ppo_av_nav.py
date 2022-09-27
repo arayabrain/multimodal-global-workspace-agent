@@ -252,7 +252,7 @@ def main():
 
             # Sample action
             with th.no_grad():
-                action, action_logprobs, _, value, rnn_hidden_state = \
+                action, _, action_logprobs, _, value, rnn_hidden_state = \
                     agent.act(obs_th, rnn_hidden_state, masks=masks)
                 values[rollout_step] = value.flatten()
             actions[rollout_step] = action.squeeze(-1) # actions: [T, B] but action: [B, 1]
@@ -442,7 +442,7 @@ def main():
                 else:
                     raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
                 
-                b_new_actions, newlogprob, entropy, newvalue, b_state_feats = \
+                b_new_actions, _,newlogprob, entropy, newvalue, b_state_feats = \
                     agent.act(mb_observations, b_init_rnn_state,
                         masks=1-b_dones[mb_inds], actions=b_actions[mb_inds])
 

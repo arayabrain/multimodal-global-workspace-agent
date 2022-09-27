@@ -188,7 +188,7 @@ def main():
         masks = 1. - done_th[:, None]
 
         with th.no_grad():
-            action, action_logprobs, _, value, rnn_hidden_state = \
+            action, _, _, _, value, rnn_hidden_state = \
                 ppo_gru_agent.act(obs_th, rnn_hidden_state, masks=masks)
         
         outputs = envs.step([a[0].item() for a in action])

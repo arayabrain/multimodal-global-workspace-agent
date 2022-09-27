@@ -516,7 +516,7 @@ class ActorCritic(nn.Module):
 
         distribution_entropy = distribution.entropy().mean()
 
-        return actions, action_log_probs, distribution_entropy, values, rnn_hidden_states
+        return actions, distribution.probs, action_log_probs, distribution_entropy, values, rnn_hidden_states
     
     def get_value(self, observations, rnn_hidden_states, masks):
         features, _ = self(observations, rnn_hidden_states, masks)
@@ -603,7 +603,7 @@ class Perceiver_GWT_ActorCritic(nn.Module):
 
         distribution_entropy = distribution.entropy().mean()
 
-        return actions, action_log_probs, distribution_entropy, values, latents
+        return actions, distribution.probs, action_log_probs, distribution_entropy, values, latents
     
     def get_value(self, observations, prev_latents, masks):
         features, _ = self(observations, prev_latents, masks)
@@ -733,7 +733,7 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
 
         distribution_entropy = distribution.entropy().mean()
 
-        return actions, action_log_probs, distribution_entropy, values, rnn_hidden_states
+        return actions, distribution.probs, action_log_probs, distribution_entropy, values, rnn_hidden_states
     
     def get_value(self, observations, rnn_hidden_states, masks):
         features, _ = self(observations, rnn_hidden_states, masks)
