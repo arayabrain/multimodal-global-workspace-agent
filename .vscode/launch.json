@@ -71,6 +71,8 @@
                 // "--pgwt-mod-embed", "0",
                 // "--pgwt-use-sa", "False",
                 // "--pgwt-ca-prev-latents", "True",
+                // BC related
+                "--chunk-length", "10",
                 
                 "--eval", "True",
                 "--log-training-stats-every", "1",

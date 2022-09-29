@@ -140,16 +140,17 @@ def eval_agent(args, eval_envs, agent, device, n_episodes=5):
     # TODO: add proper support for SAVi config
     is_SAVi = False
 
+    n_eval_envs = 2 # TODO: maybe make this parameterizable ? and tie with environment creation part in main()
     obs = eval_envs.reset()
-    done = [False for _ in range(args.num_envs)]
+    done = [False for _ in range(n_eval_envs)]
     done_th = th.Tensor(done).to(device)
     masks = 1. - done_th[:, None]
     if args.agent_type == "ss-default":
-        rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size), device=device)
+        rnn_hidden_state = th.zeros((1, n_eval_envs, args.hidden_size), device=device)
     elif args.agent_type in ["perceiver-gwt-gwwm", "perceiver-gwt-attgru"]:
-        rnn_hidden_state = agent.state_encoder.latents.clone().repeat(args.num_envs, 1, 1)
+        rnn_hidden_state = agent.state_encoder.latents.clone().repeat(n_eval_envs, 1, 1)
     elif args.agent_type == "deep-etho":
-        rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size * 2), device=device)
+        rnn_hidden_state = th.zeros((1, n_eval_envs, args.hidden_size * 2), device=device)
     else:
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
     
@@ -157,7 +158,7 @@ def eval_agent(args, eval_envs, agent, device, n_episodes=5):
 
     window_episode_stats = {}
     # Variables to track episodic return, videos, and other SS relevant stats
-    current_episode_return = th.zeros(args.num_envs, 1).to(device)
+    current_episode_return = th.zeros(n_eval_envs, 1).to(device)
 
     while n_finished_episodes < n_episodes:
         # NOTE: the following line tensorize and also appends data to the rollout storage
@@ -269,6 +270,8 @@ def main():
         ## Additional modalities
         get_arg_dict("pgwt-ca-prev-latents", bool, False, metatype="bool"), # if True, passes the prev latent to CA as KV input data
 
+        ## Special BC
+        get_arg_dict("chunk-length", int, 150), # Process sequence as shorter chunks
         # Eval protocol
         get_arg_dict("eval", bool, True, metatype="bool"),
         get_arg_dict("eval-every", int, int(1.5e3)), # Every X frames || steps sampled
@@ -315,7 +318,8 @@ def main():
 
     # Overriding some envs parametes from the .yaml env config
     env_config.defrost()
-    env_config.NUM_PROCESSES = args.num_envs # Corresponds to number of envs, makes script startup faster for debugs
+    # NOTE: using less environments for eval to save up system memory -> run more experiment at thte same time
+    env_config.NUM_PROCESSES = 2 # Corresponds to number of envs, makes script startup faster for debugs
     # env_config.CONTINUOUS = args.env_continuous
     ## In caes video saving is enabled, make sure there is also the rgb videos
     agent_extra_rgb = False
@@ -374,11 +378,12 @@ def main():
     num_updates = args.total_steps // args.batch_size # Total number of updates that will take place in this experiment
     n_updates = 0 # Progressively tracks the number of network updats
 
-    for global_step in range(1, args.total_steps + 1, args.batch_size):
+    # NOTE: 10 * 150 as step to match the training rate of an RL Agent, irrespective of which batch size / batch length is used
+    for global_step in range(1, args.total_steps + 1, 10 * 150):
         # Load batch data
         obs_list, action_list, _, done_list = \
-            [ {k: th.Tensor(v).reshape(-1, *v.shape[-3:]).float().to(device) for k,v in b.items()} if isinstance(b, dict) else 
-               b.reshape(-1, 1).float().to(device) for b in next(dloader)]
+            [ {k: th.Tensor(v).float().to(device) for k,v in b.items()} if isinstance(b, dict) else 
+               b.float().to(device) for b in next(dloader)] # NOTE this will not suport "audiogoal" waveform audio, only rgb / depth / spectrogram
         
         # PPO Update Phase: actor and critic network updates
         # assert args.num_envs % args.num_minibatches == 0
@@ -399,11 +404,30 @@ def main():
             else:
                 raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
             # TODO / MISSING: mini-batch updates support like in ppo_av_nav.py
-            _, action_probs, _, _, _, _ = \
-                agent.act(obs_list, rnn_hidden_state,
-                    masks=1.-done_list)
+            # TODO: As an assertk, that num_step % chunk-length == 0: 
+            assert args.num_steps % args.chunk_length == 0, \
+                f"num-steps {args.num_steps} should be integer divisible by {args.chunk_length}"
+            n_chunks = args.num_steps // args.chunk_length
 
-            bc_loss = F.cross_entropy(action_probs, action_list[..., 0].long())
+            bc_loss = 0
+
+            for chnk_idx in range(n_chunks):
+                chnk_start = chnk_idx * args.chunk_length
+                chnk_end = (chnk_idx+1) * args.chunk_length
+                
+                # NOTE: v.shape[-3:] only valid for "rgb", "depth", and "spectrogram"
+                obs_chunk_list = {k: v[:, chnk_start:chnk_end].reshape(-1, *v.shape[(-3 if k in ["rgb", "depth", "spectrogram"] else -2):])
+                                    for k, v in obs_list.items()}
+
+                # TODO: maybe detach the rnn_hidden_state between two chunks ?
+                _, action_probs, _, _, _, _ = \
+                    agent.act(obs_chunk_list, rnn_hidden_state,
+                        masks=1.-done_list[:, chnk_start:chnk_end].reshape(-1, 1))
+
+                bc_loss += F.cross_entropy(action_probs, action_list[:, chnk_start:chnk_end, 0].reshape(-1).long())
+
+            # Average over chunks
+            bc_loss = bc_loss / n_chunks
 
             optimizer.zero_grad()
             bc_loss.backward()

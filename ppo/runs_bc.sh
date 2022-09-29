@@ -17,11 +17,13 @@ fi
   # region: PPO GRU - BC with default hyparams
   # for seed in 111; do
   #   # export MASTER_PORT=8738 # Default port is 8738
+  #   export TOTAL_STEPS=10000000
   #   (sleep 1s && python ppo_bc.py \
   #       --exp-name "ppo_bc__ss1_rgb_spectro__gru" \
   #       --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
   #       --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
   #       --logdir-prefix $LOGDIR_PREFIX \
+  #       --total-steps $TOTAL_STEPS \
   #       --seed $seed \
   #   ) & # >& /dev/null &
   # done
@@ -30,6 +32,7 @@ fi
   # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1
   # for seed in 111; do
   #   # export MASTER_PORT=8748 # Default port is 8738
+  #   export TOTAL_STEPS=10000000
   #   (sleep 1s && python ppo_bc.py \
   #       --exp-name "ppo_bc__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats" \
   #       --agent-type "perceiver-gwt-gwwm" \
@@ -44,11 +47,195 @@ fi
   #       --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
   #       --save-videos True \
   #       --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+  #       --total-steps $TOTAL_STEPS \
   #       --logdir-prefix $LOGDIR_PREFIX \
   #       --seed $seed \
   #   ) & # >& /dev/null &
   # done
   # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1
+
+  # region: PPO GRU | Perceiver - BC with default hyparams, search over batch -size
+  for seed in 111; do
+    for bsize in 32; do
+      export TOTAL_STEPS=1000000
+      
+      ## PPO GRU
+      # (sleep 1s && python ppo_bc.py \
+      #   --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+      #   --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+      #   --exp-name "ppo_bc__ss1_rgb_spectro__gru__bsize_$bsize" \
+      #   --num-envs $bsize \
+      #   --logdir-prefix $LOGDIR_PREFIX \
+      #   --total-steps $TOTAL_STEPS \
+      #   --seed $seed \
+      # ) & # >& /dev/null &
+
+      ## PPO Perceiver
+      # (sleep 1s && python ppo_bc.py \
+      #   --agent-type "perceiver-gwt-gwwm" \
+      #   --pgwt-depth 1 \
+      #   --pgwt-num-latents 8 \
+      #   --pgwt-latent-dim 64 \
+      #   --pgwt-cross-heads 1 \
+      #   --pgwt-latent-heads 4 \
+      #   --pgwt-use-sa False \
+      #   --pgwt-mod-embed 0 \
+      #   --pgwt-ca-prev-latents True \
+      #   --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+      #   --save-videos True \
+      #   --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+      #   --exp-name "ppo_bc__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats__bsize_$bsize" \
+      #   --num-envs $bsize \
+      #   --total-steps $TOTAL_STEPS \
+      #   --logdir-prefix $LOGDIR_PREFIX \
+      #   --seed $seed \
+      # ) & # >& /dev/null &
+    done
+
+    # region: PPO GRU: batch_size * chunk_length = 10 * 10: Do shorter chunks help ?
+    # (sleep 1s && python ppo_bc.py \
+    #   --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+    #   --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+    #   --exp-name "ppo_bc__ss1_rgb_spectro__gru__bsize_10_nsteps_150_chnklen_10" \
+    #   --chunk-length 10 \
+    #   --num-envs 10 \
+    #   --num-steps 150 \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --total-steps $TOTAL_STEPS \
+    #   --seed $seed \
+    # ) & # >& /dev/null &
+    # endregion: PPO GRU: batch_size * chunk_length = 10 * 10: Do shorter chunks help ?
+
+    # region: PPO GRU: batch_size * chunk_length = 32 * 10: Do shorter chunks help ?
+    # (sleep 1s && python ppo_bc.py \
+    #   --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+    #   --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+    #   --exp-name "ppo_bc__ss1_rgb_spectro__gru__bsize_32_nsteps_150_chnklen_10" \
+    #   --chunk-length 10 \
+    #   --num-envs 32 \
+    #   --num-steps 150 \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --total-steps $TOTAL_STEPS \
+    #   --seed $seed \
+    # ) & # >& /dev/null &
+    # endregion: PPO GRU: batch_size * chunk_length = 32 * 10: Do shorter chunks help ?
+    
+    # region: PPO Perceiver batch_size * chunk_length = 10 * 150: Sanity check / baseline
+    # (sleep 1s && python ppo_bc.py \
+    #   --agent-type "perceiver-gwt-gwwm" \
+    #   --pgwt-depth 1 \
+    #   --pgwt-num-latents 8 \
+    #   --pgwt-latent-dim 64 \
+    #   --pgwt-cross-heads 1 \
+    #   --pgwt-latent-heads 4 \
+    #   --pgwt-use-sa False \
+    #   --pgwt-mod-embed 0 \
+    #   --pgwt-ca-prev-latents True \
+    #   --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+    #   --save-videos True \
+    #   --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+    #   --exp-name "ppo_bc__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats__bsize_10_nsteps_150_chnklen_150" \
+    #   --chunk-length 150 \
+    #   --num-envs 10 \
+    #   --total-steps $TOTAL_STEPS \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --seed $seed \
+    # ) & # >& /dev/null &
+    # endregion: PPO Perceiver batch_size * chunk_length = 10 * 150: Sanity check / baseline
+
+    # region: PPO Perceiver batch_size * chunk_length = 10 * 10: Do shorter chunks help ?
+    # (sleep 1s && python ppo_bc.py \
+    #   --agent-type "perceiver-gwt-gwwm" \
+    #   --pgwt-depth 1 \
+    #   --pgwt-num-latents 8 \
+    #   --pgwt-latent-dim 64 \
+    #   --pgwt-cross-heads 1 \
+    #   --pgwt-latent-heads 4 \
+    #   --pgwt-use-sa False \
+    #   --pgwt-mod-embed 0 \
+    #   --pgwt-ca-prev-latents True \
+    #   --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+    #   --save-videos True \
+    #   --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+    #   --exp-name "ppo_bc__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats__bsize_10_nsteps_150_chnklen_10" \
+    #   --chunk-length 10 \
+    #   --num-envs 10 \
+    #   --total-steps $TOTAL_STEPS \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --seed $seed \
+    # ) & # >& /dev/null &
+    # endregion: PPO Perceiver batch_size * chunk_length = 10 * 10: Do shorter chunks help ?
+
+    # region: PPO Perceiver batch_size * chunk_length = 32 * 10: Do shorter chunks help ?
+    # (sleep 1s && python ppo_bc.py \
+    #   --agent-type "perceiver-gwt-gwwm" \
+    #   --pgwt-depth 1 \
+    #   --pgwt-num-latents 8 \
+    #   --pgwt-latent-dim 64 \
+    #   --pgwt-cross-heads 1 \
+    #   --pgwt-latent-heads 4 \
+    #   --pgwt-use-sa False \
+    #   --pgwt-mod-embed 0 \
+    #   --pgwt-ca-prev-latents True \
+    #   --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+    #   --save-videos True \
+    #   --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+    #   --exp-name "ppo_bc__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats__bsize_32_nsteps_150_chnklen_10" \
+    #   --chunk-length 10 \
+    #   --num-envs 32 \
+    #   --total-steps $TOTAL_STEPS \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --seed $seed \
+    # ) & # >& /dev/null &
+    # endregion: PPO Perceiver batch_size * chunk_length = 32 * 10: Do shorter chunks help ?
+
+    # region: PPO Perceiver batch_size * chunk_length = 150 * 10: Do shorter chunks help ?
+    # (sleep 1s && python ppo_bc.py \
+    #   --agent-type "perceiver-gwt-gwwm" \
+    #   --pgwt-depth 1 \
+    #   --pgwt-num-latents 8 \
+    #   --pgwt-latent-dim 64 \
+    #   --pgwt-cross-heads 1 \
+    #   --pgwt-latent-heads 4 \
+    #   --pgwt-use-sa False \
+    #   --pgwt-mod-embed 0 \
+    #   --pgwt-ca-prev-latents True \
+    #   --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+    #   --save-videos True \
+    #   --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+    #   --exp-name "ppo_bc__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats__bsize_150_nsteps_150_chnklen_10" \
+    #   --chunk-length 10 \
+    #   --num-envs 150 \
+    #   --total-steps $TOTAL_STEPS \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --seed $seed \
+    # ) & # >& /dev/null &
+    # endregion: PPO Perceiver batch_size * chunk_length = 150 * 10: Do shorter chunks help ?
+
+    # region: PPO Perceiver batch_size * chunk_length = 256 * 10: Do shorter chunks help ?
+    # (sleep 1s && python ppo_bc.py \
+    #   --agent-type "perceiver-gwt-gwwm" \
+    #   --pgwt-depth 1 \
+    #   --pgwt-num-latents 8 \
+    #   --pgwt-latent-dim 64 \
+    #   --pgwt-cross-heads 1 \
+    #   --pgwt-latent-heads 4 \
+    #   --pgwt-use-sa False \
+    #   --pgwt-mod-embed 0 \
+    #   --pgwt-ca-prev-latents True \
+    #   --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+    #   --save-videos True \
+    #   --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+    #   --exp-name "ppo_bc__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats__bsize_256_nsteps_150_chnklen_10" \
+    #   --chunk-length 10 \
+    #   --num-envs 256 \
+    #   --total-steps $TOTAL_STEPS \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --seed $seed \
+    # ) & # >& /dev/null &
+    # endregion: PPO Perceiver batch_size * chunk_length = 256 * 10: Do shorter chunks help ?
+  done
+  # region: PPO GRU | Perceiver - BC with default hyparams, search over batch -size
 
 # endregion: PPO BC #
 
