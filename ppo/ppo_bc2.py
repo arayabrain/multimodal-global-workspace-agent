@@ -97,7 +97,7 @@ class BCIterableDataset3(IterableDataset):
 
             yield obs_list, action_list, reward_list, done_list, depad_mask_list
     
-def make_dataloader3(dataset_path, batch_size, batch_length, seed=111, num_workers=4):
+def make_dataloader3(dataset_path, batch_size, batch_length, seed=111, num_workers=2):
     def worker_init_fn(worker_id):
         # worker_seed = th.initial_seed() % (2 ** 32)
         worker_seed = 133754134 + worker_id
@@ -453,7 +453,10 @@ def main():
                         masks=masks_chunk_list)
                 
                 bc_loss = F.cross_entropy(action_probs, action_target_chunk_list, reduction="none")
-                bc_loss = th.masked_select(bc_loss, depad_mask_list[:, b_chnk_start:b_chnk_end, 0].reshape(-1).bool()).mean()
+                bc_loss = th.masked_select(
+                    bc_loss,
+                    depad_mask_list[:, b_chnk_start:b_chnk_end, 0].reshape(-1).bool()
+                ).mean()
                 
                 bc_loss /= n_bchunks # Normalize accumulated grads over batch axis
 
