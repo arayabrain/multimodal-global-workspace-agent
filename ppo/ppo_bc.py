@@ -97,7 +97,7 @@ class BCIterableDataset(IterableDataset):
 
             yield obs_list, action_list, reward_list, done_list
     
-def make_dataloader(dataset_path, batch_size, batch_length, seed=111, num_workers=4):
+def make_dataloader(dataset_path, batch_size, batch_length, seed=111, num_workers=8):
     def worker_init_fn(worker_id):
         # worker_seed = th.initial_seed() % (2 ** 32)
         worker_seed = 133754134 + worker_id
@@ -118,6 +118,100 @@ def make_dataloader(dataset_path, batch_size, batch_length, seed=111, num_worker
     )
 
     return dloader
+
+
+# This variant will sample random subsequences fro meach episode
+class BCIterableDataset2(IterableDataset):
+    def __init__(self, dataset_path, batch_length, seed=111):
+        self.seed = seed
+        self.batch_length = batch_length
+        self.dataset_path = dataset_path
+
+        # Read episode filenames in the dataset path
+        self.ep_filenames = os.listdir(dataset_path)
+        print(f"Initialized IterDset with {len(self.ep_filenames)} episodes.")
+    
+    def __iter__(self):
+        batch_length = self.batch_length
+        while True:
+            # Sample epsiode data until there is enough for one trajectory
+            # Hardcoded for now, make flexible later
+            # Done later to recover the 
+            obs_list = {
+                "rgb": np.zeros([batch_length, 128, 128, 3]),
+                "audiogoal": np.zeros([batch_length, 2, 16000]),
+                "spectrogram": np.zeros([batch_length, 65, 26, 2])
+            }
+            action_list, reward_list, done_list = \
+                np.zeros([batch_length, 1]), \
+                np.zeros([batch_length, 1]), \
+                np.zeros([batch_length, 1])
+            
+            ssf = 0 # Step affected so far
+            while ssf < batch_length:
+                idx = th.randint(len(self.ep_filenames), ())
+                ep_filename = self.ep_filenames[idx]
+                ep_filepath = os.path.join(self.dataset_path, ep_filename)
+                with open(ep_filepath, "rb") as f:
+                    edd = cpkl.load(f)
+                print(f"Sampled traj idx: {idx}; Len: {edd['ep_length']}")
+
+                # Append the data to the bathc trjectory
+                rs = batch_length - ssf # Reamining steps
+                edd_start = th.randint(0, edd["ep_length"]-20, ()).item() # Sample start of sub-squence for this episode
+                edd_end = min(edd_start + rs, edd["ep_length"])
+                subseq_len = edd_end - edd_start # + 1 ?
+
+                horizon = ssf + subseq_len
+
+                for k, v in edd["obs_list"].items():
+                    obs_list[k][ssf:horizon] = v[edd_start:edd_end]
+                action_list[ssf:horizon] = edd["action_list"][edd_start:edd_end]
+                reward_list[ssf:horizon] = np.array(edd["reward_list"][edd_start:edd_end])[:, None]
+                done_list[ssf:horizon] = np.array(edd["done_list"][edd_start:edd_end])[:, None]
+
+                # Special case for the mask
+                # Because this concatenates sub-sequences together, we still need a done-based mask
+                # to reset the latent once a new sub-sequence commences. NOTE that in this case, it
+                # looses the burn-in feature.
+                if ssf == 0:
+                    done_list[ssf, 0] = False # Override the first mask, the previous latent should not be overriden
+                if ssf > 0: # Apply work around for mask as long as this is not the first sub-sequence
+                    done_list[ssf, 0] = True
+
+                ssf += subseq_len
+
+                if ssf >= self.batch_length:
+                    break
+
+            yield obs_list, action_list, reward_list, done_list
+    
+def make_dataloader2(dataset_path, batch_size, batch_length, seed=111, num_workers=8):
+    def worker_init_fn(worker_id):
+        # worker_seed = th.initial_seed() % (2 ** 32)
+        worker_seed = 133754134 + worker_id
+
+        random.seed(worker_seed)
+        np.random.seed(worker_seed)
+
+    th_seed_gen = th.Generator()
+    th_seed_gen.manual_seed(133754134 + seed)
+
+    dloader = iter(
+        DataLoader(
+            BCIterableDataset2(
+                dataset_path=dataset_path, batch_length=batch_length),
+                batch_size=batch_size, num_workers=num_workers,
+                worker_init_fn=worker_init_fn, generator=th_seed_gen
+            )
+    )
+
+    return dloader
+
+DATASET_DIR_PATH = f"ppo_gru_dset_2022_09_21__750000_STEPS"
+dloader = make_dataloader2(DATASET_DIR_PATH, batch_size=1, batch_length=30)
+for _ in range(2):
+    obs_batch, action_batch, reward_batch, done_batch = next(dloader)
 
 # Tensorize current observation, store to rollout data
 def tensorize_obs_dict(obs, device, observations=None, rollout_step=None):
@@ -271,7 +365,10 @@ def main():
         get_arg_dict("pgwt-ca-prev-latents", bool, False, metatype="bool"), # if True, passes the prev latent to CA as KV input data
 
         ## Special BC
+        get_arg_dict("burn-in", int, 5), # Steps used to init the latent state for RNN component
         get_arg_dict("chunk-length", int, 150), # Process sequence as shorter chunks
+        get_arg_dict("batch-chunk-length", int, 1), # For gradient accumulation
+
         # Eval protocol
         get_arg_dict("eval", bool, True, metatype="bool"),
         get_arg_dict("eval-every", int, int(1.5e3)), # Every X frames || steps sampled
@@ -362,6 +459,7 @@ def main():
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 
     optimizer = th.optim.Adam(agent.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
+    optimizer.zero_grad()
 
     # Dataset loading
     dloader = make_dataloader(args.dataset_path, batch_size=args.num_envs,
@@ -393,51 +491,71 @@ def main():
 
         for _ in range(args.update_epochs):
             # np.random.shuffle(envinds)
-            # Copy the rnn_hidden_state at the start of the rollout.
-            # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
-            if args.agent_type == "ss-default":
-                rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size), device=device)
-            elif args.agent_type in ["perceiver-gwt-gwwm", "perceiver-gwt-attgru"]:
-                rnn_hidden_state = agent.state_encoder.latents.repeat(args.num_envs, 1, 1)
-            elif args.agent_type == "deep-etho":
-                rnn_hidden_state = th.zeros((1, args.num_envs, args.hidden_size * 2), device=device)
-            else:
-                raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
             # TODO / MISSING: mini-batch updates support like in ppo_av_nav.py
-            # TODO: As an assertk, that num_step % chunk-length == 0: 
             assert args.num_steps % args.chunk_length == 0, \
                 f"num-steps {args.num_steps} should be integer divisible by {args.chunk_length}"
+            assert args.num_envs % args.batch_chunk_length == 0, \
+                f"num-envs (batch-size) of {args.num_envs} should be integer divisible by {args.batch_chunk_length}"
+            
             n_chunks = args.num_steps // args.chunk_length
-
-            bc_loss = 0
+            n_bchunks = args.num_envs // args.batch_chunk_length
 
             for chnk_idx in range(n_chunks):
                 chnk_start = chnk_idx * args.chunk_length
                 chnk_end = (chnk_idx+1) * args.chunk_length
                 
-                # NOTE: v.shape[-3:] only valid for "rgb", "depth", and "spectrogram"
-                obs_chunk_list = {k: v[:, chnk_start:chnk_end].reshape(-1, *v.shape[(-3 if k in ["rgb", "depth", "spectrogram"] else -2):])
-                                    for k, v in obs_list.items()}
+                # Reset optimizer for each chunk over the "trajectory length" axis
+                optimizer.zero_grad()
 
-                # TODO: maybe detach the rnn_hidden_state between two chunks ?
-                _, action_probs, _, _, _, _ = \
-                    agent.act(obs_chunk_list, rnn_hidden_state,
-                        masks=1.-done_list[:, chnk_start:chnk_end].reshape(-1, 1))
+                for bchnk_idx in range(n_bchunks):
+                    # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
+                    if args.agent_type == "ss-default":
+                        rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
+                    elif args.agent_type in ["perceiver-gwt-gwwm", "perceiver-gwt-attgru"]:
+                        rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)
+                    else:
+                        raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 
-                bc_loss += F.cross_entropy(action_probs, action_list[:, chnk_start:chnk_end, 0].reshape(-1).long())
+                    b_chnk_start = bchnk_idx * args.batch_chunk_length
+                    b_chnk_end = (bchnk_idx + 1) + args.batch_chunk_length
 
-            # Average over chunks
-            bc_loss = bc_loss / n_chunks
+                    # NOTE: v.shape[-3:] only valid for "rgb", "depth", and "spectrogram"
+                    obs_chunk_list = {k: v[b_chnk_start:b_chnk_end, chnk_start:chnk_end].reshape(-1, *v.shape[(-3 if k in ["rgb", "depth", "spectrogram"] else -2):])
+                                        for k, v in obs_list.items()}
+                    masks_chunk_list = 1. - done_list[b_chnk_start:b_chnk_end, chnk_start:chnk_end].reshape(-1, 1)
+                    action_target_chunk_list = action_list[b_chnk_start:b_chnk_end, chnk_start:chnk_end, 0].reshape(-1).long()
 
-            optimizer.zero_grad()
-            bc_loss.backward()
-            grad_norms_preclip = agent.get_grad_norms()
-            if args.max_grad_norm > 0:
-                nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
-            optimizer.step()
+                    # TODO: maybe detach the rnn_hidden_state between two chunks ?
+                    _, action_probs, _, _, _, _ = \
+                        agent.act(obs_chunk_list, rnn_hidden_state,
+                            masks=masks_chunk_list)
+                    
+                    bc_loss = F.cross_entropy(action_probs, action_target_chunk_list)
+
+                    # TODO: experiment with burnin later
+                    # burnin_masks = th.ones([args.batch_chunk_length, args.chunk_length, 1]).bool()
+                    # burnin_masks[:, :args.burn_in].fill_(False)
+                    # burnin_masks = burnin_masks.reshape(-1, 1)
+
+                    # Burnin maskin variant
+                    # bc_loss = F.cross_entropy(
+                    #     th.masked_select(action_probs, burnin_masks),
+                    #     th.masked_select(action_target_chunk_list, burnin_masks[..., 0])
+                    # )
+                    # TODO: For the burnin, maybe disable reductio nfor the loss and only multiply the later ?
+                    
+                    bc_loss /= n_bchunks # Normalize accumulated grads over batch axis
+
+                    # Backpropagate and accumulate gradients over the batch size axis
+                    bc_loss.backward()
+
+                grad_norms_preclip = agent.get_grad_norms()
+                if args.max_grad_norm > 0:
+                    nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
+                optimizer.step()
 
             n_updates += 1
-        
+
         if n_updates > 0 and should_log_training_stats(n_updates):
             print(f"Step {global_step} / {args.total_steps}")
 

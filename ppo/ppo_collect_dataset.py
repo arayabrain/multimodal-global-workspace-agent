@@ -156,7 +156,7 @@ def main():
     ppo_gru_agent.load_state_dict(ppo_gru_agent_state_dict)
 
     # Parallelized dataset collection
-    DATASET_TOTAL_STEPS= int(1e6) # int(1e6)
+    DATASET_TOTAL_STEPS= int(5e3) # int(1e6)
     DATASET_DIR_PATH = f"ppo_gru_dset_2022_09_21__{DATASET_TOTAL_STEPS}_STEPS"
     MINIMUM_EP_LENGTH = 20
 
