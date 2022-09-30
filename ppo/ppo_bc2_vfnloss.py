@@ -463,8 +463,8 @@ def main():
 
                 # Value loss based auxiliarry loss function
                 ## Bootstrap value if not done
+                values_list = values.reshape(args.num_steps, args.num_envs)
                 with th.no_grad():
-                    values_list = values.reshape(args.num_steps, args.num_envs)
                     # TODO: clean up and rename variables to make a bit more sense in this context
                     done_th = dones_chunk_list[-1][..., 0]
                     value = values_list[-1]
