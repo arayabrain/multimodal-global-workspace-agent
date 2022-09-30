@@ -74,12 +74,12 @@
                 // BC related
                 // "--chunk-length", "10",
                 "--num-steps", "80",
-                "--num-envs", "32",
+                "--num-envs", "2",
                 // "--batch-chunk-length", "32",
                 
-                "--eval", "True",
+                // "--eval", "True",
+                // "--eval-every", "300",
                 "--log-training-stats-every", "1",
-                "--eval-every", "300",
                 "--agent-type", "perceiver-gwt-gwwm",
 
                 // Logging config

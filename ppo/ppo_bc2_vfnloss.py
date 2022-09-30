@@ -395,7 +395,7 @@ def main():
     # NOTE: 10 * 150 as step to match the training rate of an RL Agent, irrespective of which batch size / batch length is used
     for global_step in range(1, args.total_steps + 1, 10 * 150):
         # Load batch data
-        obs_list, action_list, _, done_list, depad_mask_list = \
+        obs_list, action_list, reward_list, done_list, depad_mask_list = \
             [ {k: th.Tensor(v).float().to(device) for k,v in b.items()} if isinstance(b, dict) else 
                b.float().to(device) for b in next(dloader)] # NOTE this will not suport "audiogoal" waveform audio, only rgb / depth / spectrogram
         
@@ -408,6 +408,7 @@ def main():
         
         action_list = action_list.permute(1, 0, 2)
         done_list = done_list.permute(1, 0, 2)
+        reward_list = reward_list.permute(1, 0, 2)
         depad_mask_list = depad_mask_list.permute(1, 0, 2)
 
         # PPO Update Phase: actor and critic network updates
@@ -443,11 +444,12 @@ def main():
                 # NOTE: v.shape[-3:] only valid for "rgb", "depth", and "spectrogram"
                 obs_chunk_list = {k: v[:, b_chnk_start:b_chnk_end].reshape(-1, *v.shape[(-3 if k in ["rgb", "depth", "spectrogram"] else -2):])
                                     for k, v in obs_list.items()}
-                masks_chunk_list = 1. - done_list[:, b_chnk_start:b_chnk_end].reshape(-1, 1)
+                dones_chunk_list = done_list[:, b_chnk_start:b_chnk_end]
+                masks_chunk_list = 1. - dones_chunk_list.reshape(-1, 1)
                 action_target_chunk_list = action_list[:, b_chnk_start:b_chnk_end, 0].reshape(-1).long()
 
                 # TODO: maybe detach the rnn_hidden_state between two chunks ?
-                _, action_probs, _, _, _, _ = \
+                _, action_probs, _, _, values, _ = \
                     agent.act(obs_chunk_list, rnn_hidden_state,
                         masks=masks_chunk_list)
                 
@@ -459,8 +461,50 @@ def main():
                 
                 bc_loss /= n_bchunks # Normalize accumulated grads over batch axis
 
+                # Value loss based auxiliarry loss function
+                ## Bootstrap value if not done
+                with th.no_grad():
+                    values_list = values.reshape(args.num_steps, args.num_envs)
+                    # TODO: clean up and rename variables to make a bit more sense in this context
+                    done_th = dones_chunk_list[-1][..., 0]
+                    value = values_list[-1]
+                    rewards = reward_list[:-1, b_chnk_start:b_chnk_end][..., 0]
+                    # By default, use GAE
+                    advantages = th.zeros_like(rewards)
+                    lastgaelam = 0.
+                    for t in reversed(range(args.num_steps-1)):
+                        if t == args.num_steps - 2:
+                            nextnonterminal = 1.0 - done_th
+                            nextvalues = value
+                        else:
+                            nextnonterminal = 1.0 - dones_chunk_list[t + 1][..., 0]
+                            nextvalues = values_list[t + 1]
+                        delta = rewards[t] + args.gamma * nextvalues * nextnonterminal - values_list[t]
+                        advantages[t] = lastgaelam = delta + args.gamma * args.gae_lambda * nextnonterminal * lastgaelam
+                    returns = advantages + values_list[:-1]
+                
+                # Value loss
+                newvalue = values_list[:-1, :].view(-1)
+                b_returns = returns.reshape(-1)
+                if args.clip_vloss:
+                    v_loss_unclipped = (newvalue - b_returns) ** 2
+                    v_clipped = values_list[:-1, :].view(-1) + th.clamp(
+                        newvalue - values_list[:-1, :].view(-1),
+                        -args.clip_coef,
+                        args.clip_coef,
+                    )
+                    v_loss_clipped = (v_clipped - b_returns) ** 2
+                    v_loss_max = th.max(v_loss_unclipped, v_loss_clipped)
+                    v_loss = 0.5 * v_loss_max.mean()
+                else:
+                    v_loss = 0.5 * ((newvalue - b_returns) ** 2).mean()
+
+                v_loss *= args.vf_coef
+                v_loss /= n_bchunks
+
+                # TODO: backward policy and vlaue function loss
                 # Backpropagate and accumulate gradients over the batch size axis
-                bc_loss.backward()
+                (bc_loss + v_loss).backward()
 
             grad_norms_preclip = agent.get_grad_norms()
             if args.max_grad_norm > 0:
@@ -472,7 +516,10 @@ def main():
         if n_updates > 0 and should_log_training_stats(n_updates):
             print(f"Step {global_step} / {args.total_steps}")
 
-            train_stats = {"bc_loss": bc_loss.item() * n_bchunks} # * n_bchunks undoes the scaling applied during grad accum
+            train_stats = {
+                "bc_loss": bc_loss.item() * n_bchunks,
+                "v_loss": v_loss.item() * n_bchunks
+            } # * n_bchunks undoes the scaling applied during grad accum
             
             tblogger.log_stats(train_stats, global_step, prefix="train")
         
