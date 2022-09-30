@@ -92,23 +92,66 @@ fi
       # ) & # >& /dev/null &
     done
 
-    # region: PPO GRU: batch_size 128; batch_chunk_len: 32;  seq_length == chunk_length: 80 (accum grad over 4 mini batches)
-    (sleep 1s && python ppo_bc.py \
+    ## ppo_bc
+    
+    # region: PPO GRU: batch_size 64; batch_chunk_len: 32;  seq_length == chunk_length: 80 (accum grad over 4 mini batches)
+    # (sleep 1s && python ppo_bc.py \
+    #   --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+    #   --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+    #   --exp-name "ppo_bc__ss1_rgb_spectro__gru__bsize_10_bchnklen_10__nsteps_150_chnklen_150" \
+    #   --num-steps 150 \
+    #   --chunk-length 150 \
+    #   --num-envs 10 \
+    #   --batch-chunk-length 10 \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --total-steps $TOTAL_STEPS \
+    #   --seed $seed \
+    # ) & # >& /dev/null &
+    # endregion: PPO GRU: batch_size 64; batch_chunk_len: 32;  seq_length == chunk_length: 80 (accum grad over 4 mini batches)
+
+    # region: PPO Perceiver batch_size 64; batch_chunk_len: 32;  seq_length == chunk_length: 80
+    # (sleep 1s && python ppo_bc.py \
+    #   --agent-type "perceiver-gwt-gwwm" \
+    #   --pgwt-depth 1 \
+    #   --pgwt-num-latents 8 \
+    #   --pgwt-latent-dim 64 \
+    #   --pgwt-cross-heads 1 \
+    #   --pgwt-latent-heads 4 \
+    #   --pgwt-use-sa False \
+    #   --pgwt-mod-embed 0 \
+    #   --pgwt-ca-prev-latents True \
+    #   --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+    #   --save-videos True \
+    #   --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+    #   --exp-name "ppo_bc__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAprevlats__bsize_10_bchnklen_10__nsteps_150_chnklen_150" \
+    #   --num-steps 150 \
+    #   --chunk-length 150 \
+    #   --num-envs 10 \
+    #   --batch-chunk-length 10 \
+    #   --total-steps $TOTAL_STEPS \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --seed $seed \
+    # ) & # >& /dev/null &
+    # endregion: PPO Perceiver batch_size 128; batch_chunk_len: 32;  seq_length == chunk_length: 80
+
+    ## ppo_bc2
+
+    # region: PPO GRU: batch_size 64; batch_chunk_len: 32;  seq_length == chunk_length: 80 (accum grad over 4 mini batches)
+    (sleep 1s && python ppo_bc2.py \
       --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
       --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
-      --exp-name "ppo_bc__ss1_rgb_spectro__gru__bsize_128_bchnklen_32__nsteps_80_chnklen_80" \
+      --exp-name "ppo_bc2__ss1_rgb_spectro__gru__bsize_128_bchnklen_32__nsteps_80" \
       --num-steps 80 \
-      --chunk-length 80 \
       --num-envs 128 \
       --batch-chunk-length 32 \
       --logdir-prefix $LOGDIR_PREFIX \
       --total-steps $TOTAL_STEPS \
       --seed $seed \
     ) & # >& /dev/null &
-    # endregion: PPO GRU: batch_size 128; batch_chunk_len: 32;  seq_length == chunk_length: 80 (accum grad over 4 mini batches)
+    # endregion: PPO GRU: batch_size 64; batch_chunk_len: 32;  seq_length == chunk_length: 80 (accum grad over 4 mini batches)
 
-    # region: PPO Perceiver batch_size 128; batch_chunk_len: 32;  seq_length == chunk_length: 80
-    (sleep 1s && python ppo_bc.py \
+    # region: PPO Perceiver batch_size 64; batch_chunk_len: 32;  seq_length == chunk_length: 80
+    (sleep 1s && python ppo_bc2.py \
       --agent-type "perceiver-gwt-gwwm" \
       --pgwt-depth 1 \
       --pgwt-num-latents 8 \
@@ -121,9 +164,8 @@ fi
       --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
       --save-videos True \
       --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
-      --exp-name "ppo_bc__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAprevlats__bsize_128_bchnklen_32__nsteps_80_chnklen_80" \
+      --exp-name "ppo_bc2__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAprevlats__bsize_128_bchnklen_32__nsteps_80" \
       --num-steps 80 \
-      --chunk-length 80 \
       --num-envs 128 \
       --batch-chunk-length 32 \
       --total-steps $TOTAL_STEPS \

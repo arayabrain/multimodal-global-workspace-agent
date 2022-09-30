@@ -64,7 +64,7 @@
 
                 // PPO Agent cofnig
                 // "--config-path", "env_configs/audiogoal_blind_nocont.yaml",
-                "--num-envs", "2",
+                // "--num-envs", "2",
                 // "--num-steps", "20",
                 // "--agent-type", "perceiver-gwt-gwwm",
                 // "--pgwt-depth", "1",
@@ -72,7 +72,10 @@
                 // "--pgwt-use-sa", "False",
                 // "--pgwt-ca-prev-latents", "True",
                 // BC related
-                "--chunk-length", "10",
+                // "--chunk-length", "10",
+                "--num-steps", "80",
+                "--num-envs", "32",
+                // "--batch-chunk-length", "32",
                 
                 "--eval", "True",
                 "--log-training-stats-every", "1",
@@ -80,7 +83,7 @@
                 "--agent-type", "perceiver-gwt-gwwm",
 
                 // Logging config
-                "--logdir-prefix", "/tmp/ppo-av-nav-dbg",
+                // "--logdir-prefix", "/tmp/ppo-av-nav-dbg",
                 // "--wandb", "--wandb-entity", "dosssman", "--wandb-project", "ss-hab"
             ]
 

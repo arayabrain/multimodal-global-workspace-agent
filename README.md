@@ -222,6 +222,22 @@ conda install pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch
 pip install torchvision
 ``` -->
 
+## APEX for Pytorch optimizers alternative
+Documentation here: https://nvidia.github.io/apex/optimizers.html
+Github here: https://github.com/NVIDIA/apex
+
+```bash
+git clone https://github.com/NVIDIA/apex
+cd apex
+pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
+```
+
+In case it throws a CUDA related error, make sure that the version used to compile Pytorch is the same.
+If not, overrides the last command with something like:
+```bash
+CUDA_HOME=/usr/local/cuda-11.3 pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
+```
+
 ### Testing SS2.0 in interactive mode
 
 For a machine with display, and with `habitat-sim` not being built with the `--headless` flag.
