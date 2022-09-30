@@ -495,9 +495,14 @@ def main():
                     )
                     v_loss_clipped = (v_clipped - b_returns) ** 2
                     v_loss_max = th.max(v_loss_unclipped, v_loss_clipped)
-                    v_loss = 0.5 * v_loss_max.mean()
+                    v_loss = 0.5 * v_loss_max
                 else:
-                    v_loss = 0.5 * ((newvalue - b_returns) ** 2).mean()
+                    v_loss = 0.5 * ((newvalue - b_returns) ** 2)
+                
+                v_loss = th.masked_select(
+                    v_loss,
+                    depad_mask_list[:-1, b_chnk_start:b_chnk_end, 0].reshape(-1).bool()
+                ).mean()
 
                 v_loss *= args.vf_coef
                 v_loss /= n_bchunks
