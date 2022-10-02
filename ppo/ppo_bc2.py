@@ -277,7 +277,7 @@ def main():
         get_arg_dict("pgwt-ca-prev-latents", bool, False, metatype="bool"), # if True, passes the prev latent to CA as KV input data
 
         ## Special BC
-        get_arg_dict("burn-in", int, 5), # Steps used to init the latent state for RNN component
+        get_arg_dict("burn-in", int, 0), # Steps used to init the latent state for RNN component
         get_arg_dict("batch-chunk-length", int, 0), # For gradient accumulation
 
         # Eval protocol
