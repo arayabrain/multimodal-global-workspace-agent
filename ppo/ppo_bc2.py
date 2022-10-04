@@ -205,17 +205,20 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
                 video_name = f"{base_video_name}_gstep_{current_step}"
                 video_fullpath = os.path.join(tblogger.get_videos_savedir(), f"{video_name}.mp4")
 
-                images_to_video_with_audio(
-                    images=eval_video_data_env_0["rgb"],
-                    audios=eval_video_data_env_0["audiogoal"],
-                    output_dir=tblogger.get_videos_savedir(),
-                    video_name=video_name,
-                    sr=env_config.TASK_CONFIG.SIMULATOR.AUDIO.RIR_SAMPLING_RATE, # 16000 for mp3d dataset
-                    fps=5 # env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS # Default is 10 it seems
-                )
+                try:
+                    images_to_video_with_audio(
+                        images=eval_video_data_env_0["rgb"],
+                        audios=eval_video_data_env_0["audiogoal"],
+                        output_dir=tblogger.get_videos_savedir(),
+                        video_name=video_name,
+                        sr=env_config.TASK_CONFIG.SIMULATOR.AUDIO.RIR_SAMPLING_RATE, # 16000 for mp3d dataset
+                        fps=5 # env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS # Default is 10 it seems
+                    )
 
-                # Upload to wandb
-                tblogger.log_wandb_video_audio(base_video_name, video_fullpath)
+                    # Upload to wandb
+                    tblogger.log_wandb_video_audio(base_video_name, video_fullpath)
+                except Exception as e:
+                    print("Exception while writing video: ", e)
 
                 ## Additional stas
                 # How many 0 (STOP) actions are performed
