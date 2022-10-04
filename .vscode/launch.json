@@ -75,6 +75,7 @@
                 // "--chunk-length", "10",
                 "--num-steps", "80",
                 "--num-envs", "2",
+                "--save-model", "True",
                 // "--batch-chunk-length", "32",
                 
                 // "--eval", "True",

@@ -78,7 +78,9 @@ class BCIterableDataset3(IterableDataset):
             ep_filepath = os.path.join(self.dataset_path, ep_filename)
             with open(ep_filepath, "rb") as f:
                 edd = cpkl.load(f)
-            print(f"Sampled traj idx: {idx}; Length: {edd['ep_length']}")
+            is_success = edd["info_list"][-1]["success"]
+            last_action = [int(a[0]) for a in edd["action_list"]][-1]
+            print(f"Sampled traj idx: {idx}; Length: {edd['ep_length']}; Success: {is_success}; Last act: {last_action}")
             if edd["ep_length"] < 30:
                 continue # Skips short episodes
             
@@ -142,7 +144,7 @@ def tensorize_obs_dict(obs, device, observations=None, rollout_step=None):
     return obs_th
 
 @th.no_grad()
-def eval_agent(args, eval_envs, agent, device, n_episodes=5):
+def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_step, n_episodes=5, save_videos=True):
     # TODO: add proper support for SAVi config
     is_SAVi = False
 
@@ -166,6 +168,12 @@ def eval_agent(args, eval_envs, agent, device, n_episodes=5):
     # Variables to track episodic return, videos, and other SS relevant stats
     current_episode_return = th.zeros(n_eval_envs, 1).to(device)
 
+    eval_video_data_env_0 = {
+        "rgb": [], "depth": [],
+        "audiogoal": [], "spectrogram": [],
+        "actions": [], "top_down_map": []
+    }
+
     while n_finished_episodes < n_episodes:
         # NOTE: the following line tensorize and also appends data to the rollout storage
         obs_th = tensorize_obs_dict(obs, device)
@@ -185,6 +193,47 @@ def eval_agent(args, eval_envs, agent, device, n_episodes=5):
         # Tracking episode return
         # TODO: keep this on GPU for more efficiency ? We log less than we update, so ...
         current_episode_return += reward_th[:, None]
+
+        if save_videos:
+            # Accumulate data for video + audio rendering
+            eval_video_data_env_0["rgb"].append(obs[0]["rgb"])
+            eval_video_data_env_0["audiogoal"].append(obs[0]["audiogoal"])
+            eval_video_data_env_0["actions"].append(action[0].item())
+
+            if done[0]:
+                base_video_name = "eval_video_0"
+                video_name = f"{base_video_name}_gstep_{current_step}"
+                video_fullpath = os.path.join(tblogger.get_videos_savedir(), f"{video_name}.mp4")
+
+                images_to_video_with_audio(
+                    images=eval_video_data_env_0["rgb"],
+                    audios=eval_video_data_env_0["audiogoal"],
+                    output_dir=tblogger.get_videos_savedir(),
+                    video_name=video_name,
+                    sr=env_config.TASK_CONFIG.SIMULATOR.AUDIO.RIR_SAMPLING_RATE, # 16000 for mp3d dataset
+                    fps=5 # env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS # Default is 10 it seems
+                )
+
+                # Upload to wandb
+                tblogger.log_wandb_video_audio(base_video_name, video_fullpath)
+
+                ## Additional stas
+                # How many 0 (STOP) actions are performed
+                actions_histogram = {k: 0 for k in range(4)}
+                for a in eval_video_data_env_0["actions"]:
+                    actions_histogram[a] += 1
+                tblogger.log_histogram("actions", np.array(eval_video_data_env_0["actions"]),
+                                        step=current_step, prefix="eval")
+                
+                # tblogger.log_stats({
+                #     "last_act_0": 1 if eval_video_data_env_0["actions"][-1] == 0 else 0,
+                # }, step=current_step, prefix="debug")
+
+                eval_video_data_env_0 = {
+                    "rgb": [], "depth": [],
+                    "audiogoal": [], "spectrogram": [],
+                    "actions": [], "top_down_map": []
+                }
 
         if True in done: # At least one env has reached terminal state
             # Extract the "success" and other SS relevant metrics from the env that are 'done'
@@ -212,6 +261,11 @@ def eval_agent(args, eval_envs, agent, device, n_episodes=5):
                 env_done_ep_returns = current_episode_return[env_done_idxs].flatten().tolist()
                 # Append the episodic returns for the env that are dones to the window stats list
                 window_episode_stats["episodic_return"].extend(env_done_ep_returns)
+
+                # Tracking the last actions of an episode
+                if "last_actions" not in list(window_episode_stats.keys()):
+                    window_episode_stats["last_actions"] = deque(maxlen=n_episodes)
+                window_episode_stats["last_actions"].extend([action[i].item() for i in env_done_idxs])
             
             # Track total number of episodes
             n_finished_episodes += len(env_done_idxs)
@@ -282,7 +336,7 @@ def main():
 
         # Eval protocol
         get_arg_dict("eval", bool, True, metatype="bool"),
-        get_arg_dict("eval-every", int, int(1.5e3)), # Every X frames || steps sampled
+        get_arg_dict("eval-every", int, int(1.5e4)), # Every X frames || steps sampled
         get_arg_dict("eval-n-episodes", int, 5),
 
         # Logging params
@@ -326,7 +380,7 @@ def main():
     # th.backends.cudnn.benchmark = args.cudnn_benchmark
 
     # Set device as GPU
-    device = tools.get_device(args)
+    device = tools.get_device(args) if (not args.cpu and th.cuda.is_available()) else th.device("cpu")
 
     # Overriding some envs parametes from the .yaml env config
     env_config.defrost()
@@ -373,8 +427,12 @@ def main():
     else:
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 
-    # optimizer = th.optim.Adam(agent.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
-    optimizer = apex.optimizers.FusedAdam(agent.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
+    if not args.cpu and th.cuda.is_available():
+        # TODO: GPU only. But what if we still want to use the default pytorch one ?
+        optimizer = apex.optimizers.FusedAdam(agent.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
+    else:
+        optimizer = th.optim.Adam(agent.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
+
     optimizer.zero_grad()
 
     # Dataset loading
@@ -399,6 +457,7 @@ def main():
             [ {k: th.Tensor(v).float().to(device) for k,v in b.items()} if isinstance(b, dict) else 
                b.float().to(device) for b in next(dloader)] # NOTE this will not suport "audiogoal" waveform audio, only rgb / depth / spectrogram
         
+        # NOTE: RGB are normalized in the VisualCNN module
         # PPO networks expect input of shape T,B, ... so doing the permutation here
         for k, v in obs_list.items():
             if k in ["rgb", "spectrogram", "depth"]:
@@ -472,6 +531,7 @@ def main():
         if n_updates > 0 and should_log_training_stats(n_updates):
             print(f"Step {global_step} / {args.total_steps}")
 
+            # TODO: add entropy logging
             train_stats = {"bc_loss": bc_loss.item() * n_bchunks} # * n_bchunks undoes the scaling applied during grad accum
             
             tblogger.log_stats(train_stats, global_step, prefix="train")
@@ -494,6 +554,7 @@ def main():
                 "duration": time.time() - start_time,
                 "fps": tblogger.track_duration("fps", global_step),
                 "n_updates": n_updates,
+
                 "env_step_duration": tblogger.track_duration("fps_inv", global_step, inverse=True),
                 "model_updates_per_sec": tblogger.track_duration("model_updates",
                     n_updates),
@@ -505,9 +566,19 @@ def main():
 
         if args.eval and should_eval(global_step):
             eval_window_episode_stas = eval_agent(args, envs, agent,
-                device=device, n_episodes=args.eval_n_episodes)
+                device=device, tblogger=tblogger,
+                env_config=env_config, current_step=global_step,
+                n_episodes=args.eval_n_episodes, save_videos=True)
             episode_stats = {k: np.mean(v) for k, v in eval_window_episode_stas.items()}
+            episode_stats["last_actions_min"] = np.min(eval_window_episode_stas["last_actions"])
             tblogger.log_stats(episode_stats, global_step, "metrics")
+        
+            if args.save_model:
+                model_save_dir = tblogger.get_models_savedir()
+                model_save_name = f"ppo_agent.{global_step}.ckpt.pth"
+                model_save_fullpath = os.path.join(model_save_dir, model_save_name)
+
+                th.save(agent.state_dict(), model_save_fullpath)
 
     # Clean up
     tblogger.close() 
