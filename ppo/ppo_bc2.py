@@ -336,6 +336,7 @@ def main():
         ## Special BC
         get_arg_dict("burn-in", int, 0), # Steps used to init the latent state for RNN component
         get_arg_dict("batch-chunk-length", int, 0), # For gradient accumulation
+        get_arg_dict("ce-weights", float, None, metatype="list"), # Weights for the Cross Entropy loss
 
         # Eval protocol
         get_arg_dict("eval", bool, True, metatype="bool"),
@@ -436,6 +437,11 @@ def main():
     else:
         optimizer = th.optim.Adam(agent.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
 
+    ce_weights = args.ce_weights
+    if ce_weights is not None:
+        # TODO: assert it has same shape as action space.
+        ce_weights = th.Tensor(args.ce_weights).to(device)
+    
     optimizer.zero_grad()
 
     # Dataset loading
@@ -516,7 +522,9 @@ def main():
                     agent.act(obs_chunk_list, rnn_hidden_state,
                         masks=masks_chunk_list)
                 
-                bc_loss = F.cross_entropy(action_probs, action_target_chunk_list, reduction="none")
+
+                bc_loss = F.cross_entropy(action_probs, action_target_chunk_list,
+                                          weight=ce_weights, reduction="none")
                 bc_loss = th.masked_select(
                     bc_loss,
                     depad_mask_list[:, b_chnk_start:b_chnk_end, 0].reshape(-1).bool()
