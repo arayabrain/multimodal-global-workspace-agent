@@ -81,7 +81,7 @@
                 // "--eval", "True",
                 // "--eval-every", "300",
                 "--log-training-stats-every", "1",
-                "--agent-type", "perceiver-gwt-gwwm",
+                // "--agent-type", "perceiver-gwt-gwwm",
 
                 // Logging config
                 // "--logdir-prefix", "/tmp/ppo-av-nav-dbg",

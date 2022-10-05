@@ -514,7 +514,7 @@ class ActorCritic(nn.Module):
         # TODO: maybe some assert on the 
         action_log_probs = distribution.log_probs(actions)
 
-        distribution_entropy = distribution.entropy().mean()
+        distribution_entropy = distribution.entropy()
 
         return actions, distribution.probs, action_log_probs, distribution_entropy, values, rnn_hidden_states
     
@@ -601,7 +601,7 @@ class Perceiver_GWT_ActorCritic(nn.Module):
         # TODO: maybe some assert on the 
         action_log_probs = distribution.log_probs(actions)
 
-        distribution_entropy = distribution.entropy().mean()
+        distribution_entropy = distribution.entropy()
 
         return actions, distribution.probs, action_log_probs, distribution_entropy, values, latents
     
@@ -731,7 +731,7 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
         # TODO: maybe some assert on the 
         action_log_probs = distribution.log_probs(actions)
 
-        distribution_entropy = distribution.entropy().mean()
+        distribution_entropy = distribution.entropy()
 
         return actions, distribution.probs, action_log_probs, distribution_entropy, values, rnn_hidden_states
     

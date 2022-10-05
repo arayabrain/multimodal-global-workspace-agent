@@ -301,7 +301,7 @@ def main():
         get_arg_dict("norm-adv", bool, True, metatype="bool"),
         get_arg_dict("clip-coef", float, 0.1), # Surrogate loss clipping coefficient
         get_arg_dict("clip-vloss", bool, True, metatype="bool"),
-        get_arg_dict("ent-coef", float, 0.2), # Entropy loss coef; 0.2 in SS baselines
+        get_arg_dict("ent-coef", float, 0.0), # Entropy loss coef; 0.2 in SS baselines
         get_arg_dict("vf-coef", float, 0.5), # Value loss coefficient
         get_arg_dict("max-grad-norm", float, 0.5),
         get_arg_dict("target-kl", float, None),
@@ -490,6 +490,9 @@ def main():
             # Reset optimizer for each chunk over the "trajectory length" axis
             optimizer.zero_grad()
 
+            # Placeholder for tracking the actions of the agent
+            batch_traj_agent_actions = th.zeros_like(action_list).long()
+
             for bchnk_idx in range(n_bchunks):
                 # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
                 if args.agent_type == "ss-default":
@@ -509,7 +512,7 @@ def main():
                 action_target_chunk_list = action_list[:, b_chnk_start:b_chnk_end, 0].reshape(-1).long()
 
                 # TODO: maybe detach the rnn_hidden_state between two chunks ?
-                _, action_probs, _, _, _, _ = \
+                actions, action_probs, _, entropies, _, _ = \
                     agent.act(obs_chunk_list, rnn_hidden_state,
                         masks=masks_chunk_list)
                 
@@ -520,9 +523,20 @@ def main():
                 ).mean()
                 
                 bc_loss /= n_bchunks # Normalize accumulated grads over batch axis
+                
+                # Entropy loss
+                # TODO: consider making this decaying as training progresses
+                entropy = th.masked_select(
+                    entropies,
+                    depad_mask_list[:, b_chnk_start:b_chnk_end, 0].reshape(-1).bool()
+                ).mean()
+                entropy /= n_bchunks # Normalize accumulated grads over batch axis
 
                 # Backpropagate and accumulate gradients over the batch size axis
-                bc_loss.backward()
+                (bc_loss - args.ent_coef * entropy).backward()
+
+                # Temporarily save the batch chunk actions of the agent for statistics later
+                batch_traj_agent_actions[:, b_chnk_start:b_chnk_end, :] = actions.detach().view(args.num_steps, args.batch_chunk_length, 1)
 
             grad_norms_preclip = agent.get_grad_norms()
             if args.max_grad_norm > 0:
@@ -535,7 +549,10 @@ def main():
             print(f"Step {global_step} / {args.total_steps}")
 
             # TODO: add entropy logging
-            train_stats = {"bc_loss": bc_loss.item() * n_bchunks} # * n_bchunks undoes the scaling applied during grad accum
+            train_stats = {
+                "bc_loss": bc_loss.item() * n_bchunks,
+                "entropy": entropy.item() * n_bchunks
+            } # * n_bchunks undoes the scaling applied during grad accum
             
             tblogger.log_stats(train_stats, global_step, prefix="train")
         
@@ -547,6 +564,39 @@ def main():
             # }
             # if args.pgwt_mod_embed:
             #     debug_stats["mod_embed_avg"] = agent.state_encoder.modality_embeddings.mean().item()
+
+            # Tracking stats about the actions distribution in the batches # TODO: fix typo
+            batch_traj_final_step_idxs = (depad_mask_list.sum(dim=0)-1)[None, :, :].long().reshape(-1).tolist()
+            batch_traj_final_step_mask = th.zeros_like(depad_mask_list).long()
+            for bi, done_t in enumerate(batch_traj_final_step_idxs):
+                batch_traj_final_step_mask[done_t, bi, 0] = 1
+
+            batch_traj_final_actions = th.masked_select(
+                action_list,
+                batch_traj_final_step_mask.bool()
+            )
+            # How many '0' actions are sampled in a batch ?
+            n_zero_batch_final_actions = len(th.where(batch_traj_final_actions == 0)[0])
+            # Ratio of 0 to other actions in the batch
+            n_zero_batch_final_actions_ratio = n_zero_batch_final_actions / depad_mask_list.sum().item()
+
+
+            batch_traj_agent_final_actions = th.masked_select(
+                batch_traj_agent_actions,
+                batch_traj_final_step_mask.bool()
+            )
+            # How many '0' actions sampled by the agent given the observations ?
+            n_zero_agent_final_actions = len(th.where(batch_traj_agent_final_actions == 0)[0])
+            # Ratio of 0 to other actions in the batch
+            n_zero_agent_final_actions_ratio = n_zero_agent_final_actions / depad_mask_list.sum().item()
+
+            # Special: tracking the 'StOP' action stats across in the batch
+            tblogger.log_stats({
+                "n_zero_batch_final_actions": n_zero_batch_final_actions,
+                "n_zero_batch_final_actions_ratio": n_zero_batch_final_actions_ratio,
+                "n_zero_agent_final_actions": n_zero_agent_final_actions,
+                "n_zero_agent_final_actions_ratio": n_zero_agent_final_actions_ratio
+            }, step=global_step, prefix="metrics")
 
             # Logging grad norms
             tblogger.log_stats(agent.get_grad_norms(), global_step, prefix="debug/grad_norms")
