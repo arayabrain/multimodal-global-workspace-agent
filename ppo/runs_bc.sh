@@ -328,6 +328,23 @@ fi
     # ) & # >& /dev/null &
     # endregion: PPO GRU: batch_size 32; batch_chunk_len: 32;  seq_length == chunk_length: 50 (accum grad over 4 mini batches), Entropy coef: 0 (reference), CE Weights 38.6 0.67 0.84 0.78
 
+    # region: PPO GRU: batch_size 64; batch_chunk_len: 32;  seq_length == chunk_length: 50 (accum grad over 4 mini batches), Entropy coef: 0 (reference), CE Weights 38.6 0.67 0.84 0.78
+    # (sleep 1s && python ppo_bc2.py \
+    #   --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+    #   --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+    #   --exp-name "ppo_bc2__ss1_rgb_spectro__gru__bsize_64_bchnklen_32__nsteps_50__entcoef_0.0__cew_38.6_0.67_0.84_0.78" \
+    #   --ce-weights 38.6 0.67 0.84 0.78 \
+    #   --ent-coef 0 \
+    #   --num-steps 50 \
+    #   --num-envs 64 \
+    #   --batch-chunk-length 32 \
+    #   --save-videos True \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --total-steps $TOTAL_STEPS \
+    #   --seed $seed \
+    # ) & # >& /dev/null &
+    # endregion: PPO GRU: batch_size 64; batch_chunk_len: 32;  seq_length == chunk_length: 50 (accum grad over 4 mini batches), Entropy coef: 0 (reference), CE Weights 38.6 0.67 0.84 0.78
+
     # region: PPO Perceiver batch_size 32; batch_chunk_len: 32;  seq_length == chunk_length: 50
     # (sleep 1s && python ppo_bc2.py \
     #   --agent-type "perceiver-gwt-gwwm" \
@@ -454,32 +471,6 @@ fi
     # ) & # >& /dev/null &
     # endregion: PPO Perceiver batch_size 32; batch_chunk_len: 32;  seq_length == chunk_length: 50; entcoef 0.2 __cew_58_1_1_1
 
-    # region: PPO Perceiver batch_size 128; batch_chunk_len: 32;  seq_length == chunk_length: 50; entcoef 0 (reference) __cew_58_1_1_1
-    # (sleep 1s && python ppo_bc2.py \
-    #   --agent-type "perceiver-gwt-gwwm" \
-    #   --pgwt-depth 1 \
-    #   --pgwt-num-latents 8 \
-    #   --pgwt-latent-dim 64 \
-    #   --pgwt-cross-heads 1 \
-    #   --pgwt-latent-heads 4 \
-    #   --pgwt-use-sa False \
-    #   --pgwt-mod-embed 0 \
-    #   --pgwt-ca-prev-latents True \
-    #   --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
-    #   --save-videos True \
-    #   --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
-    #   --exp-name "ppo_bc2__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAprevlats__bsize_128_bchnklen_32__nsteps_50__entcoef_0__cew_58_1_1_1" \
-    #   --ce-weights 58 1 1 1 \
-    #   --ent-coef 0 \
-    #   --num-steps 50 \
-    #   --num-envs 128 \
-    #   --batch-chunk-length 32 \
-    #   --total-steps $TOTAL_STEPS \
-    #   --logdir-prefix $LOGDIR_PREFIX \
-    #   --seed $seed \
-    # ) & # >& /dev/null &
-    # endregion: PPO Perceiver batch_size 128; batch_chunk_len: 32;  seq_length == chunk_length: 50; entcoef 0 (reference )__cew_58_1_1_1
-
     # region: PPO Perceiver batch_size 32; batch_chunk_len: 32;  seq_length == chunk_length: 50; entcoef 0 (reference) __cew_38.6_0.67_0.84_0.78
     # (sleep 1s && python ppo_bc2.py \
     #   --agent-type "perceiver-gwt-gwwm" \
@@ -506,7 +497,7 @@ fi
     # ) & # >& /dev/null &
     # endregion: PPO Perceiver batch_size 32; batch_chunk_len: 32;  seq_length == chunk_length: 50; entcoef 0 (reference )__cew_38.6_0.67_0.84_0.78
 
-    # region: PPO Perceiver batch_size 64; batch_chunk_len: 32;  seq_length == chunk_length: 50
+    # region: PPO Perceiver batch_size 64; batch_chunk_len: 32;  seq_length == chunk_length: 50; entcoef 0 (reference) __cew_38.6_0.67_0.84_0.78
     # (sleep 1s && python ppo_bc2.py \
     #   --agent-type "perceiver-gwt-gwwm" \
     #   --pgwt-depth 1 \
@@ -520,7 +511,9 @@ fi
     #   --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
     #   --save-videos True \
     #   --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
-    #   --exp-name "ppo_bc2__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAprevlats__bsize_64_bchnklen_32__nsteps_50" \
+    #   --exp-name "ppo_bc2__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAprevlats__bsize_64_bchnklen_32__nsteps_50__entcoef_0__cew_38.6_0.67_0.84_0.78" \
+    #   --ce-weights 38.6 0.67 0.84 0.78 \
+    #   --ent-coef 0 \
     #   --num-steps 50 \
     #   --num-envs 64 \
     #   --batch-chunk-length 32 \
@@ -528,7 +521,8 @@ fi
     #   --logdir-prefix $LOGDIR_PREFIX \
     #   --seed $seed \
     # ) & # >& /dev/null &
-    # endregion: PPO Perceiver batch_size 64; batch_chunk_len: 32;  seq_length == chunk_length: 50
+    # endregion: PPO Perceiver batch_size 64; batch_chunk_len: 32;  seq_length == chunk_length: 50; entcoef 0 (reference )__cew_38.6_0.67_0.84_0.78
+
 
     # region: PPO Perceiver batch_size 128; batch_chunk_len: 32;  seq_length == chunk_length: 50
     # (sleep 1s && python ppo_bc2.py \
