@@ -92,7 +92,7 @@ fi
       # ) & # >& /dev/null &
     done
 
-    export TOTAL_STEPS=4000000
+    export TOTAL_STEPS=10000000
     ## ppo_bc
     
     # region: PPO GRU: batch_size 64; batch_chunk_len: 32;  seq_length == chunk_length: 80 (accum grad over 4 mini batches)
