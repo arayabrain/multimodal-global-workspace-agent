@@ -40,7 +40,22 @@ fi
     #   ) & # >& /dev/null &
     # done
     # endregion: Custom PPO; RGB + Spectrogram based task, SS1.0
-  
+    
+    # region: Custom PPO; RGB + Spectrogram based task, SS1.0, Value Features Detach
+    # for seed in 111 222; do
+    # # for seed in 222 333; do
+    #   (sleep 1s && python ppo_av_nav_valuedetach.py \
+    #       --exp-name "ppo_av_nav__ss1_rgb_spectro__value_feat_detach" \
+    #       --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+    #       --value-feat-detach True \
+    #       --save-videos True \
+    #       --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #       --logdir-prefix $LOGDIR_PREFIX \
+    #       --seed $seed \
+    #   ) & # >& /dev/null &
+    # done
+    # endregion: Custom PPO; RGB + Spectrogram based task, SS1.0, Value Features Detach
+
     # region: Custom PPO; Blind + Spectrogram based task, SS1.0
     # for seed in 111 222 333; do
     #   (sleep 1s && python ppo_av_nav.py \
