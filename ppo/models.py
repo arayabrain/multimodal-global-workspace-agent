@@ -756,7 +756,6 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
             self._features[layer_id] = output
         return fn
 
-class 
 class Perceiver_GWT_AttGRU_ActorCritic(Perceiver_GWT_ActorCritic):
     def __init__(self, observation_space, action_space, config, extra_rgb=False):
         super().__init__(observation_space, action_space, config, extra_rgb)
