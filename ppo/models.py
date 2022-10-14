@@ -497,11 +497,11 @@ class ActorCritic(nn.Module):
         
         return x2, rnn_hidden_states2
     
-    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None):
+    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None, value_feat_detach=False):
         features, rnn_hidden_states = self(observations, rnn_hidden_states, masks)
 
         # Estimate the value function
-        values = self.critic(features)
+        values = self.critic(features.detach() if value_feat_detach else features)
 
         # Estimate the policy as distribution to sample actions from
         distribution = self.action_distribution(features)
@@ -526,31 +526,6 @@ class ActorCritic(nn.Module):
     def get_grad_norms(self):
         modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution", "critic"]
         return {mod_name: compute_grad_norm(self.__getattr__(mod_name)) for mod_name in modules}
-
-
-class ActorCriticValueDetach(ActorCritic):
-
-    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None, value_feat_detach=False):
-        features, rnn_hidden_states = self(observations, rnn_hidden_states, masks)
-
-        # Estimate the value function
-        values = self.critic(features.detach() if value_feat_detach else features)
-
-        # Estimate the policy as distribution to sample actions from
-        distribution = self.action_distribution(features)
-
-        if actions is None:
-            if deterministic:
-                actions = distribution.mode()
-            else:
-                actions = distribution.sample()
-        # TODO: maybe some assert on the 
-        action_log_probs = distribution.log_probs(actions)
-
-        distribution_entropy = distribution.entropy()
-
-        return actions, distribution.probs, action_log_probs, distribution_entropy, values, rnn_hidden_states
-
 
 # Actor critic variant that uses Perceiver as an RNN internally
 # This variant uses the same visual and audio encoder as SS baseline
@@ -739,11 +714,11 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
 
         return state_feat, latents
     
-    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None):
+    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None, value_feat_detach=False):
         features, rnn_hidden_states = self(observations, rnn_hidden_states, masks)
 
         # Estimate the value function
-        values = self.critic(features)
+        values = self.critic(features.detach() if value_feat_detach else features)
 
         # Estimate the policy as distribution to sample actions from
         distribution = self.action_distribution(features)
@@ -781,6 +756,7 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
             self._features[layer_id] = output
         return fn
 
+class 
 class Perceiver_GWT_AttGRU_ActorCritic(Perceiver_GWT_ActorCritic):
     def __init__(self, observation_space, action_space, config, extra_rgb=False):
         super().__init__(observation_space, action_space, config, extra_rgb)
