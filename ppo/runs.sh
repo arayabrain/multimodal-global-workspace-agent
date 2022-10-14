@@ -42,9 +42,8 @@ fi
     # endregion: Custom PPO; RGB + Spectrogram based task, SS1.0
     
     # region: Custom PPO; RGB + Spectrogram based task, SS1.0, Value Features Detach
-    # for seed in 111 222; do
-    # # for seed in 222 333; do
-    #   (sleep 1s && python ppo_av_nav_valuedetach.py \
+    # for seed in 111; do
+    #   (sleep 1s && python ppo_av_nav.py \
     #       --exp-name "ppo_av_nav__ss1_rgb_spectro__value_feat_detach" \
     #       --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
     #       --value-feat-detach True \
