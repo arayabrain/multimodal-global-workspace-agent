@@ -350,32 +350,38 @@ def main():
                 # Log video as soon as the ep in the first env is done
                 if done[0]:
                     if should_log_video(global_step):
-                        # TODO: video logging: fuse with top_down_map and other stats,
-                        # then save to disk, tensorboard, wandb, etc...
-                        # Video plotting is limited to the first environment
-                        base_video_name = "train_video_0"
-                        video_name = f"{base_video_name}_gstep_{global_step}"
-                        video_fullpath = os.path.join(tblogger.get_videos_savedir(), f"{video_name}.mp4")
-                        
-                        # Saves to disk
-                        images_to_video_with_audio(
-                            images=train_video_data_env_0["rgb"],
-                            audios=train_video_data_env_0["audiogoal"],
-                            output_dir=tblogger.get_videos_savedir(),
-                            video_name=video_name,
-                            sr=env_config.TASK_CONFIG.SIMULATOR.AUDIO.RIR_SAMPLING_RATE, # 16000 for mp3d dataset
-                            fps=5 # env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS # Default is 10 it seems
-                        )
-                        
-                        # Save to tensorboard
-                        # tblogger.log_video("train_video_0_rgb",
-                        #     np.array([train_video_data_env_0["rgb"]]).transpose(0, 1, 4, 2, 3), # From [1, THWC] to [1,TCHW]
-                        #     global_step,
-                        #     fps=5 # env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS
-                        # )
-                        
-                        # Upload to wandb
-                        tblogger.log_wandb_video_audio(base_video_name, video_fullpath)
+                        # SOme time video logging fails because the file is not written to disk fast enough
+                        # for wandb to upload it. try ... catch allows to run to still continue despite tehse
+                        # kind of errors
+                        try:
+                            # TODO: video logging: fuse with top_down_map and other stats,
+                            # then save to disk, tensorboard, wandb, etc...
+                            # Video plotting is limited to the first environment
+                            base_video_name = "train_video_0"
+                            video_name = f"{base_video_name}_gstep_{global_step}"
+                            video_fullpath = os.path.join(tblogger.get_videos_savedir(), f"{video_name}.mp4")
+                            
+                            # Saves to disk
+                            images_to_video_with_audio(
+                                images=train_video_data_env_0["rgb"],
+                                audios=train_video_data_env_0["audiogoal"],
+                                output_dir=tblogger.get_videos_savedir(),
+                                video_name=video_name,
+                                sr=env_config.TASK_CONFIG.SIMULATOR.AUDIO.RIR_SAMPLING_RATE, # 16000 for mp3d dataset
+                                fps=5 # env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS # Default is 10 it seems
+                            )
+                            
+                            # Save to tensorboard
+                            # tblogger.log_video("train_video_0_rgb",
+                            #     np.array([train_video_data_env_0["rgb"]]).transpose(0, 1, 4, 2, 3), # From [1, THWC] to [1,TCHW]
+                            #     global_step,
+                            #     fps=5 # env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS
+                            # )
+                            
+                            # Upload to wandb
+                            tblogger.log_wandb_video_audio(base_video_name, video_fullpath)
+                        except Exception as e:
+                            print(f"Video logging failed: ", e)
 
                     # Reset the placeholder for the video
                     # If it is too early to log, then the episode data is trashed
