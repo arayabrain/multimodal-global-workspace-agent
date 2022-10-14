@@ -497,14 +497,15 @@ class ActorCritic(nn.Module):
         
         return x2, rnn_hidden_states2
     
-    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None, value_feat_detach=False):
+    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None,
+                  value_feat_detach=False, actor_feat_detach=False):
         features, rnn_hidden_states = self(observations, rnn_hidden_states, masks)
 
         # Estimate the value function
         values = self.critic(features.detach() if value_feat_detach else features)
 
         # Estimate the policy as distribution to sample actions from
-        distribution = self.action_distribution(features)
+        distribution = self.action_distribution(features.detach() if actor_feat_detach else features)
 
         if actions is None:
             if deterministic:
@@ -714,14 +715,15 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
 
         return state_feat, latents
     
-    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None, value_feat_detach=False):
+    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None,
+                  value_feat_detach=False, actor_feat_detach=False):
         features, rnn_hidden_states = self(observations, rnn_hidden_states, masks)
 
         # Estimate the value function
         values = self.critic(features.detach() if value_feat_detach else features)
 
         # Estimate the policy as distribution to sample actions from
-        distribution = self.action_distribution(features)
+        distribution = self.action_distribution(features.detach() if actor_feat_detach else features)
 
         if actions is None:
             if deterministic:

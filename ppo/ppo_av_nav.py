@@ -45,7 +45,7 @@ def tensorize_obs_dict(obs, device, observations=None, rollout_step=None):
     return obs_th
 
 def main():
-    # region: Generating additional hyparams
+    # region: Generating adhditional hyparams
     CUSTOM_ARGS = [
         # General hyper parameters
         get_arg_dict("seed", int, 111),
@@ -76,6 +76,7 @@ def main():
                      "perceiver-gwt-gwwm", "perceiver-gwt-attgru"]),
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
         get_arg_dict("value-feat-detach", bool, False, metatype="bool"),
+        get_arg_dict("actor-feat-detach", bool, False, metatype="bool"),
 
         ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
         get_arg_dict("pgwt-latent-type", str, "randn", metatype="choice",
@@ -453,7 +454,8 @@ def main():
                 b_new_actions, _,newlogprob, entropy, newvalue, b_state_feats = \
                     agent.act(mb_observations, b_init_rnn_state,
                         masks=1-b_dones[mb_inds], actions=b_actions[mb_inds],
-                        value_feat_detach=args.value_feat_detach)
+                        value_feat_detach=args.value_feat_detach,
+                        actor_feat_detach=args.actor_feat_detach)
 
                 newlogprob = newlogprob.sum(-1) # From [T * B, 1] -> [T * B]
                 logratio = newlogprob - b_logprobs[mb_inds]
