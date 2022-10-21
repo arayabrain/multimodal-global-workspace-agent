@@ -76,7 +76,9 @@
                 "--num-steps", "80",
                 "--num-envs", "2",
                 "--save-model", "True",
-                "--ce-weights", "1", "1", "1", "1",
+                "--prev-actions", "True",
+                "--eval-every", "1000",
+                // "--ce-weights", "1", "1", "1", "1",
                 // "--batch-chunk-length", "32",
                 
                 // "--eval", "True",

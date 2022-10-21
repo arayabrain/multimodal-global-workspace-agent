@@ -152,6 +152,8 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
     obs = eval_envs.reset()
     done = [False for _ in range(n_eval_envs)]
     done_th = th.Tensor(done).to(device)
+    prev_acts = th.zeros([n_eval_envs, 4], device=device)
+
     masks = 1. - done_th[:, None]
     if args.agent_type == "ss-default":
         rnn_hidden_state = th.zeros((1, n_eval_envs, args.hidden_size), device=device)
@@ -179,8 +181,8 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
         obs_th = tensorize_obs_dict(obs, device)
 
         # Sample action
-        action, _, action_logprobs, _, value, rnn_hidden_state = \
-            agent.act(obs_th, rnn_hidden_state, masks=masks, deterministic=True)
+        action, _, _, _, _, rnn_hidden_state = \
+            agent.act(obs_th, rnn_hidden_state, masks=masks, deterministic=True, prev_actions=prev_acts if args.prev_actions else None)
         outputs = eval_envs.step([a[0].item() for a in action])
         obs, reward, done, info = [list(x) for x in zip(*outputs)]
         reward_th = th.Tensor(np.array(reward, dtype=np.float32)).to(device)
@@ -189,6 +191,7 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
         # episodic return. Anyway to make this more efficient ?
         done_th = th.Tensor(done).to(device)
         masks = 1. - done_th[:, None]
+        prev_acts = F.one_hot(action[:, 0], 4) * masks
         
         # Tracking episode return
         # TODO: keep this on GPU for more efficiency ? We log less than we update, so ...
@@ -334,6 +337,7 @@ def main():
         get_arg_dict("pgwt-ca-prev-latents", bool, False, metatype="bool"), # if True, passes the prev latent to CA as KV input data
 
         ## Special BC
+        get_arg_dict("prev-actions", bool, False, metatype="bool"),
         get_arg_dict("burn-in", int, 0), # Steps used to init the latent state for RNN component
         get_arg_dict("batch-chunk-length", int, 0), # For gradient accumulation
         get_arg_dict("ce-weights", float, None, metatype="list"), # Weights for the Cross Entropy loss
@@ -415,7 +419,7 @@ def main():
     # TODO: make the ActorCritic components parameterizable through comand line ?
     if args.agent_type == "ss-default":
         agent = ActorCritic(single_observation_space, single_action_space,
-            args.hidden_size, extra_rgb=agent_extra_rgb).to(device)
+            args.hidden_size, extra_rgb=agent_extra_rgb, prev_actions=args.prev_actions).to(device)
     elif args.agent_type == "perceiver-gwt-gwwm":
         agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space,
             args, extra_rgb=agent_extra_rgb).to(device)
@@ -478,6 +482,11 @@ def main():
         done_list = done_list.permute(1, 0, 2)
         depad_mask_list = depad_mask_list.permute(1, 0, 2)
 
+        prev_actions_list = th.zeros_like(action_list)
+        prev_actions_list[1:] = action_list[:-1]
+        prev_actions_list = F.one_hot(prev_actions_list.long()[:, :, 0], num_classes=4).float()
+        prev_actions_list[0] = prev_actions_list[0] * 0.
+
         # PPO Update Phase: actor and critic network updates
         # assert args.num_envs % args.num_minibatches == 0
         # envsperbatch = args.num_envs // args.num_minibatches
@@ -516,11 +525,12 @@ def main():
                                     for k, v in obs_list.items()}
                 masks_chunk_list = 1. - done_list[:, b_chnk_start:b_chnk_end].reshape(-1, 1)
                 action_target_chunk_list = action_list[:, b_chnk_start:b_chnk_end, 0].reshape(-1).long()
+                prev_actions_chunk_list = prev_actions_list[:, b_chnk_start:b_chnk_end].reshape(-1, 4)
 
                 # TODO: maybe detach the rnn_hidden_state between two chunks ?
                 actions, action_probs, _, entropies, _, _ = \
                     agent.act(obs_chunk_list, rnn_hidden_state,
-                        masks=masks_chunk_list)
+                        masks=masks_chunk_list, prev_actions=prev_actions_chunk_list)
                 
 
                 bc_loss = F.cross_entropy(action_probs, action_target_chunk_list,

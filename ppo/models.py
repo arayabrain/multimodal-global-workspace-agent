@@ -430,8 +430,13 @@ class ActorCritic(nn.Module):
                  action_space,
                  hidden_size,
                  extra_rgb=False,
+                 prev_actions = False,
                  analysis_layers=[]):
         super().__init__()
+
+        self.prev_actions = prev_actions
+        if prev_actions:
+            self.prev_action_embedding = nn.Linear(action_space.n, hidden_size)
 
         # TODO: 
         # - support for blind agent
@@ -444,6 +449,9 @@ class ActorCritic(nn.Module):
             input_dim = hidden_size
         else:
             input_dim = hidden_size * 2
+
+        if self.prev_actions:
+            input_dim += hidden_size
 
         self.state_encoder = RNNStateEncoder(input_dim, hidden_size)
 
@@ -467,7 +475,7 @@ class ActorCritic(nn.Module):
             self._features[layer_id] = output
         return fn
 
-    def forward(self, observations, rnn_hidden_states, masks):
+    def forward(self, observations, rnn_hidden_states, masks, prev_actions=None):
         x1 = []
 
         # Extracts audio featues
@@ -483,6 +491,11 @@ class ActorCritic(nn.Module):
             video_features = self.visual_encoder(observations)
             x1.append(video_features)
 
+        if self.prev_actions:
+            prev_actions *= masks
+            embed_prev_actions = self.prev_action_embedding(prev_actions)
+            x1.append(embed_prev_actions)
+        
         x1 = th.cat(x1, dim=1)
         # Current state, current rnn hidden states, respectively
         x2, rnn_hidden_states2 = self.state_encoder(x1, rnn_hidden_states, masks)
@@ -497,9 +510,9 @@ class ActorCritic(nn.Module):
         
         return x2, rnn_hidden_states2
     
-    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None,
+    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None, prev_actions=None,
                   value_feat_detach=False, actor_feat_detach=False):
-        features, rnn_hidden_states = self(observations, rnn_hidden_states, masks)
+        features, rnn_hidden_states = self(observations, rnn_hidden_states, masks, prev_actions=prev_actions)
 
         # Estimate the value function
         values = self.critic(features.detach() if value_feat_detach else features)
@@ -519,8 +532,8 @@ class ActorCritic(nn.Module):
 
         return actions, distribution.probs, action_log_probs, distribution_entropy, values, rnn_hidden_states
     
-    def get_value(self, observations, rnn_hidden_states, masks):
-        features, _ = self(observations, rnn_hidden_states, masks)
+    def get_value(self, observations, rnn_hidden_states, masks, prev_actions=None):
+        features, _ = self(observations, rnn_hidden_states, masks, prev_actions=prev_actions)
 
         return self.critic(features)
 

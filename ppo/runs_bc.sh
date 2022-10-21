@@ -364,6 +364,25 @@ fi
     # ) & # >& /dev/null &
     # endregion: PPO GRU: batch_size 10; batch_chunk_len: 10;  seq_length == chunk_length: 150 (accum grad over 4 mini batches), Entropy coef: 0 (reference), CE Weights 38.6 0.67 0.84 0.78, no grad norm
 
+    # region: PPO GRU: batch_size 10; batch_chunk_len: 10;  seq_length == chunk_length: 150 (accum grad over 4 mini batches), Entropy coef: 0 (reference), CE Weights 38.6 0.67 0.84 0.78, no grad norm, using previous actions
+    # (sleep 1s && python ppo_bc2.py \
+    #   --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+    #   --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+    #   --exp-name "ppo_bc2__ss1_rgb_spectro__gru__bsize_10_bchnklen_10__nsteps_150__cew_38.6_0.67_0.84_0.78_nogradnorm__prev_acts_mskfix" \
+    #   --prev-actions True \
+    #   --max-grad-norm 0 \
+    #   --ce-weights 38.6 0.67 0.84 0.78 \
+    #   --ent-coef 0 \
+    #   --num-steps 150 \
+    #   --num-envs 10 \
+    #   --batch-chunk-length 10 \
+    #   --save-videos True \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --total-steps $TOTAL_STEPS \
+    #   --seed $seed \
+    # ) & # >& /dev/null &
+    # endregion: PPO GRU: batch_size 10; batch_chunk_len: 10;  seq_length == chunk_length: 150 (accum grad over 4 mini batches), Entropy coef: 0 (reference), CE Weights 38.6 0.67 0.84 0.78, no grad norm, using previous actions
+
     # region: PPO GRU: batch_size 256; batch_chunk_len: 32;  seq_length == chunk_length: 50 (accum grad over 4 mini batches), Entropy coef: 0 (reference), CE Weights 38.6 0.67 0.84 0.78, no grad norm
     # (sleep 1s && python ppo_bc2.py \
     #   --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
