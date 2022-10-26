@@ -12,6 +12,8 @@ if [ ! -d $WANDB_DIR ]; then
   mkdir -p $WANDB_DIR
 fi
 
+export TOTAL_STEPS=5000000
+
 # region: Custom PPO based on SS tasks
     # region: Custom PPO; RGB + Spectrogram based task, SS1.0
     # for seed in 111; do
@@ -252,6 +254,7 @@ fi
     #       --save-videos True \
     #       --wandb --wandb-project ss-hab --wandb-entity dosssman \
     #       --logdir-prefix $LOGDIR_PREFIX \
+    #       --total-steps $TOTAL_STEPS \
     #       --seed $seed \
     #   ) & # >& /dev/null &
     # done
@@ -274,6 +277,7 @@ fi
     #       --save-videos True \
     #       --wandb --wandb-project ss-hab --wandb-entity dosssman \
     #       --logdir-prefix $LOGDIR_PREFIX \
+    #       --total-steps $TOTAL_STEPS \
     #       --seed $seed \
     #   ) & # >& /dev/null &
     # done
@@ -290,6 +294,7 @@ fi
     #       --save-videos True \
     #       --wandb --wandb-project ss-hab --wandb-entity dosssman \
     #       --logdir-prefix $LOGDIR_PREFIX \
+    #       --total-steps $TOTAL_STEPS \
     #       --seed $seed \
     #   ) & # >& /dev/null &
     # done
@@ -314,6 +319,7 @@ fi
     #       --save-videos True \
     #       --wandb --wandb-project ss-hab --wandb-entity dosssman \
     #       --logdir-prefix $LOGDIR_PREFIX \
+    #       --total-steps $TOTAL_STEPS \
     #       --seed $seed \
     #   ) & # >& /dev/null &
     # done
