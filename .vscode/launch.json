@@ -64,6 +64,8 @@
 
                 // PPO Agent cofnig
                 // "--config-path", "env_configs/audiogoal_blind_nocont.yaml",
+                // "--config-path", "env_configs/audiogoal_rgb_nocont.yaml",
+                "--config-path", "env_configs/savi/savi_ss1_rgb_spectro.yaml",
                 // "--num-envs", "2",
                 // "--num-steps", "20",
                 // "--agent-type", "perceiver-gwt-gwwm",
@@ -76,11 +78,12 @@
                 "--num-steps", "80",
                 "--num-envs", "2",
                 "--save-model", "True",
-                "--prev-actions", "True",
-                "--eval-every", "1000",
+                // "--prev-actions", "True",
+                // "--eval-every", "1000",
                 // "--ce-weights", "1", "1", "1", "1",
                 // "--batch-chunk-length", "32",
-                
+                "--pretrained-agent-path", "/home/rousslan/random/rl/exp-logs/ss-hab/ppo_av_nav__ss1_rgb_spectro_seed_111__2022_09_06_13_59_13_931240.musashi/models/ppo_agent.994501.ckpt.pth",
+
                 // "--eval", "True",
                 // "--eval-every", "300",
                 "--log-training-stats-every", "1",

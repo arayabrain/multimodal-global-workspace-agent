@@ -98,6 +98,8 @@ def main():
         get_arg_dict("pgwt-mod-embed", int, 0), # Learnable modality embeddings
         ## Additional modalities
         get_arg_dict("pgwt-ca-prev-latents", bool, False, metatype="bool"), # if True, passes the prev latent to CA as KV input data
+        ## Loading pretrained models
+        get_arg_dict("pretrained-agent-path", str, None),
 
         # Logging params
         # NOTE: While supported, video logging is expensive because the RGB generation in the
@@ -187,6 +189,12 @@ def main():
                 single_action_space, 512).to(device)
     else:
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+
+    if args.pretrained_agent_path is not None:
+        assert os.path.exists(args.pretrained_agent_path), f"Pretained agent path does not seem to exist: {args.pretrained_agent_path}"
+        
+        pretrained_state_dict = th.load(args.pretrained_agent_path)
+        agent.load_state_dict(pretrained_state_dict)
 
     optimizer = th.optim.Adam(agent.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
     
