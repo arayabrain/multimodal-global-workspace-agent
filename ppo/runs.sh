@@ -320,6 +320,52 @@ export TOTAL_STEPS=5000000
     # done
     # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SAVi SS1
 
+    # region: Custom PPO + Perceiver GWT GWWM Basic Arch. Use SA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SAVi SS1
+    # for seed in 111; do
+    #   (sleep 1s && python ppo_av_nav.py \
+    #       --exp-name "ppo_savi__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_UseSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats" \
+    #       --agent-type "perceiver-gwt-gwwm" \
+    #       --pgwt-depth 1 \
+    #       --pgwt-num-latents 8 \
+    #       --pgwt-latent-dim 64 \
+    #       --pgwt-cross-heads 1 \
+    #       --pgwt-latent-heads 4 \
+    #       --pgwt-use-sa True \
+    #       --pgwt-mod-embed 0 \
+    #       --pgwt-ca-prev-latents True \
+    #       --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+    #       --save-videos True \
+    #       --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #       --logdir-prefix $LOGDIR_PREFIX \
+    #       --total-steps $TOTAL_STEPS \
+    #       --seed $seed \
+    #   ) & # >& /dev/null &
+    # done
+    # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. Use SA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SAVi SS1
+
+    # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 64 CA Prev Latents; RGB + Spectrogram SAVi SS1
+    # for seed in 111; do
+    #   (sleep 1s && python ppo_av_nav.py \
+    #       --exp-name "ppo_savi__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_64_CAprevlats" \
+    #       --agent-type "perceiver-gwt-gwwm" \
+    #       --pgwt-depth 1 \
+    #       --pgwt-num-latents 8 \
+    #       --pgwt-latent-dim 64 \
+    #       --pgwt-cross-heads 1 \
+    #       --pgwt-latent-heads 4 \
+    #       --pgwt-use-sa False \
+    #       --pgwt-mod-embed 64 \
+    #       --pgwt-ca-prev-latents True \
+    #       --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+    #       --save-videos True \
+    #       --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #       --logdir-prefix $LOGDIR_PREFIX \
+    #       --total-steps $TOTAL_STEPS \
+    #       --seed $seed \
+    #   ) & # >& /dev/null &
+    # done
+    # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 64 CA Prev Latents; RGB + Spectrogram SAVi SS1
+
     #### Vanilla actor critic, with agents networks pretrained on the SS AvNav taskd
     # region: Custom PPO; RGB + Spectrogram based task, SAVi SS1.0
     # for seed in 111; do
@@ -359,6 +405,7 @@ export TOTAL_STEPS=5000000
     #   ) & # >& /dev/null &
     # done
     # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SAVi SS1
+
 
     #### Value detached
 
