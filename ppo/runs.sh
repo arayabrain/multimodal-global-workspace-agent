@@ -283,44 +283,44 @@ export TOTAL_STEPS=5000000
     # done
     # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SAVi SS1
 
-    #### Vanilla actor critic, with agents networks pretrained on the SS AvNav task
+    #### Vanilla actor critic, with agents networks pretrained on the SS AvNav taskd
     # region: Custom PPO; RGB + Spectrogram based task, SAVi SS1.0
-    for seed in 111; do
-      (sleep 1s && python ppo_av_nav.py \
-          --exp-name "ppo_savi__ss1_rgb_spectro" \
-          --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
-          --pretrained-agent-path "/home/rousslan/random/rl/exp-logs/ss-hab/ppo_av_nav__ss1_rgb_spectro_seed_111__2022_09_06_13_59_13_931240.musashi/models/ppo_agent.994501.ckpt.pth" \
-          --save-videos True \
-          --wandb --wandb-project ss-hab --wandb-entity dosssman \
-          --logdir-prefix $LOGDIR_PREFIX \
-          --total-steps $TOTAL_STEPS \
-          --seed $seed \
-      ) & # >& /dev/null &
-    done
+    # for seed in 111; do
+    #   (sleep 1s && python ppo_av_nav.py \
+    #       --exp-name "ppo_savi__ss1_rgb_spectro__pretrained_ppo_gru__rl" \
+    #       --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+    #       --pretrained-agent-path "/home/rousslan/random/rl/exp-logs/ss-hab/ppo_av_nav__ss1_rgb_spectro_seed_111__2022_09_06_13_59_13_931240.musashi/models/ppo_agent.994501.ckpt.pth" \
+    #       --save-videos True \
+    #       --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #       --logdir-prefix $LOGDIR_PREFIX \
+    #       --total-steps $TOTAL_STEPS \
+    #       --seed $seed \
+    #   ) & # >& /dev/null &
+    # done
     # endregion: Custom PPO; RGB + Spectrogram based task, SAVi SS1.0
 
     # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SAVi SS1
-    for seed in 111; do
-      (sleep 1s && python ppo_av_nav.py \
-          --exp-name "ppo_savi__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats" \
-          --agent-type "perceiver-gwt-gwwm" \
-          --pretrained-agent-path "/home/rousslan/random/rl/exp-logs/ss-hab/ppo_av_nav__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats_seed_111__2022_09_06_14_43_49_094181.musashi/models/ppo_agent.993001.ckpt.pth" \
-          --pgwt-depth 1 \
-          --pgwt-num-latents 8 \
-          --pgwt-latent-dim 64 \
-          --pgwt-cross-heads 1 \
-          --pgwt-latent-heads 4 \
-          --pgwt-use-sa False \
-          --pgwt-mod-embed 0 \
-          --pgwt-ca-prev-latents True \
-          --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
-          --save-videos True \
-          --wandb --wandb-project ss-hab --wandb-entity dosssman \
-          --logdir-prefix $LOGDIR_PREFIX \
-          --total-steps $TOTAL_STEPS \
-          --seed $seed \
-      ) & # >& /dev/null &
-    done
+    # for seed in 111; do
+    #   (sleep 1s && python ppo_av_nav.py \
+    #       --exp-name "ppo_savi__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats__pretrained_ppo_pgwt__rl" \
+    #       --agent-type "perceiver-gwt-gwwm" \
+    #       --pretrained-agent-path "/home/rousslan/random/rl/exp-logs/ss-hab/ppo_av_nav__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats_seed_111__2022_09_06_14_43_49_094181.musashi/models/ppo_agent.993001.ckpt.pth" \
+    #       --pgwt-depth 1 \
+    #       --pgwt-num-latents 8 \
+    #       --pgwt-latent-dim 64 \
+    #       --pgwt-cross-heads 1 \
+    #       --pgwt-latent-heads 4 \
+    #       --pgwt-use-sa False \
+    #       --pgwt-mod-embed 0 \
+    #       --pgwt-ca-prev-latents True \
+    #       --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+    #       --save-videos True \
+    #       --wandb --wandb-project ss-hab --wandb-entity dosssman \
+    #       --logdir-prefix $LOGDIR_PREFIX \
+    #       --total-steps $TOTAL_STEPS \
+    #       --seed $seed \
+    #   ) & # >& /dev/null &
+    # done
     # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SAVi SS1
 
     #### Value detached
