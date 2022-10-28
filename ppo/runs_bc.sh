@@ -748,50 +748,50 @@ fi
     ## SAVi
 
     # region: PPO GRU: batch_size 10; batch_chunk_len: 10;  seq_length == chunk_length: 150 (accum grad over 4 mini batches), Entropy coef: 0 (reference), CE Weights 38.6 0.67 0.84 0.78, no grad norm
-    (sleep 1s && python ppo_bc2.py \
-      --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
-      --dataset-path "ppo_gru_savi_dset_2022_10_27__750000_STEPS" \
-      --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
-      --exp-name "ppo_bc2__savi_ss1_rgb_spectro__gru__bsize_10_bchnklen_10__nsteps_150__cew_3.67_0.58_0.92_1.10_nogradnorm" \
-      --max-grad-norm 0 \
-      --ce-weights 3.67 0.58 0.92 1.10 \
-      --ent-coef 0 \
-      --num-steps 150 \
-      --num-envs 10 \
-      --batch-chunk-length 10 \
-      --save-videos True \
-      --logdir-prefix $LOGDIR_PREFIX \
-      --total-steps $TOTAL_STEPS \
-      --seed $seed \
-    ) & # >& /dev/null &
+    # (sleep 1s && python ppo_bc2.py \
+    #   --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+    #   --dataset-path "ppo_gru_savi_dset_2022_10_27__750000_STEPS" \
+    #   --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+    #   --exp-name "ppo_bc2__savi_ss1_rgb_spectro__gru__bsize_10_bchnklen_10__nsteps_150__cew_3.67_0.58_0.92_1.10_nogradnorm" \
+    #   --max-grad-norm 0 \
+    #   --ce-weights 3.67 0.58 0.92 1.10 \
+    #   --ent-coef 0 \
+    #   --num-steps 150 \
+    #   --num-envs 10 \
+    #   --batch-chunk-length 10 \
+    #   --save-videos True \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --total-steps $TOTAL_STEPS \
+    #   --seed $seed \
+    # ) & # >& /dev/null &
     # endregion: PPO GRU: batch_size 10; batch_chunk_len: 10;  seq_length == chunk_length: 150 (accum grad over 4 mini batches), Entropy coef: 0 (reference), CE Weights 38.6 0.67 0.84 0.78, no grad norm
 
     # region: PPO Perceiver batch_size 32; batch_chunk_len: 32;  seq_length == chunk_length: 50; entcoef 0 (reference) __cew_38.6_0.67_0.84_0.78, no grad norm
-    (sleep 1s && python ppo_bc2.py \
-      --agent-type "perceiver-gwt-gwwm" \
-      --pgwt-depth 1 \
-      --pgwt-num-latents 8 \
-      --pgwt-latent-dim 64 \
-      --pgwt-cross-heads 1 \
-      --pgwt-latent-heads 4 \
-      --pgwt-use-sa False \
-      --pgwt-mod-embed 0 \
-      --pgwt-ca-prev-latents True \
-      --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
-      --dataset-path "ppo_gru_savi_dset_2022_10_27__750000_STEPS" \
-      --save-videos True \
-      --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
-      --exp-name "ppo_bc2__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAprevlats__bsize_10_bchnklen_10__nsteps_150__cew_3.67_0.58_0.92_1.10_nogradnorm" \
-      --max-grad-norm 0 \
-      --ce-weights 3.67 0.58 0.92 1.10 \
-      --ent-coef 0 \
-      --num-steps 150 \
-      --num-envs 10 \
-      --batch-chunk-length 10 \
-      --total-steps $TOTAL_STEPS \
-      --logdir-prefix $LOGDIR_PREFIX \
-      --seed $seed \
-    ) & # >& /dev/null &
+    # (sleep 1s && python ppo_bc2.py \
+    #   --agent-type "perceiver-gwt-gwwm" \
+    #   --pgwt-depth 1 \
+    #   --pgwt-num-latents 8 \
+    #   --pgwt-latent-dim 64 \
+    #   --pgwt-cross-heads 1 \
+    #   --pgwt-latent-heads 4 \
+    #   --pgwt-use-sa False \
+    #   --pgwt-mod-embed 0 \
+    #   --pgwt-ca-prev-latents True \
+    #   --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+    #   --dataset-path "ppo_gru_savi_dset_2022_10_27__750000_STEPS" \
+    #   --save-videos True \
+    #   --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+    #   --exp-name "ppo_bc2__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAprevlats__bsize_10_bchnklen_10__nsteps_150__cew_3.67_0.58_0.92_1.10_nogradnorm" \
+    #   --max-grad-norm 0 \
+    #   --ce-weights 3.67 0.58 0.92 1.10 \
+    #   --ent-coef 0 \
+    #   --num-steps 150 \
+    #   --num-envs 10 \
+    #   --batch-chunk-length 10 \
+    #   --total-steps $TOTAL_STEPS \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --seed $seed \
+    # ) & # >& /dev/null &
     # endregion: PPO Perceiver batch_size 32; batch_chunk_len: 32;  seq_length == chunk_length: 50; entcoef 0 (reference) __cew_38.6_0.67_0.84_0.78, no grad norm
 
   done

@@ -178,7 +178,7 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
 
         # Sample action
         action, _, _, _, _, rnn_hidden_state = \
-            agent.act(obs_th, rnn_hidden_state, masks=masks, deterministic=True, prev_actions=prev_acts if args.prev_actions else None)
+            agent.act(obs_th, rnn_hidden_state, masks=masks, deterministic=True) #, prev_actions=prev_acts if args.prev_actions else None)
         outputs = eval_envs.step([a[0].item() for a in action])
         obs, reward, done, info = [list(x) for x in zip(*outputs)]
         reward_th = th.Tensor(np.array(reward, dtype=np.float32)).to(device)
@@ -539,7 +539,7 @@ def main():
                 # TODO: maybe detach the rnn_hidden_state between two chunks ?
                 actions, action_probs, _, entropies, _, _ = \
                     agent.act(obs_chunk_list, rnn_hidden_state,
-                        masks=masks_chunk_list, prev_actions=prev_actions_chunk_list)
+                        masks=masks_chunk_list) #, prev_actions=prev_actions_chunk_list)
                 
 
                 bc_loss = F.cross_entropy(action_probs, action_target_chunk_list,
