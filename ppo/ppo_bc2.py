@@ -61,17 +61,6 @@ class BCIterableDataset3(IterableDataset):
     def __iter__(self):
         batch_length = self.batch_length
         while True:
-            obs_list = {
-                "rgb": np.zeros([batch_length, 128, 128, 3]),
-                "audiogoal": np.zeros([batch_length, 2, 16000]),
-                "spectrogram": np.zeros([batch_length, 65, 26, 2])
-            }
-            action_list, reward_list, done_list, depad_mask_list = \
-                np.zeros([batch_length, 1]), \
-                np.zeros([batch_length, 1]), \
-                np.zeros([batch_length, 1]), \
-                np.zeros((batch_length, 1)).astype(np.bool8)
-            
             # Sample one episode file
             idx = th.randint(len(self.ep_filenames), ())
             ep_filename = self.ep_filenames[idx]
@@ -89,6 +78,15 @@ class BCIterableDataset3(IterableDataset):
             subseq_len = edd_end - edd_start
             
             horizon = subseq_len
+
+            obs_list = {
+                k: np.zeros([batch_length, *np.shape(v)[1:]]) for k,v in edd["obs_list"].items()
+            }
+            action_list, reward_list, done_list, depad_mask_list = \
+                np.zeros([batch_length, 1]), \
+                np.zeros([batch_length, 1]), \
+                np.zeros([batch_length, 1]), \
+                np.zeros((batch_length, 1)).astype(np.bool8)
 
             for k, v in edd["obs_list"].items():
                 obs_list[k][:horizon] = v[edd_start:edd_end]
@@ -144,9 +142,7 @@ def tensorize_obs_dict(obs, device, observations=None, rollout_step=None):
     return obs_th
 
 @th.no_grad()
-def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_step, n_episodes=5, save_videos=True):
-    # TODO: add proper support for SAVi config
-    is_SAVi = False
+def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_step, n_episodes=5, save_videos=True,is_SAVi=False):
 
     n_eval_envs = 2 # TODO: maybe make this parameterizable ? and tie with environment creation part in main()
     obs = eval_envs.reset()
@@ -475,8 +471,10 @@ def main():
         for k, v in obs_list.items():
             if k in ["rgb", "spectrogram", "depth"]:
                 obs_list[k] = v.permute(1, 0, 2, 3, 4) # BTCHW -> TBCHW
+            elif k in ["audiogoal"]:
+                obs_list[k] = v.permute(1, 0, 2, 3) # BTCL -> TBC
             else:
-                obs_list[k] = v.permute(1, 0, 2, 3) # BTCL -> TBCL
+                pass
         
         action_list = action_list.permute(1, 0, 2)
         done_list = done_list.permute(1, 0, 2)
@@ -521,8 +519,19 @@ def main():
                 b_chnk_end = (bchnk_idx + 1) * args.batch_chunk_length
 
                 # NOTE: v.shape[-3:] only valid for "rgb", "depth", and "spectrogram"
-                obs_chunk_list = {k: v[:, b_chnk_start:b_chnk_end].reshape(-1, *v.shape[(-3 if k in ["rgb", "depth", "spectrogram"] else -2):])
-                                    for k, v in obs_list.items()}
+                obs_chunk_list = {}
+                for k,v in obs_list.items():
+                    if k in ["rgb", "depth", "spectrogram"]:
+                        reshaped_v = v[:, b_chnk_start:b_chnk_end].reshape(-1, *v.shape[-3:])
+                    elif k in ["audiogoal"]:
+                        reshaped_v = v[:, b_chnk_start:b_chnk_end].reshape(-1, *v.shape[-2:])
+                    else:
+                        reshaped_v = v[:, b_chnk_start:b_chnk_end].reshape(-1, *v.shape[-1:])
+                    
+                    obs_chunk_list[k] = reshaped_v
+
+                # obs_chunk_list = {k: v[:, b_chnk_start:b_chnk_end].reshape(-1, *v.shape[(-3 if k in ["rgb", "depth", "spectrogram"] else -2):])
+                #                     for k, v in obs_list.items()}
                 masks_chunk_list = 1. - done_list[:, b_chnk_start:b_chnk_end].reshape(-1, 1)
                 action_target_chunk_list = action_list[:, b_chnk_start:b_chnk_end, 0].reshape(-1).long()
                 prev_actions_chunk_list = prev_actions_list[:, b_chnk_start:b_chnk_end].reshape(-1, 4)
@@ -639,7 +648,8 @@ def main():
             eval_window_episode_stas = eval_agent(args, envs, agent,
                 device=device, tblogger=tblogger,
                 env_config=env_config, current_step=global_step,
-                n_episodes=args.eval_n_episodes, save_videos=True)
+                n_episodes=args.eval_n_episodes, save_videos=True,
+                is_SAVi=is_SAVi)
             episode_stats = {k: np.mean(v) for k, v in eval_window_episode_stas.items()}
             episode_stats["last_actions_min"] = np.min(eval_window_episode_stas["last_actions"])
             tblogger.log_stats(episode_stats, global_step, "metrics")
