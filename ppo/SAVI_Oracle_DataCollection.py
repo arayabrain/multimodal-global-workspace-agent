@@ -24,7 +24,10 @@ def get_category_name(idx):
             return k
 
 def get_env_scene_id(envs, env_idx):
-    # NOTE: might be different if using other wrapper like SYNC_ENV or VecEnv
+    # For VECENV
+    return envs.call_at(env_idx, "get_scene_id")
+
+    # FOr SyncEnv
     return envs.workers[env_idx]._env._env.current_episode.scene_id.split("/")[3]
 
 def get_current_ep_category_label(obs_dict):
@@ -69,8 +72,8 @@ def main():
     config.defrost()
     config.SEED = config.TASK_CONFIG.SEED = config.TASK_CONFIG.SIMULATOR.SEED = args.seed
     config.NUM_PROCESSES = args.num_envs
-    config.USE_SYNC_VECENV = True # Maybe not as fast as VecEnv, but can at least access more info in each environments.
-    config.USE_VECENV = False # Allegedly best perfs., but did not find access to oracles actions
+    config.USE_SYNC_VECENV = False # Maybe not as fast as VecEnv, but can at least access more info in each environments.
+    config.USE_VECENV = True # Allegedly best perfs., but did not find access to oracles actions
     
     ## Override semantic object sensor sizes: does RGB / Depth sensor's shape increase ?
     # config.DISPLAY_RESOLUTION = 512
@@ -141,8 +144,11 @@ def main():
     envs_current_step = [0 for _ in range(NUM_ENVS)]
 
     while step < DATASET_TOTAL_STEPS:
-        # Recover the optimal action for each parallel env
-        actions = [envs.workers[i]._env._env._sim._oracle_actions[envs_current_step[i]] for i in range(NUM_ENVS)]
+        # Recover the optimal action for each parallel env, for SYNC_ENV
+        # actions = [envs.workers[i]._env._env._sim._oracle_actions[envs_current_step[i]] for i in range(NUM_ENVS)]
+
+        # For VecEnv support:
+        actions = [envs.call_at(i, "get_oracle_action_at_step", {"step": envs_current_step[i]}) for i in range(NUM_ENVS)]
 
         # Step the environment
         outputs = envs.step(actions)
