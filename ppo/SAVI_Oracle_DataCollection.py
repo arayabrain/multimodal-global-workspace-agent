@@ -65,14 +65,13 @@ def main():
 
 
     # Configure the environments for data collection
-    config = get_savi_config(
-        # config_paths="ss_baselines/av_nav/config/audionav/mp3d/env_test_0.yaml", # RGB + AudiogoalSensor
-        config_paths="env_configs/savi/savi_ss1.yaml")
+    config = get_savi_config(config_paths="env_configs/savi/savi_ss1.yaml")
     config.defrost()
+    config.SEED = config.TASK_CONFIG.SEED = config.TASK_CONFIG.SIMULATOR.SEED = args.seed
     config.NUM_PROCESSES = args.num_envs
-    config.USE_SYNC_VECENV = False
-    config.USE_VECENV = True
-
+    config.USE_SYNC_VECENV = True # Maybe not as fast as VecEnv, but can at least access more info in each environments.
+    config.USE_VECENV = False # Allegedly best perfs., but did not find access to oracles actions
+    
     ## Override semantic object sensor sizes: does RGB / Depth sensor's shape increase ?
     # config.DISPLAY_RESOLUTION = 512
     # config.TASK_CONFIG.TASK.SEMANTIC_OBJECT_SENSOR.HEIGHT = 512
@@ -83,10 +82,10 @@ def main():
     # For smoother video, set CONTINUOUS_VIEW_CHANGE to True, and get the additional frames in obs_dict["intermediate"]
     config.TASK_CONFIG.SIMULATOR.CONTINUOUS_VIEW_CHANGE = False
 
-    config.TASK_CONFIG.SIMULATOR.RGB_SENSOR.WIDTH = 512
-    config.TASK_CONFIG.SIMULATOR.RGB_SENSOR.HEIGHT = 512
-    config.TASK_CONFIG.SIMULATOR.DEPTH_SENSOR.WIDTH = 512
-    config.TASK_CONFIG.SIMULATOR.DEPTH_SENSOR.HEIGHT = 512
+    config.TASK_CONFIG.SIMULATOR.RGB_SENSOR.WIDTH = 256
+    config.TASK_CONFIG.SIMULATOR.RGB_SENSOR.HEIGHT = 256
+    config.TASK_CONFIG.SIMULATOR.DEPTH_SENSOR.WIDTH = 256
+    config.TASK_CONFIG.SIMULATOR.DEPTH_SENSOR.HEIGHT = 256
 
     # Add support for TOP_DOWN_MAP
     config.TASK_CONFIG.TASK.MEASUREMENTS.append("TOP_DOWN_MAP")
@@ -102,7 +101,11 @@ def main():
     # TODO: add argparse support ?
     DATASET_TOTAL_STEPS = args.total_steps
     # DATASET_DIR_PATH = f"SAVI_Oracle_Dataset_2023_05_17__{DATASET_TOTAL_STEPS}__STEPS"
-    DATASET_DIR_PATH = "SAVI_Oracle_Dataset_v0"
+    DATASET_DIR_PATH = "SAVI_Oracle_Dataset_v0" # This assumes the directory is already created, on a drive that have enouhg room for all the data.
+
+    ## Compute action coefficient for CEL of BC
+    dataset_stats_filename = "dataset_statistics.bz2"
+    dataset_stats_filepath = f"{DATASET_DIR_PATH}/{dataset_stats_filename}"
 
     NUM_ENVS = config.NUM_PROCESSES
 
@@ -126,6 +129,10 @@ def main():
         "scene_counts": {},
         "category_counts": {get_category_name(i): 0 for i in range(21)} # 21 categories in SAVi.
     }
+    # Override dataset statistics if the file already exists
+    if os.path.exists(dataset_stats_filepath):
+        with open(dataset_stats_filepath, "rb") as f:
+            dataset_statistics = cpkl.load(f)
 
     obs, done = envs.reset(), [False for _ in range(NUM_ENVS)]
 
