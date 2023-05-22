@@ -354,6 +354,8 @@ def main():
     ]
     args = generate_args(CUSTOM_ARGS)
 
+    # endregion: Generating additional hyparams
+    
     # Load environment config
     is_SAVi = str.__contains__(args.config_path, "savi")
     if is_SAVi:

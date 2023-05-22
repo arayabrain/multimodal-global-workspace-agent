@@ -105,6 +105,11 @@ def main():
     DATASET_TOTAL_STEPS = args.total_steps
     # DATASET_DIR_PATH = f"SAVI_Oracle_Dataset_2023_05_17__{DATASET_TOTAL_STEPS}__STEPS"
     DATASET_DIR_PATH = "SAVI_Oracle_Dataset_v0" # This assumes the directory is already created, on a drive that have enouhg room for all the data.
+    
+    if args.dataset_path == None:
+        raise NotImplementedError(f"TODO: add support for dataset generation wihtout giving the path; use timestamp as suffix ?")
+    else:
+        DATASET_DIR_PATH = args.dataset_path
 
     ## Compute action coefficient for CEL of BC
     dataset_stats_filename = "dataset_statistics.bz2"

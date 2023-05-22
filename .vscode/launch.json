@@ -56,7 +56,8 @@
             // ]
 
             // Custom PPO + Perceiver GWT Modules Debugs
-            "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/ppo",
+            "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/ppo", // # PPO focused debugging
+            // "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/sound-spaces", // Soundspaces focused debugging
             "args": [
                 // Environment config
                 // "USE_VECENV", "False",
@@ -65,9 +66,9 @@
                 // PPO Agent cofnig
                 // "--config-path", "env_configs/audiogoal_blind_nocont.yaml",
                 // "--config-path", "env_configs/audiogoal_rgb_nocont.yaml",
-                "--config-path", "env_configs/savi/savi_ss1_rgb_spectro.yaml",
-                "--dataset-path", "ppo_gru_savi_dset_2022_10_27__750000_STEPS",
-                // "--num-envs", "2",
+                // "--config-path", "env_configs/savi/savi_ss1_rgb_spectro.yaml",
+                // "--dataset-path", "ppo_gru_savi_dset_2022_10_27__750000_STEPS",
+                "--num-envs", "4",
                 // "--num-steps", "20",
                 // "--agent-type", "perceiver-gwt-gwwm",
                 // "--pgwt-depth", "1",
@@ -76,20 +77,20 @@
                 // "--pgwt-ca-prev-latents", "True",
                 // BC related
                 // "--chunk-length", "10",
-                "--num-steps", "150",
-                "--num-envs", "2",
-                "--save-model", "True",
+                // "--num-steps", "150",
+                // "--num-envs", "2",
+                // "--save-model", "True",
                 
                 // "--prev-actions", "True",
                 // "--eval-every", "1000",
                 // "--ce-weights", "1", "1", "1", "1",
-                "--ce-weights", "3.67", "0.58", "0.92", "1.10",
+                // "--ce-weights", "3.67", "0.58", "0.92", "1.10",
                 // "--batch-chunk-length", "32",
                 // "--pretrained-agent-path", "/home/rousslan/random/rl/exp-logs/ss-hab/ppo_av_nav__ss1_rgb_spectro_seed_111__2022_09_06_13_59_13_931240.musashi/models/ppo_agent.994501.ckpt.pth",
 
                 // "--eval", "True",
-                "--eval-every", "300",
-                "--log-training-stats-every", "1",
+                // "--eval-every", "300",
+                // "--log-training-stats-every", "1",
                 // "--agent-type", "perceiver-gwt-gwwm",
 
                 // Logging config

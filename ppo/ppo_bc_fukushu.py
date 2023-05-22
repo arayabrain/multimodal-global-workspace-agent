@@ -1,8 +1,3 @@
-# Custom PPO Behavior Cloning implementation with Soundspaces 2.0
-# Borrows from 
-## - CleanRL's PPO LSTM: https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/ppo_atari_lstm.py
-## - SoundSpaces AudioNav Baselines: https://github.com/facebookresearch/sound-spaces/tree/main/ss_baselines/av_nav
-
 import os
 import time
 import random
@@ -35,17 +30,6 @@ from models import ActorCritic, ActorCritic_DeepEthologyVirtualRodent, \
 from torch.utils.data import IterableDataset, DataLoader
 import compress_pickle as cpkl
 
-## Shape of the dave ep_data_dict:, for reference
-# obs_list dict:
-# 	 rgb -> (94, 128, 128, 3)
-# 	 audiogoal -> (94, 2, 16000)
-# 	 spectrogram -> (94, 65, 26, 2)
-# action_list -> (94, 1)
-# done_list -> (94,)
-# reward_list -> (94,)
-# info_list -> (94,)
-# ep_length -> 94
-
 # This variant will sample one single (sub) seuqence of an episode as a trajectoyr
 # and add zero paddign to the rest
 class BCIterableDataset3(IterableDataset):
@@ -56,6 +40,9 @@ class BCIterableDataset3(IterableDataset):
 
         # Read episode filenames in the dataset path
         self.ep_filenames = os.listdir(dataset_path)
+        if "dataset_statistics.bz2" in self.ep_filenames:
+            self.ep_filenames.remove("dataset_statistics.bz2")
+        
         print(f"Initialized IterDset with {len(self.ep_filenames)} episodes.")
     
     def __iter__(self):
@@ -68,12 +55,12 @@ class BCIterableDataset3(IterableDataset):
             with open(ep_filepath, "rb") as f:
                 edd = cpkl.load(f)
             is_success = edd["info_list"][-1]["success"]
-            last_action = [int(a[0]) for a in edd["action_list"]][-1]
+            last_action = edd["action_list"][-1]
             print(f"Sampled traj idx: {idx}; Length: {edd['ep_length']}; Success: {is_success}; Last act: {last_action}")
-            if edd["ep_length"] < 30:
-                continue # Skips short episodes
             
-            edd_start = th.randint(0, edd["ep_length"]-20, ()).item() # Sample start of sub-squence for this episode
+            # edd_start = th.randint(0, edd["ep_length"]-20, ()).item() # Sample start of sub-squence for this episode
+            # NOTE: the following sampling might not leverage long-term trajectories well.
+            edd_start = 0 # Given that we have short trajectories, just start at the beginning anyway
             edd_end = min(edd_start + batch_length, edd["ep_length"])
             subseq_len = edd_end - edd_start
             
@@ -90,7 +77,9 @@ class BCIterableDataset3(IterableDataset):
 
             for k, v in edd["obs_list"].items():
                 obs_list[k][:horizon] = v[edd_start:edd_end]
-            action_list[:horizon] = edd["action_list"][edd_start:edd_end]
+            # Adjust the shape of obs_list["depth"] from (T, H, W) -> (T, H, W, 1))
+            obs_list["depth"] = obs_list["depth"][:, :, :, None]
+            action_list[:horizon] = np.array(edd["action_list"][edd_start:edd_end])[:, None]
             reward_list[:horizon] = np.array(edd["reward_list"][edd_start:edd_end])[:, None]
             done_list[:horizon] = np.array(edd["done_list"][edd_start:edd_end])[:, None]
             depad_mask_list[:horizon] = True
@@ -118,13 +107,6 @@ def make_dataloader3(dataset_path, batch_size, batch_length, seed=111, num_worke
     )
 
     return dloader
-
-# NOTE: DEBUG use
-# DATASET_DIR_PATH = f"ppo_gru_dset_2022_09_21__750000_STEPS"
-
-# dloader = make_dataloader3(DATASET_DIR_PATH, batch_size=1, batch_length=30)
-# for _ in range(2):
-#     obs_batch, action_batch, reward_batch, done_batch, depad_mask_list = next(dloader)
 
 # Tensorize current observation, store to rollout data
 def tensorize_obs_dict(obs, device, observations=None, rollout_step=None):
@@ -211,7 +193,7 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
                         output_dir=tblogger.get_videos_savedir(),
                         video_name=video_name,
                         sr=env_config.TASK_CONFIG.SIMULATOR.AUDIO.RIR_SAMPLING_RATE, # 16000 for mp3d dataset
-                        fps=5 # env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS # Default is 10 it seems
+                        fps=1 # env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS # Default is 10 it seems
                     )
 
                     # Upload to wandb
@@ -285,10 +267,10 @@ def main():
         get_arg_dict("total-steps", int, 1_000_000),
         
         # Behavior cloning gexperiment config
-        get_arg_dict("dataset-path", str, "ppo_gru_dset_2022_09_21__750000_STEPS"),
+        get_arg_dict("dataset-path", str, "SAVI_Oracle_Dataset_v0"),
 
         # SS env config
-        get_arg_dict("config-path", str, "env_configs/audiogoal_rgb_nocont.yaml"),
+        get_arg_dict("config-path", str, "env_configs/savi/savi_ss1.yaml"),
 
         # PPO Hyper parameters
         get_arg_dict("num-envs", int, 10), # Number of parallel envs. 10 by default
@@ -309,7 +291,7 @@ def main():
         ## Agent network params
         get_arg_dict("agent-type", str, "ss-default", metatype="choice",
             choices=["ss-default", "deep-etho",
-                     "perceiver-gwt-gwwm", "perceiver-gwt-attgru"]),
+                        "perceiver-gwt-gwwm", "perceiver-gwt-attgru"]),
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
         ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
         get_arg_dict("pgwt-latent-type", str, "randn", metatype="choice",
@@ -337,6 +319,7 @@ def main():
         get_arg_dict("burn-in", int, 0), # Steps used to init the latent state for RNN component
         get_arg_dict("batch-chunk-length", int, 0), # For gradient accumulation
         get_arg_dict("ce-weights", float, None, metatype="list"), # Weights for the Cross Entropy loss
+        get_arg_dict("dataset-ce-weights", bool, True, metatype="bool"),
 
         # Eval protocol
         get_arg_dict("eval", bool, True, metatype="bool"),
@@ -354,7 +337,7 @@ def main():
     ]
     args = generate_args(CUSTOM_ARGS)
     # endregion: Generating additional hyparams
-    
+
     # Load environment config
     is_SAVi = str.__contains__(args.config_path, "savi")
     if is_SAVi:
@@ -365,11 +348,11 @@ def main():
     # Additional PPO overrides
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
-    
+
     # Gradient accumulation support
     if args.batch_chunk_length == 0:
         args.batch_chunk_length = args.num_envs
-    
+
     # Experiment logger
     tblogger = TBLogger(exp_name=args.exp_name, args=args)
     print(f"# Logdir: {tblogger.logdir}")
@@ -404,7 +387,6 @@ def main():
         if "AUDIOGOAL_SENSOR" not in env_config.TASK_CONFIG.TASK.SENSORS:
             env_config.TASK_CONFIG.TASK.SENSORS.append("AUDIOGOAL_SENSOR")
     env_config.freeze()
-    # print(env_config)
 
     # Environment instantiation
     envs = construct_envs(env_config, get_env_class(env_config.ENV_NAME))
@@ -412,7 +394,7 @@ def main():
     single_action_space = envs.action_spaces[0]
 
     # TODO: delete the envrionemtsn / find a more efficient method to do this
-    
+
     # TODO: make the ActorCritic components parameterizable through comand line ?
     if args.agent_type == "ss-default":
         agent = ActorCritic(single_observation_space, single_action_space,
@@ -438,21 +420,46 @@ def main():
     else:
         optimizer = th.optim.Adam(agent.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
 
-    ce_weights = args.ce_weights
-    if ce_weights is not None:
-        # TODO: assert it has same shape as action space.
-        ce_weights = th.Tensor(args.ce_weights).to(device)
-    
     optimizer.zero_grad()
 
     # Dataset loading
     dloader = make_dataloader3(args.dataset_path, batch_size=args.num_envs,
-                              batch_length=args.num_steps, seed=args.seed)
+                                batch_length=args.num_steps, seed=args.seed)
+
+    ## Compute action coefficient for CEL of BC
+    dataset_stats_filepath = f"{args.dataset_path}/dataset_statistics.bz2"
+    # Override dataset statistics if the file already exists
+    if os.path.exists(dataset_stats_filepath):
+        with open(dataset_stats_filepath, "rb") as f:
+            dataset_statistics = cpkl.load(f)
+
+    # Reads args.ce_weights if passed
+    ce_weights = args.ce_weights
+
+    # In case args.dataset_ce_weights is True,
+    # override the args.ce_weigths manual setting
+    if args.dataset_ce_weights:
+        # TODO: make some assert on 1) the existence of the "dataset_statistics.bz2" file
+        # and 2) that it contains the "action_cel_coefs" of proper dimension
+        ce_weights = [dataset_statistics["action_cel_coefs"][a] for a in range(4)]
+        print("## Loading CEL weights from dataset: ", ce_weights)
+
+    if ce_weights is not None:
+        # TODO: assert it has same shape as action space.
+        ce_weights = th.Tensor(ce_weights).to(device)
+        print("## Manually set CEL weights from dataset: ", ce_weights)
 
     # Info logging
+    print(" ### Agent summary and structure ###")
     summary(agent)
     print("")
     print(agent)
+    print("")
+
+    # Checking the dataset steps
+    print(" ### Dataset statistics ###")
+    from pprint import pprint
+    pprint(dataset_statistics)
     print("")
 
     # Training start
@@ -465,7 +472,7 @@ def main():
         # Load batch data
         obs_list, action_list, _, done_list, depad_mask_list = \
             [ {k: th.Tensor(v).float().to(device) for k,v in b.items()} if isinstance(b, dict) else 
-               b.float().to(device) for b in next(dloader)] # NOTE this will not suport "audiogoal" waveform audio, only rgb / depth / spectrogram
+                b.float().to(device) for b in next(dloader)] # NOTE this will not suport "audiogoal" waveform audio, only rgb / depth / spectrogram
         
         # NOTE: RGB are normalized in the VisualCNN module
         # PPO networks expect input of shape T,B, ... so doing the permutation here
@@ -544,7 +551,7 @@ def main():
                 
 
                 bc_loss = F.cross_entropy(action_probs, action_target_chunk_list,
-                                          weight=ce_weights, reduction="none")
+                                            weight=ce_weights, reduction="none")
                 bc_loss = th.masked_select(
                     bc_loss,
                     depad_mask_list[:, b_chnk_start:b_chnk_end, 0].reshape(-1).bool()

@@ -8,3 +8,7 @@ habitat-sim
 ignite
 perceiver-pytorch
 rsatoolbox
+SAVI_Oracle_Dataset_*
+ppo_gru_dset_2022_09_21__750000_STEPS
+ppo_gru_savi_dset_2022_10_27__750000_STEPS
+*.mp3

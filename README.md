@@ -347,6 +347,9 @@ However, WANDB is capable of doing so, but the logging step will be out of sync 
 
 A simplified PPO + GRU implementation that exposes the core of the algorithm, as well interactoins with the environment.
 
+The custom Perciever-based GW-inspired RNN cell is located in `ppo/perceiver_gwt_gwwm.py`.
+The corresponding ActorCritic agent is defined in `ppo/models.py`, along with other variants of the agent.
+
 ## Additional dependencies
 ```
 # Individual deps. install
@@ -357,13 +360,35 @@ pip install nvsmi # 0.4.2, for experimetn GPU usage configuration
 pip install wandb nvsmi
 ```
 
-## Usage
+## Training RL agents
 
 This will use RGB + Spectrogram as input for the agent, create a timestamped TensorBoard folder automatically and log training metrics as well as video, with and without audio.
 
 ```bash
 python ppo_av_nav.py
 ```
+
+To train SAVi agents, load the appropraite configuration file:
+```bash
+python ppo_av_nav.py --config-path env_configs/savi/<savi_config_file>.yaml
+```
+
+Example training comments are documented in the `ppo/runs.sh` file.
+
+## Collecging dataset
+
+The process used to collect samples for Behavior Cloning and more genreally, trajectory inspection is located in the `ppo/ppo_collect_dataset.py`.
+Essentaially, just pass the path to the trained RL agent using the same configuration as during the training and it will collect a number of steps hardcoded in the script.
+
+## Traing Behavior Cloning (BC) agents
+
+Once a dataset is collect under folder `ppo_gru_dset_2022_09_21__750000_STEPS` for example, pass it with `--dataset-path` to the the `ppo_bc2.py` script.
+
+```bash
+python ppo_bc2.py --dataset-path ppo_gru_dset_2022_09_21__750000_STEPS
+```
+
+Example training comments are documented in the `ppo/runs_bc.sh` file.
 
 # SAVi
 
