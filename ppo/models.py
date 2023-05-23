@@ -518,7 +518,7 @@ class ActorCritic(nn.Module):
         values = self.critic(features.detach() if value_feat_detach else features)
 
         # Estimate the policy as distribution to sample actions from
-        distribution = self.action_distribution(features.detach() if actor_feat_detach else features)
+        distribution, action_logits = self.action_distribution(features.detach() if actor_feat_detach else features)
 
         if actions is None:
             if deterministic:
@@ -530,7 +530,7 @@ class ActorCritic(nn.Module):
 
         distribution_entropy = distribution.entropy()
 
-        return actions, distribution.probs, action_log_probs, distribution_entropy, values, rnn_hidden_states
+        return actions, distribution.probs, action_log_probs, action_logits, distribution_entropy, values, rnn_hidden_states
     
     def get_value(self, observations, rnn_hidden_states, masks, prev_actions=None):
         features, _ = self(observations, rnn_hidden_states, masks, prev_actions=prev_actions)
@@ -605,7 +605,7 @@ class Perceiver_GWT_ActorCritic(nn.Module):
         values = self.critic(features)
 
         # Estimate the policy as distribution to sample actions from
-        distribution = self.action_distribution(features)
+        distribution, action_logits = self.action_distribution(features)
 
         if actions is None:
             if deterministic:
@@ -617,7 +617,7 @@ class Perceiver_GWT_ActorCritic(nn.Module):
 
         distribution_entropy = distribution.entropy()
 
-        return actions, distribution.probs, action_log_probs, distribution_entropy, values, latents
+        return actions, distribution.probs, action_log_probs, action_logits, distribution_entropy, values, latents
     
     def get_value(self, observations, prev_latents, masks):
         features, _ = self(observations, prev_latents, masks)
@@ -736,7 +736,7 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
         values = self.critic(features.detach() if value_feat_detach else features)
 
         # Estimate the policy as distribution to sample actions from
-        distribution = self.action_distribution(features.detach() if actor_feat_detach else features)
+        distribution, action_logits = self.action_distribution(features.detach() if actor_feat_detach else features)
 
         if actions is None:
             if deterministic:
@@ -748,7 +748,7 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
 
         distribution_entropy = distribution.entropy()
 
-        return actions, distribution.probs, action_log_probs, distribution_entropy, values, rnn_hidden_states
+        return actions, distribution.probs, action_log_probs, action_logits, distribution_entropy, values, rnn_hidden_states
     
     def get_value(self, observations, rnn_hidden_states, masks):
         features, _ = self(observations, rnn_hidden_states, masks)
@@ -847,7 +847,7 @@ class ActorCritic_DeepEthologyVirtualRodent(nn.Module):
         values = self.critic(core_features)
 
         # Estimate the policy as distribution to sample actions from
-        distribution = self.action_distribution(policy_features)
+        distribution, action_logits = self.action_distribution(policy_features)
 
         if actions is None:
             if deterministic:
@@ -859,7 +859,7 @@ class ActorCritic_DeepEthologyVirtualRodent(nn.Module):
 
         distribution_entropy = distribution.entropy().mean()
 
-        return actions, action_log_probs, distribution_entropy, values, \
+        return actions, action_log_probs, action_logits, distribution_entropy, values, \
             th.cat([core_rnn_hidden_states, policy_rnn_hidden_states], dim=2) # Very workaround-y method
     
     def get_value(self, observations, rnn_hidden_states, masks):

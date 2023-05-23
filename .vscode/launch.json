@@ -63,12 +63,12 @@
                 // "USE_VECENV", "False",
                 // "USE_SYNC_VECENV", "False",
 
-                // PPO Agent cofnig
+                // PPO Agent config
                 // "--config-path", "env_configs/audiogoal_blind_nocont.yaml",
                 // "--config-path", "env_configs/audiogoal_rgb_nocont.yaml",
                 // "--config-path", "env_configs/savi/savi_ss1_rgb_spectro.yaml",
                 // "--dataset-path", "ppo_gru_savi_dset_2022_10_27__750000_STEPS",
-                "--num-envs", "4",
+                // "--num-envs", "2",
                 // "--num-steps", "20",
                 // "--agent-type", "perceiver-gwt-gwwm",
                 // "--pgwt-depth", "1",
@@ -96,6 +96,11 @@
                 // Logging config
                 // "--logdir-prefix", "/tmp/ppo-av-nav-dbg",
                 // "--wandb", "--wandb-entity", "dosssman", "--wandb-project", "ss-hab"
+
+                // PPO BC with richer SAVI dataset config
+                "--dataset-path", "SAVI_Oracle_Dataset_v0_10K",
+                "--total-steps", "100000",
+                "--eval", "True"
             ]
 
             // Custom PPO Debug with AudioCLIP audio encoder

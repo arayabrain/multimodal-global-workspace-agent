@@ -2,7 +2,7 @@
 NUM_CORES=$(nproc --all)
 export MKL_NUM_THREADS=$NUM_CORES OMP_NUM_THREADS=$NUM_CORES
 
-export LOGDIR_PREFIX=~/random/rl/exp-logs/ss-hab-bc-fukushu
+export LOGDIR_PREFIX=~/random/rl/exp-logs/ss-hab-bc
 if [ ! -d $LOGDIR_PREFIX ]; then
   mkdir -p $LOGDIR_PREFIX
 fi
@@ -17,10 +17,10 @@ fi
   # region: PPO GRU - BC with default hyparams
   for seed in 111 222 333; do
     # export MASTER_PORT=8738 # Default port is 8738
-    export TOTAL_STEPS=10000000
+    export TOTAL_STEPS=5000000
     (sleep 1s && python ppo_bc.py \
-        --exp-name "ppo_bc__ss1_rgb_spectro__gru" \
-        --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+        --exp-name "ppo_bc__savi_ss1__rgb_depth_spectro__gru" \
+        --config-path "env_configs/savi/savi_ss1.yaml" \
         --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
         --logdir-prefix $LOGDIR_PREFIX \
         --total-steps $TOTAL_STEPS \
@@ -32,9 +32,9 @@ fi
   # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1
   for seed in 111 222 333; do
     # export MASTER_PORT=8748 # Default port is 8738
-    export TOTAL_STEPS=10000000
+    export TOTAL_STEPS=5000000
     (sleep 1s && python ppo_bc.py \
-        --exp-name "ppo_bc__ss1_rgb_spectro__pgwt_gwwm__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats" \
+        --exp-name "ppo_bc__savi_ss1__rgb_depth_spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats" \
         --agent-type "perceiver-gwt-gwwm" \
         --pgwt-depth 1 \
         --pgwt-num-latents 8 \
@@ -44,7 +44,7 @@ fi
         --pgwt-use-sa False \
         --pgwt-mod-embed 0 \
         --pgwt-ca-prev-latents True \
-        --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+        --config-path "env_configs/savi/savi_ss1.yaml" \
         --save-videos True \
         --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
         --total-steps $TOTAL_STEPS \
