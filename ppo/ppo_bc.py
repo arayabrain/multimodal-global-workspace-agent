@@ -108,7 +108,7 @@ class BCIterableDataset3(IterableDataset):
                 ep_filepath = os.path.join(self.dataset_path, ep_filename)
                 with open(ep_filepath, "rb") as f:
                     edd = cpkl.load(f)
-                print(f"Sampled traj idx: {idx} ; Len: {edd['ep_length']}")
+                # print(f"Sampled traj idx: {idx} ; Len: {edd['ep_length']}")
                 
                 # Append the data to the bathc trjectory
                 rs = batch_length - ssf # Reamining steps
@@ -417,7 +417,7 @@ def main():
     env_config.SEED = env_config.TASK_CONFIG.SEED = env_config.TASK_CONFIG.SIMULATOR.SEED = args.seed
 
     # NOTE: using less environments for eval to save up system memory -> run more experiment at the same time
-    env_config.NUM_PROCESSES = 2 # Corresponds to number of envs, makes script startup faster for debugs
+    env_config.NUM_PROCESSES = 1 # Corresponds to number of envs, makes script startup faster for debugs
     # env_config.CONTINUOUS = args.env_continuous
     ## In caes video saving is enabled, make sure there is also the rgb videos
     agent_extra_rgb = False
