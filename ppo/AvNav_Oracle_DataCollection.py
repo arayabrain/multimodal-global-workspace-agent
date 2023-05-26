@@ -79,7 +79,7 @@ def main():
     # TODO: this seems to trigger the "DummySimulator" object has no attribute 'pathfinder'
     # error. Possible fix would be not use the pre-rendered observations
     # with the caveat of slower performance overall
-    # config.TASK_CONFIG.TASK.MEASUREMENTS.append("TOP_DOWN_MAP")
+    config.TASK_CONFIG.TASK.MEASUREMENTS.append("TOP_DOWN_MAP")
     config.freeze()
     # print(config)
 
