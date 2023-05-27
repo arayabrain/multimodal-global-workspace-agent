@@ -98,8 +98,10 @@
                 // "--wandb", "--wandb-entity", "dosssman", "--wandb-project", "ss-hab"
 
                 // PPO BC with richer SAVI dataset config
-                "--dataset-path", "SAVI_Oracle_Dataset_v0_10K",
-                "--total-steps", "100000",
+                // "--dataset-path", "SAVI_Oracle_Dataset_v0_10K",
+                "--dataset-path", "AvNav_Oracle_Dataset_v0",
+                "--config-path", "env_configs/audiogoal_rgb_depth_ss1.yaml",
+                "--total-steps", "5000",
                 "--eval", "True"
             ]
 
