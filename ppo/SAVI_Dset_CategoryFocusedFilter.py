@@ -62,6 +62,8 @@ if "dataset_statistics.bz2" in ep_filenames:
     ep_filenames.remove("dataset_statistics.bz2")
 ep_filenames_iterator = iter(ep_filenames)
 
+scenes_of_interest = [] # To make sure we have the same scenes for each category
+
 while n_selected_trajs < C * N * M:
     ep_filename = next(ep_filenames_iterator)
 
@@ -75,6 +77,14 @@ while n_selected_trajs < C * N * M:
 
     # Skip if the category does not match
     if ep_category not in CATEGORIES_OF_INTEREST:
+        continue
+
+    # Track which scenes' trajectories will be saved.
+    # We want the same scenes for each category
+    if len(scenes_of_interest) < M and (ep_scene not in scenes_of_interest):
+        scenes_of_interest.append(ep_scene)
+    
+    if ep_scene not in scenes_of_interest:
         continue
 
     if ep_scene not in trajs_scenes_cat[ep_category].keys():

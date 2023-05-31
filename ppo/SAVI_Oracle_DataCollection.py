@@ -1,7 +1,7 @@
 import os
 import cv2
 import uuid
-import argparse
+import time
 import datetime
 import numpy as np
 import compress_pickle as cpkl
@@ -14,6 +14,31 @@ from ss_baselines.savi.config.default import get_config as get_savi_config
 from ss_baselines.common.env_utils import construct_envs
 from ss_baselines.common.environments import get_env_class
 
+# Helper to show expected training time in human readable form:
+# Credits: https://github.com/hevalhazalkurt/codewars_python_solutions/blob/master/4kyuKatas/Human_readable_duration_format.md
+def hrd(seconds): # Human readable duration
+    words = ["year", "day", "hr", "min", "sec"]
+    m, s = divmod(int(seconds), 60)
+    h, m = divmod(m, 60)
+    d, h = divmod(h, 24)
+    y, d = divmod(d, 365)
+
+    time = [y, d, h, m, s]
+    duration = []
+
+    for x, i in enumerate(time):
+        if i == 1:
+            duration.append(f"{i} {words[x]}")
+        elif i > 1:
+            duration.append(f"{i} {words[x]}s")
+
+    if len(duration) == 1:
+        return duration[0]
+    elif len(duration) == 2:
+        return f"{duration[0]}, {duration[1]}"
+    else:
+        return ", ".join(duration[:-1]) + ", " + duration[-1]
+    
 # Helper / tools
 from soundspaces.mp3d_utils import CATEGORY_INDEX_MAPPING
 def get_category_name(idx):
@@ -49,6 +74,12 @@ def save_episode_to_dataset(ep_data_dict, dataset_path):
     ep_data_fullpath = os.path.join(dataset_path, ep_data_filename)
     with open(ep_data_fullpath, "wb") as f:
         cpkl.dump(ep_data_dict, f)
+    
+    return ep_data_filename
+
+def dict_without_keys(d, keys_to_ignore):
+    return {x: d[x] for x in d if x not in keys_to_ignore}
+
 
 def main():
 
@@ -94,7 +125,7 @@ def main():
     # TODO: this seems to trigger the "DummySimulator" object has no attribute 'pathfinder'
     # error. Possible fix would be not use the pre-rendered observations
     # with the caveat of slower performance overall
-    # config.TASK_CONFIG.TASK.MEASUREMENTS.append("TOP_DOWN_MAP")
+    config.TASK_CONFIG.TASK.MEASUREMENTS.append("TOP_DOWN_MAP")
     config.freeze()
     # print(config)
 
@@ -126,7 +157,9 @@ def main():
     reward_list, \
     done_list, \
     info_list, \
-    action_list = \
+    action_list, \
+    ep_scene_id_list = \
+        [[] for _ in range(NUM_ENVS)], \
         [[] for _ in range(NUM_ENVS)], \
         [[] for _ in range(NUM_ENVS)], \
         [[] for _ in range(NUM_ENVS)], \
@@ -138,7 +171,11 @@ def main():
         "total_steps": 0,
         "total_episodes": 0,
         "scene_counts": {},
-        "category_counts": {get_category_name(i): 0 for i in range(21)} # 21 categories in SAVi.
+        "category_counts": {get_category_name(i): 0 for i in range(21)}, # 21 categories in SAVi.
+        "episode_lengths": [],
+        "category_counts": {get_category_name(i): 0 for i in range(21)}, # 21 categories in SAVi.
+        "cat_scene_filenames": {}, # category -> { scene_id -> [{ep_filename: "", "ep_length": X}]} for easier filtering later
+        "scene_cat_filenames": {}, # scene_id -> {categary -> [{ep_filename: "", "ep_length": X}]} for easier filtering later
     }
     # Override dataset statistics if the file already exists
     if os.path.exists(dataset_stats_filepath):
@@ -147,6 +184,8 @@ def main():
 
     obs, done = envs.reset(), [False for _ in range(NUM_ENVS)]
 
+    # Track data collection time
+    start_time = time.time()
     step = 0
     ep_returns = []
     envs_current_step = [0 for _ in range(NUM_ENVS)]
@@ -157,6 +196,9 @@ def main():
 
         # For VecEnv support:
         actions = [envs.call_at(i, "get_oracle_action_at_step", {"step": envs_current_step[i]}) for i in range(NUM_ENVS)]
+
+        # Get current step's meta data
+        envs_scene_ids = [get_env_scene_id(envs, i) for i in range(NUM_ENVS)]
 
         # Step the environment
         outputs = envs.step(actions)
@@ -169,6 +211,7 @@ def main():
             action_list[i].append(actions[i])
             reward_list[i].append(reward[i])
             info_list[i].append(info[i])
+            ep_scene_id_list[i].append(envs_scene_ids[i])
 
         # When one or more episode end is detected, write to disk,
         # then reset the placeholders for the finished env. idx
@@ -214,8 +257,9 @@ def main():
                     "done_list": done_list[i],
                     "reward_list": reward_list[i],
                     "info_list": info_list[i], # This can arguably be skipped ?,
-                    "ep_length": ep_length,
+                    "ep_scene_id_list": ep_scene_id_list[i],
                     # Other metadata
+                    "ep_length": ep_length,
                     "scene_id": ep_scene_id,
                     "category_idx": ep_category_idx,
                     "category_name": ep_category_name
@@ -227,7 +271,7 @@ def main():
                 ep_norm_dist_to_goal.append(info_list[i][-1]["normalized_distance_to_goal"])
 
                 # Saves to disk
-                save_episode_to_dataset(ep_data_dict, DATASET_DIR_PATH)
+                ep_filename = save_episode_to_dataset(ep_data_dict, DATASET_DIR_PATH)
 
                 step += ep_length
 
@@ -239,10 +283,28 @@ def main():
                     dataset_statistics["scene_counts"][ep_scene_id] = 1
                 else:
                     dataset_statistics["scene_counts"][ep_scene_id] += 1
+                # Track the lengths of all episodes
+                dataset_statistics["episode_lengths"].append(ep_length)
+
+                # Add metadata about episode grouped by categories, then scenes
+                if ep_category_name not in dataset_statistics["cat_scene_filenames"].keys():
+                    dataset_statistics["cat_scene_filenames"][ep_category_name] = {}
+                if ep_scene_id not in dataset_statistics["cat_scene_filenames"][ep_category_name].keys():
+                    dataset_statistics["cat_scene_filenames"][ep_category_name][ep_scene_id] = []
+                dataset_statistics["cat_scene_filenames"][ep_category_name][ep_scene_id].append(
+                    {"ep_filename": ep_filename, "ep_length": ep_length})
+
+                # Add metadata about episodes grouped by scene ids, then categories
+                if ep_scene_id not in dataset_statistics["scene_cat_filenames"].keys():
+                    dataset_statistics["scene_cat_filenames"][ep_scene_id] = {}
+                if ep_category_name not in dataset_statistics["scene_cat_filenames"][ep_scene_id].keys():
+                    dataset_statistics["scene_cat_filenames"][ep_scene_id][ep_category_name] = []
+                dataset_statistics["scene_cat_filenames"][ep_scene_id][ep_category_name].append(
+                    {"ep_filename": ep_filename, "ep_length": ep_length})
 
                 # Reset the data placeholders
-                obs_list[i], action_list[i], done_list[i], reward_list[i], info_list[i] = \
-                    [], [], [], [], []
+                obs_list[i], action_list[i], done_list[i], reward_list[i], info_list[i], ep_scene_id_list[i] = \
+                    [], [], [], [], [], []
 
                 # Save the dataset statistics to file
                 ## Compute action probs
@@ -258,16 +320,19 @@ def main():
                 with open(dataset_stats_filepath, "wb") as f:
                     cpkl.dump(dataset_statistics, f)
                 
-                for k, v in dataset_statistics.items():
+                for k, v in dict_without_keys(dataset_statistics,
+                    ["cat_scene_filenames", "scene_cat_filenames"]).items():
                     print(f"{k}: {v}")
 
-                print("")
-                print("#####################################################################################")
-                print("#####################################################################################")
-                print(f"Collected {step} / {DATASET_TOTAL_STEPS}; Avg return: {np.mean(ep_returns):0.2f}; Avg Suc.: {np.mean(ep_success)}; Avg: Norm Dist Goal: {np.mean(ep_norm_dist_to_goal)}")
-                print("#####################################################################################")
-                print("#####################################################################################")
-                print("")
+            SPS = step / (time.time() - start_time) # Number of steps per second
+            print("")
+            print("#####################################################################################")
+            print("#####################################################################################")
+            print(f"Collected {step} / {DATASET_TOTAL_STEPS}; Avg return: {np.mean(ep_returns):0.2f}; Avg Suc.: {np.mean(ep_success)}; Avg: Norm Dist Goal: {np.mean(ep_norm_dist_to_goal)}")
+            print("ETA:", hrd(int(args.total_steps - step) / SPS))
+            print("#####################################################################################")
+            print("#####################################################################################")
+            print("")
                 
         # Prepare for the next step
         obs = next_obs

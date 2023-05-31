@@ -34,6 +34,11 @@ def save_episode_to_dataset(ep_data_dict, dataset_path):
     ep_data_fullpath = os.path.join(dataset_path, ep_data_filename)
     with open(ep_data_fullpath, "wb") as f:
         cpkl.dump(ep_data_dict, f)
+    
+    return ep_data_filename
+
+def dict_without_keys(d, keys_to_ignore):
+    return {x: d[x] for x in d if x not in keys_to_ignore}
 
 def main():
 
@@ -111,7 +116,9 @@ def main():
     reward_list, \
     done_list, \
     info_list, \
-    action_list = \
+    action_list, \
+    ep_scene_id_list = \
+        [[] for _ in range(NUM_ENVS)], \
         [[] for _ in range(NUM_ENVS)], \
         [[] for _ in range(NUM_ENVS)], \
         [[] for _ in range(NUM_ENVS)], \
@@ -122,7 +129,9 @@ def main():
         "action_counts": {i: 0 for i in range(4)},
         "total_steps": 0,
         "total_episodes": 0,
-        "scene_counts": {}
+        "scene_counts": {},
+        "episode_lengths": [],
+        "scene_filenames": {}, # scene_id -> [{ep_filename: "", "ep_length": X}] for easier filtering later
     }
     # Override dataset statistics if the file already exists
     if os.path.exists(dataset_stats_filepath):
@@ -142,6 +151,9 @@ def main():
         # For VecEnv support:
         actions = [envs.call_at(i, "get_oracle_action_at_step", {"step": envs_current_step[i]}) for i in range(NUM_ENVS)]
 
+        # Get current step's meta data
+        envs_scene_ids = [get_env_scene_id(envs, i) for i in range(NUM_ENVS)]
+
         # Step the environment
         outputs = envs.step(actions)
         next_obs, reward, next_done, info = [list(x) for x in zip(*outputs)]
@@ -153,6 +165,7 @@ def main():
             action_list[i].append(actions[i])
             reward_list[i].append(reward[i])
             info_list[i].append(info[i])
+            ep_scene_id_list[i].append(envs_scene_ids[i])
 
         # When one or more episode end is detected, write to disk,
         # then reset the placeholders for the finished env. idx
@@ -196,8 +209,8 @@ def main():
                     "done_list": done_list[i],
                     "reward_list": reward_list[i],
                     "info_list": info_list[i], # This can arguably be skipped ?,
-                    "ep_length": ep_length,
                     # Other metadata
+                    "ep_length": ep_length,
                     "scene_id": ep_scene_id
                 }
 
@@ -207,7 +220,7 @@ def main():
                 ep_norm_dist_to_goal.append(info_list[i][-1]["normalized_distance_to_goal"])
 
                 # Saves to disk
-                save_episode_to_dataset(ep_data_dict, DATASET_DIR_PATH)
+                ep_filename = save_episode_to_dataset(ep_data_dict, DATASET_DIR_PATH)
 
                 step += ep_length
 
@@ -218,10 +231,18 @@ def main():
                     dataset_statistics["scene_counts"][ep_scene_id] = 1
                 else:
                     dataset_statistics["scene_counts"][ep_scene_id] += 1
+                # Track the lengths of all episodes
+                dataset_statistics["episode_lengths"].append(ep_length)
+
+                # Add metadata about episodes grouped by scene ids, then categories
+                if ep_scene_id not in dataset_statistics["scene_filenames"].keys():
+                    dataset_statistics["scene_filenames"][ep_scene_id] = []
+                dataset_statistics["scene_filenames"][ep_scene_id].append(
+                    {"ep_filename": ep_filename, "ep_length": ep_length})
 
                 # Reset the data placeholders
-                obs_list[i], action_list[i], done_list[i], reward_list[i], info_list[i] = \
-                    [], [], [], [], []
+                obs_list[i], action_list[i], done_list[i], reward_list[i], info_list[i], ep_scene_id_list[i] = \
+                    [], [], [], [], [], []
 
                 # Save the dataset statistics to file
                 ## Compute action probs
@@ -237,7 +258,8 @@ def main():
                 with open(dataset_stats_filepath, "wb") as f:
                     cpkl.dump(dataset_statistics, f)
                 
-                for k, v in dataset_statistics.items():
+                for k, v in dict_without_keys(dataset_statistics,
+                    ["cat_scene_filenames", "scene_cat_filenames"]).items():
                     print(f"{k}: {v}")
 
                 print("")
