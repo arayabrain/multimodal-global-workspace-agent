@@ -259,7 +259,7 @@ def main():
                     cpkl.dump(dataset_statistics, f)
                 
                 for k, v in dict_without_keys(dataset_statistics,
-                    ["cat_scene_filenames", "scene_cat_filenames"]).items():
+                    ["scene_filenames", "episode_lengths"]).items():
                     print(f"{k}: {v}")
 
                 print("")

@@ -321,7 +321,7 @@ def main():
                     cpkl.dump(dataset_statistics, f)
                 
                 for k, v in dict_without_keys(dataset_statistics,
-                    ["cat_scene_filenames", "scene_cat_filenames"]).items():
+                    ["cat_scene_filenames", "scene_cat_filenames", "episode_lengths"]).items():
                     print(f"{k}: {v}")
 
             SPS = step / (time.time() - start_time) # Number of steps per second
