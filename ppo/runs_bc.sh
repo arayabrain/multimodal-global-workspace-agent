@@ -28,6 +28,7 @@ echo "${LD_LIBRARY_PATH}"
           --exp-name "ppo_bc__ss1__rgb_depth_spectro__gru" \
           --config-path "env_configs/audiogoal_rgb_depth_ss1.yaml" \
           --dataset-path "AvNav_Oracle_Dataset_v0" \
+          --dataset-ce-weights True \
           --save-videos True \
           --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
           --logdir-prefix $LOGDIR_PREFIX \
@@ -45,6 +46,7 @@ echo "${LD_LIBRARY_PATH}"
           --exp-name "ppo_bc__ss1__rgb_depth_spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats" \
           --config-path "env_configs/audiogoal_rgb_depth_ss1.yaml" \
           --dataset-path "AvNav_Oracle_Dataset_v0" \
+          --dataset-ce-weights True \
           --agent-type "perceiver-gwt-gwwm" \
           --pgwt-depth 1 \
           --pgwt-num-latents 8 \
@@ -54,7 +56,6 @@ echo "${LD_LIBRARY_PATH}"
           --pgwt-use-sa False \
           --pgwt-mod-embed 0 \
           --pgwt-ca-prev-latents True \
-          --config-path "env_configs/savi/savi_ss1.yaml" \
           --save-videos True \
           --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
           --total-steps $TOTAL_STEPS \

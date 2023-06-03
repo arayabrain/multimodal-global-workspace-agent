@@ -47,45 +47,6 @@ class BCIterableDataset3(IterableDataset):
     def __iter__(self):
         batch_length = self.batch_length
         while True:
-            # region: Sample one episode file for each batch traj
-            # idx = th.randint(len(self.ep_filenames), ())
-            # ep_filename = self.ep_filenames[idx]
-            # ep_filepath = os.path.join(self.dataset_path, ep_filename)
-            # with open(ep_filepath, "rb") as f:
-            #     edd = cpkl.load(f)
-            # is_success = edd["info_list"][-1]["success"]
-            # last_action = edd["action_list"][-1]
-            # print(f"Sampled traj idx: {idx}; Length: {edd['ep_length']}; Success: {is_success}; Last act: {last_action}")
-            
-            # # edd_start = th.randint(0, edd["ep_length"]-20, ()).item() # Sample start of sub-squence for this episode
-            # # NOTE: the following sampling might not leverage long-term trajectories well.
-            # edd_start = 0 # Given that we have short trajectories, just start at the beginning anyway
-            # edd_end = min(edd_start + batch_length, edd["ep_length"])
-            # subseq_len = edd_end - edd_start
-            
-            # horizon = subseq_len
-
-            # obs_list = {
-            #     k: np.zeros([batch_length, *np.shape(v)[1:]]) for k,v in edd["obs_list"].items()
-            # }
-            # action_list, reward_list, done_list, depad_mask_list = \
-            #     np.zeros([batch_length, 1]), \
-            #     np.zeros([batch_length, 1]), \
-            #     np.zeros([batch_length, 1]), \
-            #     np.zeros((batch_length, 1)).astype(np.bool8)
-
-            # for k, v in edd["obs_list"].items():
-            #     obs_list[k][:horizon] = v[edd_start:edd_end]
-            # # Adjust the shape of obs_list["depth"] from (T, H, W) -> (T, H, W, 1))
-            # obs_list["depth"] = obs_list["depth"][:, :, :, None]
-            # action_list[:horizon] = np.array(edd["action_list"][edd_start:edd_end])[:, None]
-            # reward_list[:horizon] = np.array(edd["reward_list"][edd_start:edd_end])[:, None]
-            # done_list[:horizon] = np.array(edd["done_list"][edd_start:edd_end])[:, None]
-            # depad_mask_list[:horizon] = True
-            #
-            # yield obs_list, action_list, reward_list, done_list, depad_mask_list
-            # endregion: Sample one episode file for each batch traj
-
             # region: Sample episode data until there is enough to fill the hole batch traj
             obs_list = {
                 "depth": np.zeros([batch_length, 128, 128]), # NOTE: data was recorded using (128, 128), but ideally we should have (128, 128, 1)
@@ -394,12 +355,6 @@ def main():
     if args.batch_chunk_length == 0:
         args.batch_chunk_length = args.num_envs
 
-    # Experiment logger
-    tblogger = TBLogger(exp_name=args.exp_name, args=args)
-    print(f"# Logdir: {tblogger.logdir}")
-    should_log_training_stats = tools.Every(args.log_training_stats_every)
-    should_eval = tools.Every(args.eval_every)
-
     # Seeding
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -488,6 +443,16 @@ def main():
         ce_weights = th.Tensor(ce_weights).to(device)
         print("### INFO: Manually set CEL weights from dataset: ", ce_weights)
 
+    print(" ### INFO: CEL weights")
+    print(ce_weights)
+    print("")
+    
+    # Experiment logger
+    tblogger = TBLogger(exp_name=args.exp_name, args=args)
+    print(f"# Logdir: {tblogger.logdir}")
+    should_log_training_stats = tools.Every(args.log_training_stats_every)
+    should_eval = tools.Every(args.eval_every)
+
     # Info logging
     print(" ### INFO: Agent summary and structure ###")
     summary(agent)
@@ -568,8 +533,7 @@ def main():
 
             bc_loss = F.cross_entropy(action_logits, action_list.long(),
                                         weight=ce_weights, reduction="mean")
-                
-                
+            
             # Entropy loss
             # TODO: consider making this decaying as training progresses
             entropy = entropies.mean()
