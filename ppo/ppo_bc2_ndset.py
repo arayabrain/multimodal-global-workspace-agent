@@ -389,7 +389,9 @@ def main():
     # Checking the dataset steps
     print(" ### INFO: Dataset statistics ###")
     from pprint import pprint
-    pprint(dict_without_keys(dataset_statistics, ["cat_scene_filenames", "scene_cat_filenames", "episode_lengths"]))
+    print(dataset_statistics.keys())
+    input()
+    pprint(dict_without_keys(dataset_statistics, ["episode_lengths", "scene_filenames"]))
     print("")
 
     # Reads args.ce_weights if passed

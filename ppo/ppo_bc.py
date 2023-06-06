@@ -29,6 +29,10 @@ from models import ActorCritic, Perceiver_GWT_GWWM_ActorCritic
 from torch.utils.data import IterableDataset, DataLoader
 import compress_pickle as cpkl
 
+# Helpers
+def dict_without_keys(d, keys_to_ignore):
+    return {x: d[x] for x in d if x not in keys_to_ignore}
+
 # This variant will sample one single (sub) seuqence of an episode as a trajectoyr
 # and add zero paddign to the rest
 class BCIterableDataset3(IterableDataset):
@@ -467,7 +471,7 @@ def main():
     # Checking the dataset steps
     print(" ### INFO: Dataset statistics ###")
     from pprint import pprint
-    pprint(dataset_statistics)
+    pprint(dict_without_keys(dataset_statistics, ["episode_lengths", "scene_filenames"]))
     print("")
 
     # Training start
