@@ -390,7 +390,6 @@ def main():
     print(" ### INFO: Dataset statistics ###")
     from pprint import pprint
     print(dataset_statistics.keys())
-    input()
     pprint(dict_without_keys(dataset_statistics, ["episode_lengths", "scene_filenames"]))
     print("")
 
