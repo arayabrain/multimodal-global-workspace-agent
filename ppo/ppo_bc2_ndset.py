@@ -1,3 +1,8 @@
+# Custom PPO Behavior Cloning implementation with Soundspaces 2.0
+# Borrows from 
+## - CleanRL's PPO LSTM: https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/ppo_atari_lstm.py
+## - SoundSpaces AudioNav Baselines: https://github.com/facebookresearch/sound-spaces/tree/main/ss_baselines/av_nav
+
 import os
 import time
 import random
@@ -23,11 +28,27 @@ from ss_baselines.common.environments import get_env_class
 from ss_baselines.common.utils import images_to_video_with_audio
 
 # Custom ActorCritic agent for PPO
-from models import ActorCritic, Perceiver_GWT_GWWM_ActorCritic
+from models import ActorCritic, ActorCritic_DeepEthologyVirtualRodent, \
+    Perceiver_GWT_GWWM_ActorCritic, Perceiver_GWT_AttGRU_ActorCritic
 
 # Dataset utils
 from torch.utils.data import IterableDataset, DataLoader
 import compress_pickle as cpkl
+
+# Helpers
+def dict_without_keys(d, keys_to_ignore):
+    return {x: d[x] for x in d if x not in keys_to_ignore}
+
+## Shape of the dave ep_data_dict:, for reference
+# obs_list dict:
+# 	 rgb -> (94, 128, 128, 3)
+# 	 audiogoal -> (94, 2, 16000)
+# 	 spectrogram -> (94, 65, 26, 2)
+# action_list -> (94, 1)
+# done_list -> (94,)
+# reward_list -> (94,)
+# info_list -> (94,)
+# ep_length -> 94
 
 # This variant will sample one single (sub) seuqence of an episode as a trajectoyr
 # and add zero paddign to the rest
@@ -39,57 +60,46 @@ class BCIterableDataset3(IterableDataset):
 
         # Read episode filenames in the dataset path
         self.ep_filenames = os.listdir(dataset_path)
-        if "dataset_statistics.bz2" in self.ep_filenames:
-            self.ep_filenames.remove("dataset_statistics.bz2")
-        
         print(f"Initialized IterDset with {len(self.ep_filenames)} episodes.")
     
     def __iter__(self):
         batch_length = self.batch_length
         while True:
-            # region: Sample episode data until there is enough to fill the hole batch traj
-            obs_list = {
-                "depth": np.zeros([batch_length, 128, 128]), # NOTE: data was recorded using (128, 128), but ideally we should have (128, 128, 1)
-                "rgb": np.zeros([batch_length, 128, 128, 3]),
-                "audiogoal": np.zeros([batch_length, 2, 16000]),
-                "spectrogram": np.zeros([batch_length, 65, 26, 2]),
-                "category": np.zeros([batch_length, 21]),
-                "pointgoal_with_gps_compass": np.zeros([batch_length, 2]),
-                "pose": np.zeros([batch_length, 4]),
-            }
-
-            action_list, reward_list, done_list = \
-                np.zeros([batch_length, 1]), \
-                np.zeros([batch_length, 1]), \
-                np.zeros([batch_length, 1])
-            ssf = 0 # Step affected so far
-            while ssf < batch_length:
-                idx = th.randint(len(self.ep_filenames), ())
-                ep_filename = self.ep_filenames[idx]
-                ep_filepath = os.path.join(self.dataset_path, ep_filename)
-                with open(ep_filepath, "rb") as f:
-                    edd = cpkl.load(f)
-                # print(f"Sampled traj idx: {idx} ; Len: {edd['ep_length']}")
-                
-                # Append the data to the bathc trjectory
-                rs = batch_length - ssf # Reamining steps
-                horizon = ssf + min(rs, edd["ep_length"])
-                for k, v in edd["obs_list"].items():
-                    obs_list[k][ssf:horizon] = v[:rs]
-                action_list[ssf:horizon] = np.array(edd["action_list"][:rs])[:, None]
-                reward_list[ssf:horizon] = np.array(edd["reward_list"][:rs])[:, None]
-                done_list[ssf:horizon] = np.array(edd["done_list"][:rs])[:, None]
-
-                ssf += edd["ep_length"]
-
-                if ssf >= self.batch_length:
-                    break
-
-            # Adjust shape of "depth" to be [T, H, W, 1] instead of [T, H, W]
-            obs_list["depth"] = obs_list["depth"][:, :, :, None]
+            # Sample one episode file
+            idx = th.randint(len(self.ep_filenames), ())
+            ep_filename = self.ep_filenames[idx]
+            ep_filepath = os.path.join(self.dataset_path, ep_filename)
+            with open(ep_filepath, "rb") as f:
+                edd = cpkl.load(f)
+            is_success = edd["info_list"][-1]["success"]
+            last_action = int(edd["action_list"][-1])
+            print(f"Sampled traj idx: {idx}; Length: {edd['ep_length']}; Success: {is_success}; Last act: {last_action}")
+            if edd["ep_length"] < 30:
+                continue # Skips short episodes
             
-            yield obs_list, action_list, reward_list, done_list
-            # endregion: Sample episode data until there is enough to fill the hole batch traj
+            edd_start = th.randint(0, edd["ep_length"]-20, ()).item() # Sample start of sub-squence for this episode
+            edd_end = min(edd_start + batch_length, edd["ep_length"])
+            subseq_len = edd_end - edd_start
+            
+            horizon = subseq_len
+
+            obs_list = {
+                k: np.zeros([batch_length, *np.shape(v)[1:]]) for k,v in edd["obs_list"].items()
+            }
+            action_list, reward_list, done_list, depad_mask_list = \
+                np.zeros([batch_length, 1]), \
+                np.zeros([batch_length, 1]), \
+                np.zeros([batch_length, 1]), \
+                np.zeros((batch_length, 1)).astype(np.bool8)
+
+            for k, v in edd["obs_list"].items():
+                obs_list[k][:horizon] = v[edd_start:edd_end]
+            action_list[:horizon] = np.array(edd["action_list"][edd_start:edd_end])[:, None]
+            reward_list[:horizon] = np.array(edd["reward_list"][edd_start:edd_end])[:, None]
+            done_list[:horizon] = np.array(edd["done_list"][edd_start:edd_end])[:, None]
+            depad_mask_list[:horizon] = True
+
+            yield obs_list, action_list, reward_list, done_list, depad_mask_list
     
 def make_dataloader3(dataset_path, batch_size, batch_length, seed=111, num_workers=2):
     def worker_init_fn(worker_id):
@@ -112,6 +122,13 @@ def make_dataloader3(dataset_path, batch_size, batch_length, seed=111, num_worke
     )
 
     return dloader
+
+# NOTE: DEBUG use
+# DATASET_DIR_PATH = f"ppo_gru_dset_2022_09_21__750000_STEPS"
+
+# dloader = make_dataloader3(DATASET_DIR_PATH, batch_size=1, batch_length=30)
+# for _ in range(2):
+#     obs_batch, action_batch, reward_batch, done_batch, depad_mask_list = next(dloader)
 
 # Tensorize current observation, store to rollout data
 def tensorize_obs_dict(obs, device, observations=None, rollout_step=None):
@@ -140,8 +157,10 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
     masks = 1. - done_th[:, None]
     if args.agent_type == "ss-default":
         rnn_hidden_state = th.zeros((1, n_eval_envs, args.hidden_size), device=device)
-    elif args.agent_type in ["perceiver-gwt-gwwm"]:
+    elif args.agent_type in ["perceiver-gwt-gwwm", "perceiver-gwt-attgru"]:
         rnn_hidden_state = agent.state_encoder.latents.clone().repeat(n_eval_envs, 1, 1)
+    elif args.agent_type == "deep-etho":
+        rnn_hidden_state = th.zeros((1, n_eval_envs, args.hidden_size * 2), device=device)
     else:
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
     
@@ -196,7 +215,7 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
                         output_dir=tblogger.get_videos_savedir(),
                         video_name=video_name,
                         sr=env_config.TASK_CONFIG.SIMULATOR.AUDIO.RIR_SAMPLING_RATE, # 16000 for mp3d dataset
-                        fps=1 # env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS # Default is 10 it seems
+                        fps=5 # env_config.TASK_CONFIG.SIMULATOR.VIEW_CHANGE_FPS # Default is 10 it seems
                     )
 
                     # Upload to wandb
@@ -270,10 +289,10 @@ def main():
         get_arg_dict("total-steps", int, 1_000_000),
         
         # Behavior cloning gexperiment config
-        get_arg_dict("dataset-path", str, "SAVI_Oracle_Dataset_v0"),
+        get_arg_dict("dataset-path", str, "ppo_gru_dset_2022_09_21__750000_STEPS"),
 
         # SS env config
-        get_arg_dict("config-path", str, "env_configs/savi/savi_ss1.yaml"),
+        get_arg_dict("config-path", str, "env_configs/audiogoal_rgb_nocont.yaml"),
 
         # PPO Hyper parameters
         get_arg_dict("num-envs", int, 10), # Number of parallel envs. 10 by default
@@ -293,7 +312,8 @@ def main():
         get_arg_dict("optim-wd", float, 0), # weight decay for adam optim
         ## Agent network params
         get_arg_dict("agent-type", str, "ss-default", metatype="choice",
-            choices=["ss-default", "perceiver-gwt-gwwm"]),
+            choices=["ss-default", "deep-etho",
+                     "perceiver-gwt-gwwm", "perceiver-gwt-attgru"]),
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
         ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
         get_arg_dict("pgwt-latent-type", str, "randn", metatype="choice",
@@ -338,8 +358,9 @@ def main():
         get_arg_dict("logdir-prefix", str, "./logs/") # Overrides the default one
     ]
     args = generate_args(CUSTOM_ARGS)
-    # endregion: Generating additional hyparams
 
+    # endregion: Generating additional hyparams
+    
     # Load environment config
     is_SAVi = str.__contains__(args.config_path, "savi")
     if is_SAVi:
@@ -350,75 +371,13 @@ def main():
     # Additional PPO overrides
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
-
+    
     # Gradient accumulation support
     if args.batch_chunk_length == 0:
         args.batch_chunk_length = args.num_envs
-
-    # Seeding
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    th.manual_seed(args.seed)
-    th.cuda.manual_seed_all(args.seed)
-    th.backends.cudnn.deterministic = args.torch_deterministic
-    # th.backends.cudnn.benchmark = args.cudnn_benchmark
-
+    
     # Set device as GPU
     device = tools.get_device(args) if (not args.cpu and th.cuda.is_available()) else th.device("cpu")
-
-    # Overriding some envs parametes from the .yaml env config
-    env_config.defrost()
-    ## Override default seed
-    env_config.SEED = env_config.TASK_CONFIG.SEED = env_config.TASK_CONFIG.SIMULATOR.SEED = args.seed
-
-    # NOTE: using less environments for eval to save up system memory -> run more experiment at the same time
-    env_config.NUM_PROCESSES = 2 # Corresponds to number of envs, makes script startup faster for debugs
-    # env_config.CONTINUOUS = args.env_continuous
-    ## In caes video saving is enabled, make sure there is also the rgb videos
-    agent_extra_rgb = False
-    if args.save_videos:
-        # For RGB video sensors
-        if "RGB_SENSOR" not in env_config.SENSORS:
-            env_config.SENSORS.append("RGB_SENSOR")
-            # Indicates to the agent that RGB obs should not be used as observational inputs
-            agent_extra_rgb = True
-        # For Waveform to generate audio over the videos
-        if "AUDIOGOAL_SENSOR" not in env_config.TASK_CONFIG.TASK.SENSORS:
-            env_config.TASK_CONFIG.TASK.SENSORS.append("AUDIOGOAL_SENSOR")
-    # Add support for TOP_DOWN_MAP
-    # NOTE: it seems to induce "'DummySimulator' object has no attribute 'pathfinder'" error
-    # If top down map really needed, probably have to run the env without pre-rendered observations ?
-    # env_config.TASK_CONFIG.TASK.MEASUREMENTS.append("TOP_DOWN_MAP")
-    env_config.freeze()
-
-    # Environment instantiation
-    envs = construct_envs(env_config, get_env_class(env_config.ENV_NAME))
-    single_observation_space = envs.observation_spaces[0]
-    single_action_space = envs.action_spaces[0]
-
-    # TODO: delete the envrionemtsn / find a more efficient method to do this
-
-    # TODO: make the ActorCritic components parameterizable through comand line ?
-    if args.agent_type == "ss-default":
-        agent = ActorCritic(single_observation_space, single_action_space,
-            args.hidden_size, extra_rgb=agent_extra_rgb, prev_actions=args.prev_actions).to(device)
-    elif args.agent_type == "perceiver-gwt-gwwm":
-        agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space,
-            args, extra_rgb=agent_extra_rgb).to(device)
-    else:
-        raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
-
-    if not args.cpu and th.cuda.is_available():
-        # TODO: GPU only. But what if we still want to use the default pytorch one ?
-        optimizer = apex.optimizers.FusedAdam(agent.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
-    else:
-        optimizer = th.optim.Adam(agent.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
-
-    optimizer.zero_grad()
-
-    # Dataset loading
-    dloader = make_dataloader3(args.dataset_path, batch_size=args.num_envs,
-                                batch_length=args.num_steps, seed=args.seed, num_workers=8)
 
     ## Compute action coefficient for CEL of BC
     dataset_stats_filepath = f"{args.dataset_path}/dataset_statistics.bz2"
@@ -426,6 +385,12 @@ def main():
     if os.path.exists(dataset_stats_filepath):
         with open(dataset_stats_filepath, "rb") as f:
             dataset_statistics = cpkl.load(f)
+
+    # Checking the dataset steps
+    print(" ### INFO: Dataset statistics ###")
+    from pprint import pprint
+    pprint(dict_without_keys(dataset_statistics, ["cat_scene_filenames", "scene_cat_filenames", "episode_lengths"]))
+    print("")
 
     # Reads args.ce_weights if passed
     ce_weights = args.ce_weights
@@ -450,24 +415,82 @@ def main():
     print(" ### INFO: CEL weights")
     print(ce_weights)
     print("")
-    
+
     # Experiment logger
     tblogger = TBLogger(exp_name=args.exp_name, args=args)
     print(f"# Logdir: {tblogger.logdir}")
     should_log_training_stats = tools.Every(args.log_training_stats_every)
     should_eval = tools.Every(args.eval_every)
 
+    # Seeding
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    th.manual_seed(args.seed)
+    th.cuda.manual_seed_all(args.seed)
+    th.backends.cudnn.deterministic = args.torch_deterministic
+    # th.backends.cudnn.benchmark = args.cudnn_benchmark
+
+    # Overriding some envs parametes from the .yaml env config
+    env_config.defrost()
+    # NOTE: using less environments for eval to save up system memory -> run more experiment at thte same time
+    env_config.NUM_PROCESSES = 2 # Corresponds to number of envs, makes script startup faster for debugs
+    # env_config.CONTINUOUS = args.env_continuous
+    ## In caes video saving is enabled, make sure there is also the rgb videos
+    agent_extra_rgb = False
+    if args.save_videos:
+        # For RGB video sensors
+        if "RGB_SENSOR" not in env_config.SENSORS:
+            env_config.SENSORS.append("RGB_SENSOR")
+            # Indicates to the agent that RGB obs should not be used as observational inputs
+            agent_extra_rgb = True
+        # For Waveform to generate audio over the videos
+        if "AUDIOGOAL_SENSOR" not in env_config.TASK_CONFIG.TASK.SENSORS:
+            env_config.TASK_CONFIG.TASK.SENSORS.append("AUDIOGOAL_SENSOR")
+    env_config.freeze()
+    # print(env_config)
+
+    # Environment instantiation
+    envs = construct_envs(env_config, get_env_class(env_config.ENV_NAME))
+    single_observation_space = envs.observation_spaces[0]
+    single_action_space = envs.action_spaces[0]
+
+    # TODO: delete the envrionemtsn / find a more efficient method to do this
+    
+    # TODO: make the ActorCritic components parameterizable through comand line ?
+    if args.agent_type == "ss-default":
+        agent = ActorCritic(single_observation_space, single_action_space,
+            args.hidden_size, extra_rgb=agent_extra_rgb, prev_actions=args.prev_actions).to(device)
+    elif args.agent_type == "perceiver-gwt-gwwm":
+        agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space,
+            args, extra_rgb=agent_extra_rgb).to(device)
+    elif args.agent_type == "perceiver-gwt-attgru":
+        agent = Perceiver_GWT_AttGRU_ActorCritic(single_observation_space, single_action_space,
+            args, extra_rgb=agent_extra_rgb).to(device)
+    elif args.agent_type == "deep-etho":
+        raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+        # TODO: support for storing the rnn_hidden_statse, so that the policy 
+        # that takes in the 'core_modules' 's rnn hidden output can also work.
+        agent = ActorCritic_DeepEthologyVirtualRodent(single_observation_space,
+                single_action_space, 512).to(device)
+    else:
+        raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+
+    if not args.cpu and th.cuda.is_available():
+        # TODO: GPU only. But what if we still want to use the default pytorch one ?
+        optimizer = apex.optimizers.FusedAdam(agent.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
+    else:
+        optimizer = th.optim.Adam(agent.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
+    
+    optimizer.zero_grad()
+
+    # Dataset loading
+    dloader = make_dataloader3(args.dataset_path, batch_size=args.num_envs,
+                              batch_length=args.num_steps, seed=args.seed)
+
     # Info logging
-    print(" ### INFO: Agent summary and structure ###")
     summary(agent)
     print("")
     print(agent)
-    print("")
-
-    # Checking the dataset steps
-    print(" ### INFO: Dataset statistics ###")
-    from pprint import pprint
-    pprint(dataset_statistics)
     print("")
 
     # Training start
@@ -478,72 +501,111 @@ def main():
     # NOTE: 10 * 150 as step to match the training rate of an RL Agent, irrespective of which batch size / batch length is used
     for global_step in range(1, args.total_steps + 1, 10 * 150):
         # Load batch data
-        obs_list, action_list, _, done_list = \
+        obs_list, action_list, _, done_list, depad_mask_list = \
             [ {k: th.Tensor(v).float().to(device) for k,v in b.items()} if isinstance(b, dict) else 
-                b.float().to(device) for b in next(dloader)]
+               b.float().to(device) for b in next(dloader)] # NOTE this will not suport "audiogoal" waveform audio, only rgb / depth / spectrogram
         
         # NOTE: RGB are normalized in the VisualCNN module
-        # PPO networks expect input of shape T,B, ... so doing the permutation first
-        # then flatten over T x B dimensions. The RNN will reshape it as necessary
+        # PPO networks expect input of shape T,B, ... so doing the permutation here
         for k, v in obs_list.items():
             if k in ["rgb", "spectrogram", "depth"]:
+                # Small work around for "depth" field in the current dataset
+                if k == "depth":
+                    v = v[:, :, :, :, None]
                 obs_list[k] = v.permute(1, 0, 2, 3, 4) # BTCHW -> TBCHW
-                obs_list[k] = obs_list[k].reshape(-1, *obs_list[k].shape[-3:])
             elif k in ["audiogoal"]:
-                obs_list[k] = v.permute(1, 0, 2, 3) # BTCL -> TBCL
-                obs_list[k] = obs_list[k].reshape(-1, *obs_list[k].shape[-2:])
+                obs_list[k] = v.permute(1, 0, 2, 3) # BTCL -> TBC
             else:
-                # TODO: handle other fields like "category", etc...
                 pass
         
         action_list = action_list.permute(1, 0, 2)
         done_list = done_list.permute(1, 0, 2)
-        mask_list = 1. - done_list
-        
+        depad_mask_list = depad_mask_list.permute(1, 0, 2)
+
         prev_actions_list = th.zeros_like(action_list)
         prev_actions_list[1:] = action_list[:-1]
         prev_actions_list = F.one_hot(prev_actions_list.long()[:, :, 0], num_classes=4).float()
-        prev_actions_list[0] = prev_actions_list[0] * 0.0
-
-        # Finally, also flatten across T x B, let the RNN do the unflattening if needs be
-        action_list = action_list.reshape(-1) # Because it is used for the target later
-        done_list = done_list.reshape(-1, 1)
-        mask_list = mask_list.reshape(-1, 1)
-        prev_actions_list = prev_actions_list.reshape(-1, 1)
+        prev_actions_list[0] = prev_actions_list[0] * 0.
 
         # PPO Update Phase: actor and critic network updates
+        # assert args.num_envs % args.num_minibatches == 0
+        # envsperbatch = args.num_envs // args.num_minibatches
+        # envinds = np.arange(args.num_envs)
+        # flatinds = np.arange(args.batch_size).reshape(args.num_envs, args.num_steps)
+
         for _ in range(args.update_epochs):
             # np.random.shuffle(envinds)
             # TODO / MISSING: mini-batch updates support like in ppo_av_nav.py
             assert args.num_envs % args.batch_chunk_length == 0, \
                 f"num-envs (batch-size) of {args.num_envs} should be integer divisible by {args.batch_chunk_length}"
             
+            # For gradient accumulation over large batches
+            n_bchunks = args.num_envs // args.batch_chunk_length
+            
             # Reset optimizer for each chunk over the "trajectory length" axis
             optimizer.zero_grad()
 
-            # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
-            if args.agent_type == "ss-default":
-                rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
-            elif args.agent_type in ["perceiver-gwt-gwwm"]:
-                rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)
-            else:
-                raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+            # Placeholder for tracking the actions of the agent
+            batch_traj_agent_actions = th.zeros_like(action_list).long()
 
-            # TODO: maybe detach the rnn_hidden_state between two chunks ?
-            actions, _, _, action_logits, entropies, _, _ = \
-                agent.act(obs_list, rnn_hidden_state,
-                    masks=mask_list) #, prev_actions=prev_actions_list)
+            for bchnk_idx in range(n_bchunks):
+                # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
+                if args.agent_type == "ss-default":
+                    rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
+                elif args.agent_type in ["perceiver-gwt-gwwm", "perceiver-gwt-attgru"]:
+                    rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)
+                else:
+                    raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+
+                b_chnk_start = bchnk_idx * args.batch_chunk_length
+                b_chnk_end = (bchnk_idx + 1) * args.batch_chunk_length
+
+                # NOTE: v.shape[-3:] only valid for "rgb", "depth", and "spectrogram"
+                obs_chunk_list = {}
+                for k,v in obs_list.items():
+                    if k in ["rgb", "depth", "spectrogram"]:
+                        reshaped_v = v[:, b_chnk_start:b_chnk_end].reshape(-1, *v.shape[-3:])
+                    elif k in ["audiogoal"]:
+                        reshaped_v = v[:, b_chnk_start:b_chnk_end].reshape(-1, *v.shape[-2:])
+                    else:
+                        reshaped_v = v[:, b_chnk_start:b_chnk_end].reshape(-1, *v.shape[-1:])
+                    
+                    obs_chunk_list[k] = reshaped_v
+
+                # obs_chunk_list = {k: v[:, b_chnk_start:b_chnk_end].reshape(-1, *v.shape[(-3 if k in ["rgb", "depth", "spectrogram"] else -2):])
+                #                     for k, v in obs_list.items()}
+                masks_chunk_list = 1. - done_list[:, b_chnk_start:b_chnk_end].reshape(-1, 1)
+                action_target_chunk_list = action_list[:, b_chnk_start:b_chnk_end, 0].reshape(-1).long()
+                prev_actions_chunk_list = prev_actions_list[:, b_chnk_start:b_chnk_end].reshape(-1, 4)
+
+                # TODO: maybe detach the rnn_hidden_state between two chunks ?
+                actions, action_probs, _, _, entropies, _, _ = \
+                    agent.act(obs_chunk_list, rnn_hidden_state,
+                        masks=masks_chunk_list) #, prev_actions=prev_actions_chunk_list)
                 
 
-            bc_loss = F.cross_entropy(action_logits, action_list.long(),
-                                        weight=ce_weights, reduction="mean")
-            
-            # Entropy loss
-            # TODO: consider making this decaying as training progresses
-            entropy = entropies.mean()
+                bc_loss = F.cross_entropy(action_probs, action_target_chunk_list,
+                                          weight=ce_weights, reduction="none")
+                bc_loss = th.masked_select(
+                    bc_loss,
+                    depad_mask_list[:, b_chnk_start:b_chnk_end, 0].reshape(-1).bool()
+                ).mean()
+                
+                bc_loss /= n_bchunks # Normalize accumulated grads over batch axis
+                
+                # Entropy loss
+                # TODO: consider making this decaying as training progresses
+                entropy = th.masked_select(
+                    entropies,
+                    depad_mask_list[:, b_chnk_start:b_chnk_end, 0].reshape(-1).bool()
+                ).mean()
+                entropy /= n_bchunks # Normalize accumulated grads over batch axis
 
-            # Backpropagate and accumulate gradients over the batch size axis
-            (bc_loss - args.ent_coef * entropy).backward()
+                # Backpropagate and accumulate gradients over the batch size axis
+                (bc_loss - args.ent_coef * entropy).backward()
+
+                # Temporarily save the batch chunk actions of the agent for statistics later
+                batch_traj_agent_actions[:, b_chnk_start:b_chnk_end, :] = actions.detach().view(args.num_steps, args.batch_chunk_length, 1)
 
             grad_norms_preclip = agent.get_grad_norms()
             if args.max_grad_norm > 0:
@@ -557,8 +619,8 @@ def main():
 
             # TODO: add entropy logging
             train_stats = {
-                "bc_loss": bc_loss.item(),
-                "entropy": entropy.item()
+                "bc_loss": bc_loss.item() * n_bchunks,
+                "entropy": entropy.item() * n_bchunks
             } # * n_bchunks undoes the scaling applied during grad accum
             
             tblogger.log_stats(train_stats, global_step, prefix="train")
@@ -572,20 +634,35 @@ def main():
             # if args.pgwt_mod_embed:
             #     debug_stats["mod_embed_avg"] = agent.state_encoder.modality_embeddings.mean().item()
 
-            # TODO: Tracking stats about the actions distribution in the batches # TODO: fix typo
-            T, B = args.num_steps, args.num_envs
-            # How many '0' actions sampled by the agent given the observations ?
-            n_zero_agent_final_actions = len(th.where(actions == 0)[0])
-            # Ratio of 0 to other actions in the batch
-            n_zero_agent_final_actions_ratio = n_zero_agent_final_actions / (B * T)
-            # How many '0' actions in the batch trajs., as well as ratio relative to the latter.
-            n_zero_batch_final_actions = len(th.where(action_list == 0)[0])
-            n_zero_batch_final_actions_ratio = n_zero_batch_final_actions / (B * T)
+            # Tracking stats about the actions distribution in the batches # TODO: fix typo
+            batch_traj_final_step_idxs = (depad_mask_list.sum(dim=0)-1)[None, :, :].long().reshape(-1).tolist()
+            batch_traj_final_step_mask = th.zeros_like(depad_mask_list).long()
+            for bi, done_t in enumerate(batch_traj_final_step_idxs):
+                batch_traj_final_step_mask[done_t, bi, 0] = 1
 
-            # Special: tracking the 'STOP' action stats across in the batch
+            batch_traj_final_actions = th.masked_select(
+                action_list,
+                batch_traj_final_step_mask.bool()
+            )
+            # How many '0' actions are sampled in a batch ?
+            n_zero_batch_final_actions = len(th.where(batch_traj_final_actions == 0)[0])
+            # Ratio of 0 to other actions in the batch
+            n_zero_batch_final_actions_ratio = n_zero_batch_final_actions / depad_mask_list.sum().item()
+
+
+            batch_traj_agent_final_actions = th.masked_select(
+                batch_traj_agent_actions,
+                batch_traj_final_step_mask.bool()
+            )
+            # How many '0' actions sampled by the agent given the observations ?
+            n_zero_agent_final_actions = len(th.where(batch_traj_agent_final_actions == 0)[0])
+            # Ratio of 0 to other actions in the batch
+            n_zero_agent_final_actions_ratio = n_zero_agent_final_actions / depad_mask_list.sum().item()
+
+            # Special: tracking the 'StOP' action stats across in the batch
             tblogger.log_stats({
                 "n_zero_batch_final_actions": n_zero_batch_final_actions,
-                "n_zero_batch_final_actions_ratio": n_zero_batch_final_actions_ratio ,
+                "n_zero_batch_final_actions_ratio": n_zero_batch_final_actions_ratio,
                 "n_zero_agent_final_actions": n_zero_agent_final_actions,
                 "n_zero_agent_final_actions_ratio": n_zero_agent_final_actions_ratio
             }, step=global_step, prefix="metrics")
@@ -605,7 +682,7 @@ def main():
                     n_updates),
                 "model_update_step_duration": tblogger.track_duration("model_updates_inv",
                     n_updates, inverse=True),
-                "batch_real_steps_ratio": 1.0
+                "batch_real_steps_ratio": depad_mask_list.sum().item() / np.prod(depad_mask_list.shape)
             }
             tblogger.log_stats(info_stats, global_step, "info")
 
