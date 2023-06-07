@@ -84,26 +84,27 @@ echo "${LD_LIBRARY_PATH}"
     # done
     # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1
 
-    # Older expeirments scripts runs
+
+    # Older experiments scripts runs
     # region: PPO GRU: batch_size 32; batch_chunk_len: 32;  seq_length == chunk_length: 50 (accum grad over 4 mini batches), Entropy coef: 0 (reference), CE Weights 38.6 0.67 0.84 0.78, no grad norm
-    # for seed in 111 222; do
-    #   export TOTAL_STEPS=5000000
-    #   (sleep 1s && python ppo_bc2_ndset.py \
-    #     --dataset-path "AvNav_Oracle_Dataset_v0" \
-    #     --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
-    #     --exp-name "ppo_bc2_ndset__ss1_rgb_spectro__gru__bsize_32_bchnklen_32__nsteps_50__cew_dset_nogradnorm" \
-    #     --max-grad-norm 0 \
-    #     --ent-coef 0 \
-    #     --num-steps 50 \
-    #     --num-envs 32 \
-    #     --batch-chunk-length 32 \
-    #     --save-videos True \
-    #     --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
-    #     --logdir-prefix $LOGDIR_PREFIX \
-    #     --total-steps $TOTAL_STEPS \
-    #     --seed $seed \
-    #   ) & # >& /dev/null &
-    # done
+    for seed in 111 222; do
+      export TOTAL_STEPS=5000000
+      (sleep 1s && python ppo_bc2_ndset.py \
+        --dataset-path "AvNav_Oracle_Dataset_v0" \
+        --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+        --exp-name "ppo_bc2_ndset__ss1_rgb_spectro__gru__bsize_32_bchnklen_32__nsteps_50__cew_dset_nogradnorm" \
+        --max-grad-norm 0 \
+        --ent-coef 0 \
+        --num-steps 50 \
+        --num-envs 32 \
+        --batch-chunk-length 32 \
+        --save-videos True \
+        --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+        --logdir-prefix $LOGDIR_PREFIX \
+        --total-steps $TOTAL_STEPS \
+        --seed $seed \
+      ) & # >& /dev/null &
+    done
     # endregion: PPO GRU: batch_size 32; batch_chunk_len: 32;  seq_length == chunk_length: 50 (accum grad over 4 mini batches), Entropy coef: 0 (reference), CE Weights 38.6 0.67 0.84 0.78, no grad norm
   # endregion: AvNav
 

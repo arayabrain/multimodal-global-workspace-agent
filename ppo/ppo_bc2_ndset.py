@@ -60,6 +60,8 @@ class BCIterableDataset3(IterableDataset):
 
         # Read episode filenames in the dataset path
         self.ep_filenames = os.listdir(dataset_path)
+        if "dataset_statistics.bz2" in self.ep_filenames:
+            self.ep_filenames.remove("dataset_statistics.bz2")
         print(f"Initialized IterDset with {len(self.ep_filenames)} episodes.")
     
     def __iter__(self):
@@ -74,10 +76,9 @@ class BCIterableDataset3(IterableDataset):
             is_success = edd["info_list"][-1]["success"]
             last_action = int(edd["action_list"][-1])
             print(f"Sampled traj idx: {idx}; Length: {edd['ep_length']}; Success: {is_success}; Last act: {last_action}")
-            if edd["ep_length"] < 30:
-                continue # Skips short episodes
             
-            edd_start = th.randint(0, edd["ep_length"]-20, ()).item() # Sample start of sub-squence for this episode
+            # edd_start = th.randint(0, edd["ep_length"], ()).item() # Sample start of sub-squence for this episode
+            edd_start = 0 # since we have relatively small trajs, just take whole episodes
             edd_end = min(edd_start + batch_length, edd["ep_length"])
             subseq_len = edd_end - edd_start
             
