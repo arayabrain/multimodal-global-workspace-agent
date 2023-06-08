@@ -36,8 +36,8 @@ pprint(r__dataset_stats)
 
 
 # Start byreading all the episodes in 
-M = 5 # number fo scenes / rooms, for one category
-N = 5 # number of trajs. per scenes / rooms, for one category
+M = 10 # number fo scenes / rooms, for one category
+N = 50 # number of trajs. per scenes / rooms, for one category
 CATEGORIES_OF_INTEREST = [
     "chair",
     "picture",
@@ -77,6 +77,15 @@ while n_selected_trajs < C * N * M:
 
     # Skip if the category does not match
     if ep_category not in CATEGORIES_OF_INTEREST:
+        continue
+    
+    # This will skip a scene in case there does not seem to be enough
+    # sample to have N trajs for each category
+    # Note that even then, there is no guarantee the process will actually finish
+    # if there is a category-scene combiantion that has less than N trajectories.
+    # The script will probably iterate over all the data then save what it has 
+    # as is
+    if r__dataset_stats["scene_counts"][ep_scene] <= N * C:
         continue
 
     # Track which scenes' trajectories will be saved.
@@ -119,7 +128,7 @@ while n_selected_trajs < C * N * M:
 # Saving the filtered trajectories data
 # trajs_scenes_cat["chair"] # Check the content
 C = len(CATEGORIES_OF_INTEREST)
-analysis_trajs_filename = f"analysis_trajs_C_{C}_M_{M}_N_{N}.bz2"; print(analysis_trajs_filename)
+analysis_trajs_filename = f"cats_scenes_trajs_C_{C}_M_{M}_N_{N}.bz2"; print(analysis_trajs_filename)
 # Uncomment for actual saving
 with open(analysis_trajs_filename, "wb") as f:
     cpkl.dump(trajs_scenes_cat, f)
