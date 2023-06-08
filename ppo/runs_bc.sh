@@ -57,6 +57,25 @@ echo "${LD_LIBRARY_PATH}"
     # done
     # endregion: PPO GRU - BC with RGB only for vision
 
+    # region: PPO GRU - BC with RGB only for vision, cv2 resize variant for eval envs
+    for seed in 111 222; do
+      # export MASTER_PORT=8738 # Default port is 8738
+      export TOTAL_STEPS=5000000
+      (sleep 1s && python ppo_bc_cv2resize.py \
+          --exp-name "ppo_bc__ss1__rgb_spectro__gru" \
+          --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+          --dataset-path "AvNav_Oracle_Dataset_v0" \
+          --ent-coef 0 \
+          --dataset-ce-weights True \
+          --save-videos True \
+          --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+          --logdir-prefix $LOGDIR_PREFIX \
+          --total-steps $TOTAL_STEPS \
+          --seed $seed \
+      ) & # >& /dev/null &
+    done
+    # endregion: PPO GRU - BC with RGB only for vision, cv2 resize variant for eval envs
+
     # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1
     # for seed in 111 222; do
     #   # export MASTER_PORT=8748 # Default port is 8738
@@ -87,24 +106,24 @@ echo "${LD_LIBRARY_PATH}"
 
     # Older experiments scripts runs
     # region: PPO GRU: batch_size 32; batch_chunk_len: 32;  seq_length == chunk_length: 50 (accum grad over 4 mini batches), Entropy coef: 0 (reference), CE Weights 38.6 0.67 0.84 0.78, no grad norm
-    for seed in 111 222; do
-      export TOTAL_STEPS=5000000
-      (sleep 1s && python ppo_bc2_ndset.py \
-        --dataset-path "AvNav_Oracle_Dataset_v0" \
-        --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
-        --exp-name "ppo_bc2_ndset__ss1_rgb_spectro__gru__bsize_32_bchnklen_32__nsteps_50__cew_dset_nogradnorm" \
-        --max-grad-norm 0 \
-        --ent-coef 0 \
-        --num-steps 50 \
-        --num-envs 32 \
-        --batch-chunk-length 32 \
-        --save-videos True \
-        --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
-        --logdir-prefix $LOGDIR_PREFIX \
-        --total-steps $TOTAL_STEPS \
-        --seed $seed \
-      ) & # >& /dev/null &
-    done
+    # for seed in 111 222; do
+    #   export TOTAL_STEPS=5000000
+    #   (sleep 1s && python ppo_bc2_ndset.py \
+    #     --dataset-path "AvNav_Oracle_Dataset_v0" \
+    #     --config-path "env_configs/audiogoal_rgb_nocont.yaml" \
+    #     --exp-name "ppo_bc2_ndset__ss1_rgb_spectro__gru__bsize_32_bchnklen_32__nsteps_50__cew_dset_nogradnorm" \
+    #     --max-grad-norm 0 \
+    #     --ent-coef 0 \
+    #     --num-steps 50 \
+    #     --num-envs 32 \
+    #     --batch-chunk-length 32 \
+    #     --save-videos True \
+    #     --wandb --wandb-project ss-hab-bc --wandb-entity dosssman \
+    #     --logdir-prefix $LOGDIR_PREFIX \
+    #     --total-steps $TOTAL_STEPS \
+    #     --seed $seed \
+    #   ) & # >& /dev/null &
+    # done
     # endregion: PPO GRU: batch_size 32; batch_chunk_len: 32;  seq_length == chunk_length: 50 (accum grad over 4 mini batches), Entropy coef: 0 (reference), CE Weights 38.6 0.67 0.84 0.78, no grad norm
   # endregion: AvNav
 
