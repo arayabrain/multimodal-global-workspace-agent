@@ -1,4 +1,5 @@
 import os
+import cv2
 import time
 import random
 import numpy as np
@@ -121,10 +122,14 @@ def make_dataloader3(dataset_path, batch_size, batch_length, seed=111, num_worke
 def tensorize_obs_dict(obs, device, observations=None, rollout_step=None):
     obs_th = {}
     for obs_field, _ in obs[0].items():
-        v_th = th.Tensor(np.array([step_obs[obs_field] for step_obs in obs], dtype=np.float32)).to(device)
-        # in SS1.0, the dcepth observations comes as [B, 128, 128, 1, 1], so fix that
+        v_th = th.Tensor(np.array([cv2.resize(step_obs[obs_field], dsize=(128, 128)) if obs_field in ["rgb", "depth"] else step_obs[obs_field] for step_obs in obs], dtype=np.float32)).to(device)
+        # in SS1.0, the depth observations comes as [B, 128, 128, 1, 1], so fix that
         if obs_field == "depth" and v_th.dim() == 5:
             v_th = v_th.squeeze(-1)
+        ## Specific to the cv2resize version:
+        ## resize the observation to hopefully improve consistency between
+        ## oracle dataset and evaluation environments
+
         obs_th[obs_field] = v_th
         # Special case when doing the rollout, also stores the 
         if observations is not None:
@@ -133,9 +138,7 @@ def tensorize_obs_dict(obs, device, observations=None, rollout_step=None):
     return obs_th
 
 @th.no_grad()
-def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_step, n_episodes=5, save_videos=True,is_SAVi=False):
-
-    n_eval_envs = 2 # TODO: maybe make this parameterizable ? and tie with environment creation part in main()
+def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_step, n_eval_envs=1, n_episodes=5, save_videos=True, is_SAVi=False):
     obs = eval_envs.reset()
     done = [False for _ in range(n_eval_envs)]
     done_th = th.Tensor(done).to(device)
@@ -375,8 +378,17 @@ def main():
     ## Override default seed
     env_config.SEED = env_config.TASK_CONFIG.SEED = env_config.TASK_CONFIG.SIMULATOR.SEED = args.seed
 
+    env_config.TASK_CONFIG.SIMULATOR.USE_RENDERED_OBSERVATIONS = False
+    # For smoother video, set CONTINUOUS_VIEW_CHANGE to True, and get the additional frames in obs_dict["intermediate"]
+    env_config.TASK_CONFIG.SIMULATOR.CONTINUOUS_VIEW_CHANGE = False
+
+    env_config.TASK_CONFIG.SIMULATOR.RGB_SENSOR.WIDTH = 256
+    env_config.TASK_CONFIG.SIMULATOR.RGB_SENSOR.HEIGHT = 256
+    env_config.TASK_CONFIG.SIMULATOR.DEPTH_SENSOR.WIDTH = 256
+    env_config.TASK_CONFIG.SIMULATOR.DEPTH_SENSOR.HEIGHT = 256
+
     # NOTE: using less environments for eval to save up system memory -> run more experiment at the same time
-    env_config.NUM_PROCESSES = 2 # Corresponds to number of envs, makes script startup faster for debugs
+    env_config.NUM_PROCESSES = 1 # Corresponds to number of envs, makes script startup faster for debugs
     # env_config.CONTINUOUS = args.env_continuous
     ## In caes video saving is enabled, make sure there is also the rgb videos
     agent_extra_rgb = False
@@ -393,12 +405,17 @@ def main():
     # NOTE: it seems to induce "'DummySimulator' object has no attribute 'pathfinder'" error
     # If top down map really needed, probably have to run the env without pre-rendered observations ?
     # env_config.TASK_CONFIG.TASK.MEASUREMENTS.append("TOP_DOWN_MAP")
+
     env_config.freeze()
 
     # Environment instantiation
     envs = construct_envs(env_config, get_env_class(env_config.ENV_NAME))
     single_observation_space = envs.observation_spaces[0]
     single_action_space = envs.action_spaces[0]
+    # Override the observation space for "rgb" and "depth" from (256,256,C) to (128,128,C)
+    from gym import spaces
+    single_observation_space["rgb"] = spaces.Box(shape=[128,128,3], low=0, high=255, dtype=np.uint8)
+
 
     # TODO: delete the envrionemtsn / find a more efficient method to do this
 
@@ -442,8 +459,8 @@ def main():
         ce_weights = [dataset_statistics["action_cel_coefs"][a] for a in range(4)]
         print("### INFO: Loading CEL weights from dataset: ", ce_weights)
     
-        # Override the CE weights in the args
-        args.ce_weights = ce_weights
+        # Override the CE weights in the args, more readable
+        args.ce_weights = [round(cew, 2) for cew in ce_weights]
 
     # Otherwise, use manually specified CEL weights
     if ce_weights is not None:
@@ -452,7 +469,7 @@ def main():
         print("### INFO: Manually set CEL weights from dataset: ", ce_weights)
 
     print(" ### INFO: CEL weights")
-    print(ce_weights)
+    print(args.ce_weights)
     print("")
     
     # Experiment logger
@@ -471,7 +488,8 @@ def main():
     # Checking the dataset steps
     print(" ### INFO: Dataset statistics ###")
     from pprint import pprint
-    pprint(dict_without_keys(dataset_statistics, ["episode_lengths", "scene_filenames"]))
+    pprint(dict_without_keys(dataset_statistics, ["episode_lengths",
+        "cat_scene_filenames", "scene_cat_filenames", "scene_filenames"]))
     print("")
 
     # Training start
@@ -617,7 +635,8 @@ def main():
             eval_window_episode_stas = eval_agent(args, envs, agent,
                 device=device, tblogger=tblogger,
                 env_config=env_config, current_step=global_step,
-                n_episodes=args.eval_n_episodes, save_videos=True,
+                n_eval_envs=env_config.NUM_PROCESSES,
+                n_episodes=args.eval_n_episodes, save_videos=args.save_videos,
                 is_SAVi=is_SAVi)
             episode_stats = {k: np.mean(v) for k, v in eval_window_episode_stas.items()}
             episode_stats["last_actions_min"] = np.min(eval_window_episode_stas["last_actions"])
