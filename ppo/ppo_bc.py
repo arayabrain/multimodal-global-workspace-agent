@@ -498,7 +498,10 @@ def main():
     n_updates = 0 # Progressively tracks the number of network updats
 
     # NOTE: 10 * 150 as step to match the training rate of an RL Agent, irrespective of which batch size / batch length is used
-    for global_step in range(1, args.total_steps + 1, 10 * 150):
+    # Ideally, both RL and BC variants should be trained with the same number of steps, with batch of data as similar as possible.
+    # In some BC experiments we would use a single expisode as batch trajectory, while RL can have multiple episode cat.ed together
+    # to fill up one batch trajectory.
+    for global_step in range(1, args.total_steps + (args.num_envs * args.batch_length), args.num_envs * args.batch_length):
         # Load batch data
         obs_list, action_list, _, done_list = \
             [ {k: th.Tensor(v).float().to(device) for k,v in b.items()} if isinstance(b, dict) else 
