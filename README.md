@@ -350,6 +350,12 @@ A simplified PPO + GRU implementation that exposes the core of the algorithm, as
 The custom Perciever-based GW-inspired RNN cell is located in `ppo/perceiver_gwt_gwwm.py`.
 The corresponding ActorCritic agent is defined in `ppo/models.py`, along with other variants of the agent.
 
+Also need to add a link to the `data` folder from `sound-spaces` for the environments to be properly created.
+```bash
+cd /path/to/ss-hab/ppo
+ln -s ../sound-spaces/data .
+```
+
 ## Additional dependencies
 ```
 # Individual deps. install
