@@ -119,7 +119,7 @@ while n_selected_trajs < C * N * M:
             n_selected_trajs_cat_counts[ep_category] += 1
     
     print("### --------------------------------------------------- ###")
-    print(f"### # selected traj: {n_selected_trajs_cat_counts[ep_category]} for \"{ep_category}\"")
+    print(f"### # selected traj: {n_selected_trajs_cat_counts[ep_category]} / {M * N} for \"{ep_category}\"")
     for k, v in trajs_scenes_cat[ep_category].items():
         print(f"\t{k}: {len(v)}")
     print("### --------------------------------------------------- ###")
