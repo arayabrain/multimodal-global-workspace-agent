@@ -99,8 +99,8 @@
 
                 // PPO BC with richer SAVI dataset config
                 // "--dataset-path", "SAVI_Oracle_Dataset_v0_10K",
-                "--dataset-path", "AvNav_Oracle_Dataset_v0",
-                "--config-path", "env_configs/savi/savi_ss1_rgb_spectro.yaml",
+                "--dataset-path", "SAVI_Oracle_Dataset_v0",
+                "--config-path", "env_configs/savi/savi_ss1_rgbd_spectro.yaml",
                 "--total-steps", "10000",
                 "--save-videos", "False",
                 "--eval", "True",

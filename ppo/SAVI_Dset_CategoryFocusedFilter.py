@@ -36,8 +36,8 @@ pprint(r__dataset_stats)
 
 
 # Start byreading all the episodes in 
-M = 10 # number fo scenes / rooms, for one category
-N = 50 # number of trajs. per scenes / rooms, for one category
+M = 5 # number fo scenes / rooms, for one category
+N = 40 # number of trajs. per scenes / rooms, for one category
 CATEGORIES_OF_INTEREST = [
     "chair",
     "picture",

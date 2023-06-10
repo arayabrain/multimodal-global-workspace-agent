@@ -124,8 +124,11 @@ def tensorize_obs_dict(obs, device, observations=None, rollout_step=None):
     for obs_field, _ in obs[0].items():
         v_th = th.Tensor(np.array([cv2.resize(step_obs[obs_field], dsize=(128, 128)) if obs_field in ["rgb", "depth"] else step_obs[obs_field] for step_obs in obs], dtype=np.float32)).to(device)
         # in SS1.0, the depth observations comes as [B, 128, 128, 1, 1], so fix that
-        if obs_field == "depth" and v_th.dim() == 5:
-            v_th = v_th.squeeze(-1)
+        if obs_field == "depth": 
+            if v_th.dim() == 5:
+                v_th = v_th.squeeze(-1)
+            elif v_th.dim() == 3:
+                v_th = v_th[:, :, :, None]
         ## Specific to the cv2resize version:
         ## resize the observation to hopefully improve consistency between
         ## oracle dataset and evaluation environments
