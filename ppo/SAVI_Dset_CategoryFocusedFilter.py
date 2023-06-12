@@ -65,58 +65,61 @@ ep_filenames_iterator = iter(ep_filenames)
 scenes_of_interest = [] # To make sure we have the same scenes for each category
 
 while n_selected_trajs < C * N * M:
-    ep_filename = next(ep_filenames_iterator)
+    try:
+        ep_filename = next(ep_filenames_iterator)
 
-    ep_filepath = f"{DATASET_DIR_PATH}/{ep_filename}"
-    with open(ep_filepath, "rb") as f:
-        edd = cpkl.load(f)
+        ep_filepath = f"{DATASET_DIR_PATH}/{ep_filename}"
+        with open(ep_filepath, "rb") as f:
+            edd = cpkl.load(f)
 
-    ep_length = edd["ep_length"]
-    ep_category = edd["category_name"]
-    ep_scene = edd["scene_id"]
+        ep_length = edd["ep_length"]
+        ep_category = edd["category_name"]
+        ep_scene = edd["scene_id"]
 
-    # Skip if the category does not match
-    if ep_category not in CATEGORIES_OF_INTEREST:
-        continue
-    
-    # This will skip a scene in case there does not seem to be enough
-    # sample to have N trajs for each category
-    # Note that even then, there is no guarantee the process will actually finish
-    # if there is a category-scene combiantion that has less than N trajectories.
-    # The script will probably iterate over all the data then save what it has 
-    # as is
-    if r__dataset_stats["scene_counts"][ep_scene] <= N * C:
-        continue
+        # Skip if the category does not match
+        if ep_category not in CATEGORIES_OF_INTEREST:
+            continue
+        
+        # This will skip a scene in case there does not seem to be enough
+        # sample to have N trajs for each category
+        # Note that even then, there is no guarantee the process will actually finish
+        # if there is a category-scene combiantion that has less than N trajectories.
+        # The script will probably iterate over all the data then save what it has 
+        # as is
+        if r__dataset_stats["scene_counts"][ep_scene] <= N * C:
+            continue
 
-    # Track which scenes' trajectories will be saved.
-    # We want the same scenes for each category
-    if len(scenes_of_interest) < M and (ep_scene not in scenes_of_interest):
-        scenes_of_interest.append(ep_scene)
-    
-    if ep_scene not in scenes_of_interest:
-        continue
+        # Track which scenes' trajectories will be saved.
+        # We want the same scenes for each category
+        if len(scenes_of_interest) < M and (ep_scene not in scenes_of_interest):
+            scenes_of_interest.append(ep_scene)
+        
+        if ep_scene not in scenes_of_interest:
+            continue
 
-    if ep_scene not in trajs_scenes_cat[ep_category].keys():
-        # First time seeing the scene: add it to the dict, along with the new traj.
-        if len(trajs_scenes_cat[ep_category]) < M:
-            # Only add it if we don't have enough scenes yet.
-            trajs_scenes_cat[ep_category][ep_scene] = [
-                {
+        if ep_scene not in trajs_scenes_cat[ep_category].keys():
+            # First time seeing the scene: add it to the dict, along with the new traj.
+            if len(trajs_scenes_cat[ep_category]) < M:
+                # Only add it if we don't have enough scenes yet.
+                trajs_scenes_cat[ep_category][ep_scene] = [
+                    {
+                        "ep_filename": ep_filename,
+                        "edd": edd
+                    }
+                ]
+                n_selected_trajs += 1
+                n_selected_trajs_cat_counts[ep_category] += 1
+        else:
+            # The scene was already seen once; check if we need more, and append accordingly
+            if len(trajs_scenes_cat[ep_category][ep_scene]) < N:
+                trajs_scenes_cat[ep_category][ep_scene].append({
                     "ep_filename": ep_filename,
                     "edd": edd
-                }
-            ]
-            n_selected_trajs += 1
-            n_selected_trajs_cat_counts[ep_category] += 1
-    else:
-        # The scene was already seen once; check if we need more, and append accordingly
-        if len(trajs_scenes_cat[ep_category][ep_scene]) < N:
-            trajs_scenes_cat[ep_category][ep_scene].append({
-                "ep_filename": ep_filename,
-                "edd": edd
-            })
-            n_selected_trajs += 1
-            n_selected_trajs_cat_counts[ep_category] += 1
+                })
+                n_selected_trajs += 1
+                n_selected_trajs_cat_counts[ep_category] += 1
+    except Exception as e:
+        print(e)
     
     print("### --------------------------------------------------- ###")
     print(f"### # selected traj: {n_selected_trajs_cat_counts[ep_category]} / {M * N} for \"{ep_category}\"")
