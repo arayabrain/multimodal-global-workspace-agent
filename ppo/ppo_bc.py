@@ -34,8 +34,8 @@ import compress_pickle as cpkl
 def dict_without_keys(d, keys_to_ignore):
     return {x: d[x] for x in d if x not in keys_to_ignore}
 
-# This variant will sample one single (sub) seuqence of an episode as a trajectoyr
-# and add zero paddign to the rest
+# This variant will fill each batch trajectory using cat.ed episode data
+# There is no empty step in this batch
 class BCIterableDataset3(IterableDataset):
     def __init__(self, dataset_path, batch_length, seed=111):
         self.seed = seed
@@ -578,7 +578,7 @@ def main():
                 nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
             optimizer.step()
 
-            n_updates += 1
+            n_updates += args.update_epochs
 
         if n_updates > 0 and should_log_training_stats(n_updates):
             print(f"Step {global_step} / {args.total_steps}")
