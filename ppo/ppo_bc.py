@@ -561,7 +561,7 @@ def main():
             actions, _, _, action_logits, entropies, _, _ = \
                 agent.act(obs_list, rnn_hidden_state,
                     masks=mask_list) #, prev_actions=prev_actions_list)
-                
+
 
             bc_loss = F.cross_entropy(action_logits, action_list.long(),
                                         weight=ce_weights, reduction="mean")
