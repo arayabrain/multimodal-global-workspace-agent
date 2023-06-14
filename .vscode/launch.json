@@ -105,6 +105,10 @@
                 "--save-videos", "False",
                 "--eval", "True",
                 "--eval-every", "5",
+                "--num-envs", "2",
+                "--num-steps", "15",
+                "--pretrained-model-name", "ppo_gru__random",
+                "--log-training-stats-every", "1"
             ]
 
             // Custom PPO Debug with AudioCLIP audio encoder

@@ -1,3 +1,9 @@
+# This script expects to train probes on features learned 
+# by one specific pre-trained model
+# There is however support for multiple probing target
+# namely "category" of the goal / object in the episode
+# and the scene the episode takes place in.
+
 # General config related
 import os
 import copy
@@ -40,13 +46,22 @@ def dict_without_keys(d, keys_to_ignore):
 CUSTOM_ARGS = [
     # General hyper parameters
     get_arg_dict("seed", int, 111),
-    get_arg_dict("total-steps", int, 1_000_000),
+    get_arg_dict("total-steps", int, 500_000), # By default, should be the number of steps in the dataset
     
     # Behavior cloning gexperiment config
     get_arg_dict("dataset-path", str, "SAVI_Oracle_Dataset_v0"),
 
+    
     # SS env config
     get_arg_dict("config-path", str, "env_configs/savi/savi_ss1.yaml"),
+
+    # Probing setting
+    get_arg_dict("probing-targets", str, ["category"], metatype="list"), # What to probe for 
+    get_arg_dict("probing-inputs", str, 
+        ["state_encoder", "visual_encoder.cnn.7", "audio_encoder.cnn.7"], metatype="list"), # What to base the probe on
+    get_arg_dict("pretrained-model-name", str, None), # Simplified model name; required
+    get_arg_dict("pretrained-model-path", str, None), # Path to the weights of the pre-trained model; required
+    get_arg_dict("n-epochs", int, 1), # How many iteration over the whole dataset (* with caveat)
 
     # PPO Hyper parameters
     get_arg_dict("num-envs", int, 10), # Number of parallel envs. 10 by default
@@ -222,71 +237,35 @@ single_observation_space = spaces.Dict({
 # Define the target of probing
 ## "category" -> how easy to predict category based on the learned features / inputs
 ## "scene" -> how easy to predict scene based on the learned features / inputs
-PROBING_TARGETS = {
-    "category": {"n_classes": N_CATEGORIES},
-    # "scene": {"n_classes": N_SCENES}
-}
+PROBING_TARGETS = {}
+for probe_target in args.probing_targets:
+    if probe_target == "category":
+        PROBING_TARGETS["category"] = {}
+        PROBING_TARGETS["category"]["n_classes"] = N_CATEGORIES
+    elif probe_target == "scene":
+        PROBING_TARGETS["scene"] = {}
+        PROBING_TARGETS["scene"]["n_classes"] = N_SCENES
 
 # Define which fields of an agent to use for the probes
-PROBING_INPUTS = ["state_encoder", "audio_encoder.cnn.7", "visual_encoder.cnn.7"]
+PROBING_INPUTS = args.probing_inputs
 
-# Define the probing "subjects", i.e. which pre-trained BC networks to probe
-# also stores info. related to the path to the weights, and pretty names for the plots
-MODEL_VARIANTS_TO_STATEDICT_PATH = {
-    # region: Random baselines
-    # Random GRU Baseline
-    "ppo_gru__random": {
-        "pretty_name": "GRU Random",
-        "state_dict_path": ""
-    },
-    # Random PGWT Baseline
-    "ppo_pgwt__random": {
-        "pretty_name": "TransRNN Random",
-        "state_dict_path": ""
-    },
-    # endregion: Random baselines
+# Load the model which features will be probed
+args_copy = copy.copy(args)
+if args.pretrained_model_name.__contains__("gru"):
+    agent = ActorCritic(single_observation_space, single_action_space, args.hidden_size, extra_rgb=False,
+        analysis_layers=models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
+elif args.pretrained_model_name.__contains__("pgwt"):
+    agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space, args, extra_rgb=False,
+        analysis_layers=models.PGWT_GWWM_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES + ["state_encoder.ca.mha"]).to(device)
+agent.eval()
 
+# TODO: add more controls on the model path ?
+if args.pretrained_model_path is not None:
+    agent_state_dict = th.load(args.pretrained_model_path)
+    agent.load_state_dict(agent_state_dict)
 
-    # region: SAVi BC variants; trained using RGBD + Spectrogram ; trained up to 5M steps
-    "ppo_bc__rgbd_spectro__gru__SAVi": {
-        "pretty_name": "[SAVi BC] PPO GRU | RGB Spectro",
-        "state_dict_path": "/home/rousslan/random/rl/exp-logs/ss-hab-bc/"
-            "ppo_bc__savi_ss1_rgbd_spectro__gru_seed_111__2023_06_10_16_05_39_999286.musashi"
-            "/models/ppo_agent.4995001.ckpt.pth"
-    },
-    "ppo_bc__rgbd_spectro__pgwt__SAVi": {
-        "pretty_name": "[SAVi BC] PPO TransRNN | RGB Spectro",
-        "state_dict_path": "/home/rousslan/random/rl/exp-logs/ss-hab-bc/"
-            "ppo_bc__savi_ss1_rgbd__spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats_seed_111__2023_06_10_16_05_37_098602.musashi"
-            "/models/ppo_agent.4995001.ckpt.pth"
-    },
-    # endregion: SAVi BC variants; trained using RGBD + Spectrogram ; trained up to 5M steps
-}
-
-# Indexable instantiated agent models (Torch agents)
-MODEL_VARIANTS_TO_AGENTMODEL = {}
-
-for k, v in MODEL_VARIANTS_TO_STATEDICT_PATH.items():
-    args_copy = copy.copy(args)
-    # Override args depending on the model in use
-    if k.__contains__("gru"):
-        agent = ActorCritic(single_observation_space, single_action_space, args.hidden_size, extra_rgb=False,
-            analysis_layers=models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES)
-    elif k.__contains__("pgwt"):
-        agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space, args, extra_rgb=False,
-            analysis_layers=models.PGWT_GWWM_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES + ["state_encoder.ca.mha"])
-
-    agent.eval()
-    # Load the model weights
-    # TODO: add map location device to use CPU only ?
-    if v["state_dict_path"] != "":
-        agent_state_dict = th.load(v["state_dict_path"])
-        agent.load_state_dict(agent_state_dict)
-    
-    MODEL_VARIANTS_TO_AGENTMODEL[k] = agent.to(device)
-
-# TODO
-# - consider adding the reference to the network this probe is in charge of ?
+# Class for a generic linear probe network
+# TODO: might want to add a few layers layer ?
 class GenericProbeNetwork(nn.Module):
     def __init__(self, input_dim, output_dim):
         # input_dim: shape of the 
@@ -306,33 +285,30 @@ for probe_target_name, probe_target_info in PROBING_TARGETS.items():
         if probe_input not in PROBES_METADATA[probe_target_name].keys():
             PROBES_METADATA[probe_target_name][probe_input] = {}
 
-        for agent_variant in MODEL_VARIANTS_TO_AGENTMODEL.keys():
-            PROBES_METADATA[probe_target_name][probe_input][agent_variant] = {
-                "probe_input_dim": 512, # TODO: make this adapt to the actual shape of the input's probe
-                "probe_output_dim": probe_target_info["n_classes"]
-            }
+        # TODO: make the probe's input dim adapt to what will actually be probed.
+        PROBES_METADATA[probe_target_name][probe_input]["probe_input_dim"] = 512
+        PROBES_METADATA[probe_target_name][probe_input]["probe_output_dim"] = probe_target_info["n_classes"]
 
 # Dictionary that will holds the probe networks and their optimizers
 PROBES = copy.copy(PROBES_METADATA)
 for probe_target_name, probe_target_info in PROBING_TARGETS.items():
     for probe_input in PROBING_INPUTS: # NOTE: maybe switch order with the MODEL_VARIANTS ???
-        for agent_variant in MODEL_VARIANTS_TO_AGENTMODEL.keys():
-            probe_input_dim = PROBES[probe_target_name][probe_input][agent_variant]["probe_input_dim"]
-            probe_output_dim = PROBES[probe_target_name][probe_input][agent_variant]["probe_output_dim"]
+        probe_input_dim = PROBES[probe_target_name][probe_input]["probe_input_dim"]
+        probe_output_dim = PROBES[probe_target_name][probe_input]["probe_output_dim"]
 
-            probe_network = GenericProbeNetwork(probe_input_dim, probe_output_dim).to(device)
-            if not args.cpu and th.cuda.is_available():
-                # TODO: GPU only. But what if we still want to use the default pytorch one ?
-                optimizer = apex.optimizers.FusedAdam(probe_network.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
-            else:
-                optimizer = th.optim.Adam(probe_network.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
+        probe_network = GenericProbeNetwork(probe_input_dim, probe_output_dim).to(device)
+        if not args.cpu and th.cuda.is_available():
+            # TODO: GPU only. But what if we still want to use the default pytorch one ?
+            optimizer = apex.optimizers.FusedAdam(probe_network.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
+        else:
+            optimizer = th.optim.Adam(probe_network.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
 
-            PROBES[probe_target_name][probe_input][agent_variant]["probe_network"] = \
-                probe_network
-            PROBES[probe_target_name][probe_input][agent_variant]["probe_optimizer"] = \
-                optimizer
+        PROBES[probe_target_name][probe_input]["probe_network"] = probe_network
+        PROBES[probe_target_name][probe_input]["probe_optimizer"] = optimizer
+        PROBES[probe_target_name][probe_input]["agent"] = args.pretrained_model_name
+        PROBES[probe_target_name][probe_input]["agent_state_dict_path"] = args.pretrained_model_path
 
-# NOTE / TODO: probe training might benefti from using different batch sizes ?
+# NOTE / TODO: probe training might benefit from using different batch sizes ?
 
 # This variant will fill each batch trajectory using cat.ed episode data
 # There is no empty step in this batch
@@ -447,22 +423,17 @@ PROBES_METADATA__FILEPATH = f"{tblogger.get_logdir()}/PROBES_METADATA.bz2"
 with open(PROBES_METADATA__FILEPATH, "wb") as f:
     cpkl.dump(PROBES_METADATA, f)
 
-## Save the agent models weight path used for the probing
-MODEL_VARIANTS_TO_STATEDICT_PATH__FILEPATH = f"{tblogger.get_logdir()}/MODEL_VARIANTS_TO_STATEDICT_PATH.bz2"
-with open(MODEL_VARIANTS_TO_STATEDICT_PATH__FILEPATH, "wb") as f:
-    cpkl.dump(MODEL_VARIANTS_TO_STATEDICT_PATH, f)
-
 # Training start
 start_time = time.time()
 
 # NOTE: this time total-steps means how many time .backward() is called on each probe
 # One epoch would be equual to "DATASET_SIZE" in steps / (num_envs * num_steps)
 n_updates = 0
-total_updates = int(args.total_steps / args.num_envs / args.num_steps) # How many updates expected in total for one epoch ?
+steps_per_update = args.num_envs * args.num_steps
+total_updates = int((args.total_steps * args.n_epochs) / args.num_envs / args.num_steps) + 1# How many updates expected in total for one epoch ?
 print(f"Expected number of updates: {total_updates}")
 
-steps_per_update = args.num_envs * args.num_steps
-for global_step in range(1, args.total_steps + steps_per_update, steps_per_update):
+for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update, steps_per_update):
     # Load batch data
     obs_list, action_list, _, done_list = \
         [ {k: th.Tensor(v).float().to(device) for k,v in b.items()} if isinstance(b, dict) else 
@@ -503,61 +474,61 @@ for global_step in range(1, args.total_steps + steps_per_update, steps_per_updat
     # For each "agent_variant", iterate
     # TODO: once we have more than "category", it is more efficient to iterate over the agent first,
     # Do the forward pass, then iterate over the probe target (category, scene, etc...) then
-    for agent_variant, agent in MODEL_VARIANTS_TO_AGENTMODEL.items():
-        # Forward pass with the agent model to collect the intermediate features
-        # Stores in agent_features
-        # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
-        if agent_variant.__contains__("gru"):
-            rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
-        elif agent_variant.__contains__("pgwt"):
-            rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)
-        else:
-            raise NotImplementedError(f"Unsupported agent-type:{agent_variant}")
+
+    # Forward pass with the agent model to collect the intermediate features
+    # Stores in agent_features
+    # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
+    if args.pretrained_model_name.__contains__("gru"):
+        rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
+    elif args.pretrained_model_name.__contains__("pgwt"):
+        rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)
+    else:
+        raise NotImplementedError(f"Unsupported agent-type:{args.pretrained_agent_name}")
+    
+    with th.no_grad():
+        agent_outputs = agent.act(obs_list, rnn_hidden_state, masks=mask_list) #, prev_actions=prev_actions_list)
         
-        with th.no_grad():
-            agent_outputs = agent.act(obs_list, rnn_hidden_state, masks=mask_list) #, prev_actions=prev_actions_list)
-        
-        for probe_target_name, probe_target_dict in PROBES.items():
-            # probe_target_name: "category", "scene", more generally the targeted concept of the probing
-            # probe_target_dict: { "state_encoder": {"agent_variant": Torch Model} }
-            for probe_target_input_name, agent_variant_probes in probe_target_dict.items():
-                # probe_target_input_name: the input of the probe, such as "state_encoder", and other
-                # agent_variant_probes: dict taht holds {"agent_variant": Torch Model}
-                
-                probe = agent_variant_probes[agent_variant]["probe_network"]
-                probe_optim = agent_variant_probes[agent_variant]["probe_optimizer"]
-                probe_optim.zero_grad()
+    for probe_target_name, probe_target_dict in PROBES.items():
+        # probe_target_name: "category", "scene", more generally the targeted concept of the probing
+        # probe_target_dict: { "state_encoder": {"agent_variant": Torch Model} }
+        for probe_target_input_name, agent_variant_probes in probe_target_dict.items():
+            # probe_target_input_name: the input of the probe, such as "state_encoder", and other
+            # agent_variant_probes: dict taht holds {"agent_variant": Torch Model}
+            
+            probe = agent_variant_probes["probe_network"]
+            probe_optim = agent_variant_probes["probe_optimizer"]
+            probe_optim.zero_grad()
 
-                # Forward pass of the probe network itself
-                if probe_target_input_name == "state_encoder":
-                    probe_inputs = agent._features["state_encoder"][0]
-                elif probe_target_input_name.__contains__("visual_encoder") or \
-                     probe_target_input_name.__contains__("audio_encoder"):
-                    probe_inputs = agent._features[probe_target_input_name]
-                else:
-                    raise NotImplementedError(f"Attempt to use {probe_target_input_name} as probe input.")
-                
-                probe_logits = probe(probe_inputs)
-                
-                # TODO: generate probe_targets
-                if probe_target_name == "category":
-                    probe_targets = obs_list["category"].reshape(-1, 21).argmax(axis=1)
-                else:
-                    raise NotImplementedError(f"Unsupported probe target: {probe_target_name}.")
-                
-                # Loss
-                # TODO: CE weights depending on the probing target and such
-                probe_ce_loss = F.cross_entropy(probe_logits, probe_targets)
+            # Forward pass of the probe network itself
+            if probe_target_input_name == "state_encoder":
+                probe_inputs = agent._features["state_encoder"][0]
+            elif probe_target_input_name.__contains__("visual_encoder") or \
+                    probe_target_input_name.__contains__("audio_encoder"):
+                probe_inputs = agent._features[probe_target_input_name]
+            else:
+                raise NotImplementedError(f"Attempt to use {probe_target_input_name} as probe input.")
+            
+            probe_logits = probe(probe_inputs)
+            
+            # TODO: generate probe_targets
+            if probe_target_name == "category":
+                probe_targets = obs_list["category"].reshape(-1, N_CATEGORIES).argmax(axis=1)
+            else:
+                raise NotImplementedError(f"Unsupported probe target: {probe_target_name}.")
+            
+            # Loss
+            # TODO: CE weights depending on the probing target and such
+            probe_ce_loss = F.cross_entropy(probe_logits, probe_targets)
 
-                probe_ce_loss.backward()
-                probe_optim.step()
+            probe_ce_loss.backward()
+            probe_optim.step()
 
-                # Store the loss valuesl for logging later
-                metric_stem = f"{probe_target_name}|{probe_target_input_name}__{agent_variant}"
-                loss_name = f"{metric_stem}__probe_loss"
-                probe_losses_dict[loss_name] = probe_ce_loss.item()
-                acc_name = f"{metric_stem}__probe_acc"
-                probe_losses_dict[acc_name] = (F.softmax(probe_logits, dim=1).argmax(1) == probe_targets).float().mean().item()
+            # Store the loss valuesl for logging later
+            metric_stem = f"{probe_target_name}|{probe_target_input_name}"
+            loss_name = f"{metric_stem}__probe_loss"
+            probe_losses_dict[loss_name] = probe_ce_loss.item()
+            acc_name = f"{metric_stem}__probe_acc"
+            probe_losses_dict[acc_name] = (F.softmax(probe_logits, dim=1).argmax(1) == probe_targets).float().mean().item()
 
     # Tracking the number of NN updates (for all probes)
     n_updates += 1
@@ -570,12 +541,11 @@ for global_step in range(1, args.total_steps + steps_per_update, steps_per_updat
         tblogger.log_stats(probe_losses_dict, global_step, prefix="train")
 
 # Saving models after the training
-for agent_variant, agent in MODEL_VARIANTS_TO_AGENTMODEL.items():
-    for probe_target_name, probe_target_dict in PROBES.items():
-        for probe_target_input_name, agent_variant_probes in probe_target_dict.items():
-            probe = agent_variant_probes[agent_variant]["probe_network"]
-            probe_statedict_filename = f"{probe_target_name}__{probe_target_input_name}__{agent_variant}.pth"
-            
-            tblogger.save_model_dict(probe.state_dict, probe_statedict_filename)
+for probe_target_name, probe_target_dict in PROBES.items():
+    for probe_target_input_name, agent_variant_probes in probe_target_dict.items():
+        probe = agent_variant_probes["probe_network"]
+        probe_statedict_filename = f"{probe_target_name}__{probe_target_input_name}__probe.pth"
+        
+        tblogger.save_model_dict(probe.state_dict, probe_statedict_filename)
 
 tblogger.close()
