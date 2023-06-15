@@ -22,7 +22,7 @@ echo "${LD_LIBRARY_PATH}"
 for seed in 111; do
     TOTAL_STEPS=500000; N_EPOCHS=10;
     (sleep 1s && python ppo_bc_probe_train.py \
-        --exp-name "ppo_gru__random" \
+        --exp-name "ppo_gru__random__fixTB" \
         --pretrained-model-name "ppo_gru__random" \
         --config-path "env_configs/savi/savi_ss1_rgbd_spectro.yaml" \
         --save-videos False \
@@ -40,7 +40,7 @@ done
 for seed in 111; do
     TOTAL_STEPS=500000; N_EPOCHS=10;
     (sleep 1s && python ppo_bc_probe_train.py \
-        --exp-name "ppo_pgwt__random" \
+        --exp-name "ppo_pgwt__random__fixTB" \
         --pretrained-model-name "ppo_pgwt__random" \
         --config-path "env_configs/savi/savi_ss1_rgbd_spectro.yaml" \
         --save-videos False \
@@ -58,7 +58,7 @@ done
 for seed in 111; do
     TOTAL_STEPS=500000; N_EPOCHS=10;
     (sleep 1s && python ppo_bc_probe_train.py \
-        --exp-name "ppo_bc__rgbd_spectro__gru__SAVi" \
+        --exp-name "ppo_bc__rgbd_spectro__gru__SAVi__fixTB" \
         --pretrained-model-name "ppo_bc__rgbd_spectro__gru__SAVi" \
         --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgbd_spectro__gru_seed_111__2023_06_10_16_05_39_999286.musashi/models/ppo_agent.4995001.ckpt.pth" \
         --config-path "env_configs/savi/savi_ss1_rgbd_spectro.yaml" \
@@ -77,7 +77,7 @@ done
 for seed in 111; do
     TOTAL_STEPS=500000; N_EPOCHS=10;
     (sleep 1s && python ppo_bc_probe_train.py \
-        --exp-name "ppo_bc__rgbd_spectro__pgwt__SAVi" \
+        --exp-name "ppo_bc__rgbd_spectro__pgwt__SAVi__fixTB" \
         --pretrained-model-name "ppo_bc__rgbd_spectro__pgwt__SAVi" \
         --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgbd__spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats_seed_111__2023_06_10_16_05_37_098602.musashi/models/ppo_agent.4995001.ckpt.pth" \
         --config-path "env_configs/savi/savi_ss1_rgbd_spectro.yaml" \
