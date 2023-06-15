@@ -56,7 +56,7 @@ CUSTOM_ARGS = [
     get_arg_dict("config-path", str, "env_configs/savi/savi_ss1.yaml"),
 
     # Probing setting
-    get_arg_dict("probing-targets", str, ["category"], metatype="list"), # What to probe for 
+    get_arg_dict("probing-targets", str, ["category", "scene"], metatype="list"), # What to probe for 
     get_arg_dict("probing-inputs", str, 
         ["state_encoder", "visual_encoder.cnn.7", "audio_encoder.cnn.7"], metatype="list"), # What to base the probe on
     get_arg_dict("pretrained-model-name", str, None), # Simplified model name; required
@@ -268,7 +268,6 @@ if args.pretrained_model_path is not None:
 # TODO: might want to add a few layers layer ?
 class GenericProbeNetwork(nn.Module):
     def __init__(self, input_dim, output_dim):
-        # input_dim: shape of the 
         super().__init__()
         self.linear = nn.Linear(input_dim, output_dim, bias=False)
     
@@ -323,10 +322,22 @@ class BCIterableDataset3(IterableDataset):
         if "dataset_statistics.bz2" in self.ep_filenames:
             self.ep_filenames.remove("dataset_statistics.bz2")
         
+        ## Compute action coefficient for CEL of BC
+        dataset_stats_filepath = f"{args.dataset_path}/dataset_statistics.bz2"
+        # Override dataset statistics if the file already exists
+        if os.path.exists(dataset_stats_filepath):
+            with open(dataset_stats_filepath, "rb") as f:
+                dataset_statistics = cpkl.load(f)
+        
+        self.scenes = list(dataset_statistics["scene_counts"].keys())
+        # Dictionary that returns the scene index given the scene id
+        self.scene_name_to_idx = {scene: i for i, scene in enumerate(self.scenes)}
+        
         print(f"Initialized IterDset with {len(self.ep_filenames)} episodes.")
     
     def __iter__(self):
         batch_length = self.batch_length
+        N_SCENES = len(self.scenes)
         while True:
             # region: Sample episode data until there is enough to fill the hole batch traj
             obs_list = {
@@ -337,6 +348,7 @@ class BCIterableDataset3(IterableDataset):
                 "category": np.zeros([batch_length, 21]),
                 "pointgoal_with_gps_compass": np.zeros([batch_length, 2]),
                 "pose": np.zeros([batch_length, 4]),
+                "scene": np.zeros([batch_length])
             }
 
             action_list, reward_list, done_list = \
@@ -352,6 +364,10 @@ class BCIterableDataset3(IterableDataset):
                     edd = cpkl.load(f)
                 # print(f"Sampled traj idx: {idx} ; Len: {edd['ep_length']}")
                 
+                # Add scene info to the obs dict list
+                scene_idx = self.scene_name_to_idx[edd["scene_id"]]
+                scene_idx_list = [scene_idx for _ in range(edd["ep_length"])]
+
                 # Append the data to the bathc trjectory
                 rs = batch_length - ssf # Reamining steps
                 horizon = ssf + min(rs, edd["ep_length"])
@@ -360,7 +376,7 @@ class BCIterableDataset3(IterableDataset):
                 action_list[ssf:horizon] = np.array(edd["action_list"][:rs])[:, None]
                 reward_list[ssf:horizon] = np.array(edd["reward_list"][:rs])[:, None]
                 done_list[ssf:horizon] = np.array(edd["done_list"][:rs])[:, None]
-
+                obs_list["scene"][ssf:horizon] = np.array(scene_idx_list)[:rs]
                 ssf += edd["ep_length"]
 
                 if ssf >= self.batch_length:
@@ -368,7 +384,6 @@ class BCIterableDataset3(IterableDataset):
 
             # Adjust shape of "depth" to be [T, H, W, 1] instead of [T, H, W]
             obs_list["depth"] = obs_list["depth"][:, :, :, None]
-            
             # TODO: add enough data about the scene to be able to do the probing
             # Since the dataset statistics can be accessed here too, we can generate
             # the vector of targets for the scene
@@ -449,6 +464,10 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
         elif k in ["audiogoal"]:
             obs_list[k] = v.permute(1, 0, 2, 3) # BTCL -> TBCL
             obs_list[k] = obs_list[k].reshape(-1, *obs_list[k].shape[-2:])
+        elif k in ["category"]:
+            obs_list[k] = v.permute(1, 0, 2) # BTC -> TBC
+        elif k in ["scene"]:
+            obs_list[k] = v.permute(1, 0) # BT -> TB
         else:
             # TODO: handle other fields like "category", etc...
             pass
@@ -513,6 +532,8 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
             # TODO: generate probe_targets
             if probe_target_name == "category":
                 probe_targets = obs_list["category"].reshape(-1, N_CATEGORIES).argmax(axis=1)
+            elif probe_target_name == "scene":
+                probe_targets = obs_list["scene"].long().reshape(-1)
             else:
                 raise NotImplementedError(f"Unsupported probe target: {probe_target_name}.")
             
@@ -539,6 +560,13 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
         print("")
 
         tblogger.log_stats(probe_losses_dict, global_step, prefix="train")
+        # Log addtional data
+        tblogger.log_stats({
+            "n_updates": n_updates,
+        }, global_step, prefix="info")
+        tblogger.log_stats({
+            "global_step": global_step,
+        }, global_step)
 
 # Saving models after the training
 for probe_target_name, probe_target_dict in PROBES.items():
