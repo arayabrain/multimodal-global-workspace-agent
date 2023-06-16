@@ -574,6 +574,6 @@ for probe_target_name, probe_target_dict in PROBES.items():
         probe = agent_variant_probes["probe_network"]
         probe_statedict_filename = f"{probe_target_name}__{probe_target_input_name}__probe.pth"
         
-        tblogger.save_model_dict(probe.state_dict, probe_statedict_filename)
+        tblogger.save_model_dict(probe.state_dict(), probe_statedict_filename)
 
 tblogger.close()
