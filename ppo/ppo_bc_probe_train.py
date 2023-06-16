@@ -56,6 +56,10 @@ CUSTOM_ARGS = [
     get_arg_dict("config-path", str, "env_configs/savi/savi_ss1.yaml"),
 
     # Probing setting
+    get_arg_dict("probe-depth", int, 1),
+    get_arg_dict("probe-hid-size", int, 512),
+    get_arg_dict("probe-bias", bool, False, metatype="bool"),
+
     get_arg_dict("probing-targets", str, ["category", "scene"], metatype="list"), # What to probe for 
     get_arg_dict("probing-inputs", str, 
         ["state_encoder", "visual_encoder.cnn.7", "audio_encoder.cnn.7"], metatype="list"), # What to base the probe on
@@ -267,12 +271,21 @@ if args.pretrained_model_path is not None:
 # Class for a generic linear probe network
 # TODO: might want to add a few layers layer ?
 class GenericProbeNetwork(nn.Module):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim, output_dim, depth=1, hid_size=512, bias=False):
         super().__init__()
-        self.linear = nn.Linear(input_dim, output_dim, bias=False)
+        assert depth >= 1, "Probe not deep enough: {depth}"
+            
+        hiddens = [hid_size for _ in range(depth)]
+        network = []
+        for h0, h1 in zip([input_dim, *hiddens[:-1]], [*hiddens[1:], output_dim]):
+            network.append(nn.Linear(h0, h1, bias=bias))
+            network.append(nn.ReLU())
+        network.pop()
+            
+        self.network = nn.Sequential(*network)
     
     def forward(self, x):
-        return self.linear(x)
+        return self.network(x)
 
 # Instantiating probes
 PROBES_METADATA = {}
@@ -295,7 +308,9 @@ for probe_target_name, probe_target_info in PROBING_TARGETS.items():
         probe_input_dim = PROBES[probe_target_name][probe_input]["probe_input_dim"]
         probe_output_dim = PROBES[probe_target_name][probe_input]["probe_output_dim"]
 
-        probe_network = GenericProbeNetwork(probe_input_dim, probe_output_dim).to(device)
+        probe_network = GenericProbeNetwork(probe_input_dim, probe_output_dim,
+                                            args.probe_depth, args.probe_hid_size, args.probe_bias).to(device)
+        print(probe_network)
         if not args.cpu and th.cuda.is_available():
             # TODO: GPU only. But what if we still want to use the default pytorch one ?
             optimizer = apex.optimizers.FusedAdam(probe_network.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
