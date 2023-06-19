@@ -237,7 +237,7 @@ if args.pretrained_model_name.__contains__("rgb"):
         "audiogoal": spaces.Box(shape=[2,16000], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32),
         "spectrogram": spaces.Box(shape=[65,26,2], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32)
     })
-if args.pretrained_model_name.__contains__("rgbd")
+if args.pretrained_model_name.__contains__("rgbd"):
     # Override the single action space in case "rgbd" is in the experiment name
     single_observation_space = spaces.Dict({
         "rgb": spaces.Box(shape=[128,128,3], low=0, high=255, dtype=np.uint8),
