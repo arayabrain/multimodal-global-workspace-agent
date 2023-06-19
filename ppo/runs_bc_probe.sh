@@ -92,6 +92,86 @@ echo "${LD_LIBRARY_PATH}"
 # done
 # endregion: Probing ppo_bc__rgbd_spectro__pgwt__SAVi
 
+# region: Probing ppo_bc__rgb_spectro__gru__SAVi (No depth), Linear probe
+# for seed in 111; do
+#     TOTAL_STEPS=500000; N_EPOCHS=10;
+#     (sleep 1s && python ppo_bc_probe_train.py \
+#         --exp-name "ppo_bc__rgb_spectro__gru__SAVi__4995001" \
+#         --pretrained-model-name "ppo_bc__rgb_spectro__gru__SAVi" \
+#         --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_spectro__gru_seed_222__2023_06_17_21_24_12_718867.musashi/models/ppo_agent.4995001.ckpt.pth" \
+#         --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+#         --save-videos False \
+#         --ent-coef 0 \
+#         --wandb --wandb-project "ss-hab-bc-probing" --wandb-entity dosssman \
+#         --logdir-prefix $LOGDIR_PREFIX \
+#         --total-steps $TOTAL_STEPS \
+#         --n-epochs $N_EPOCHS \
+#         --seed $seed \
+#     ) & # >& /dev/null &
+# done
+# endregion: Probing ppo_bc__rgb_spectro__gru__SAVi (No depth), Linear probe
+
+# region: Probing ppo_bc__rgb_spectro__pgwt__SAVi (No depth), Linear probe
+# for seed in 111; do
+#     TOTAL_STEPS=500000; N_EPOCHS=10;
+#     (sleep 1s && python ppo_bc_probe_train.py \
+#         --exp-name "ppo_bc__rgb_spectro__pgwt__SAVi__4995001" \
+#         --pretrained-model-name "ppo_bc__rgb_spectro__pgwt__SAVi" \
+#         --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb__spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats_seed_222__2023_06_17_21_24_10_884437.musashi/models/ppo_agent.4995001.ckpt.pth" \
+#         --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+#         --save-videos False \
+#         --ent-coef 0 \
+#         --wandb --wandb-project "ss-hab-bc-probing" --wandb-entity dosssman \
+#         --logdir-prefix $LOGDIR_PREFIX \
+#         --total-steps $TOTAL_STEPS \
+#         --n-epochs $N_EPOCHS \
+#         --seed $seed \
+#     ) & # >& /dev/null &
+# done
+# endregion: Probing ppo_bc__rgb_spectro__pgwt__SAVi (No depth), Linear probe
+
+
+# region: Probing ppo_bc__rgbd_spectro__gru__SAVi, affine probe, depth = 1
+# for seed in 111; do
+#     TOTAL_STEPS=500000; N_EPOCHS=10;
+#     (sleep 1s && python ppo_bc_probe_train.py \
+#         --exp-name "ppo_bc__rgbd_spectro__gru__SAVi__prb_bias" \
+#         --pretrained-model-name "ppo_bc__rgbd_spectro__gru__SAVi" \
+#         --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgbd_spectro__gru_seed_111__2023_06_10_16_05_39_999286.musashi/models/ppo_agent.4995001.ckpt.pth" \
+#         --config-path "env_configs/savi/savi_ss1_rgbd_spectro.yaml" \
+#         --probe-bias True \
+#         --save-videos False \
+#         --ent-coef 0 \
+#         --wandb --wandb-project "ss-hab-bc-probing" --wandb-entity dosssman \
+#         --logdir-prefix $LOGDIR_PREFIX \
+#         --total-steps $TOTAL_STEPS \
+#         --n-epochs $N_EPOCHS \
+#         --seed $seed \
+#     ) & # >& /dev/null &
+# done
+# endregion: Probing ppo_bc__rgbd_spectro__gru__SAVi, affine probe, depth = 1
+
+# region: Probing pp        "depth": spaces.Box(shape=[128,128,1], low=0, high=255, dtype=np.uint8),        "depth": spaces.Box(shape=[128,128,1], low=0, high=255, dtype=np.uint8),o_bc__rgbd_spectro__pgwt__SAVi, affine probe, depth = 1
+# for seed in 111; do
+#     TOTAL_STEPS=500000; N_EPOCHS=10;
+#     (sleep 1s && python ppo_bc_probe_train.py \
+#         --exp-name "ppo_bc__rgbd_spectro__pgwt__SAVi__prb_bias" \
+#         --pretrained-model-name "ppo_bc__rgbd_spectro__pgwt__SAVi" \
+#         --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgbd__spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats_seed_111__2023_06_10_16_05_37_098602.musashi/models/ppo_agent.4995001.ckpt.pth" \
+#         --config-path "env_configs/savi/savi_ss1_rgbd_spectro.yaml" \
+#         --probe-bias True \
+#         --save-videos False \
+#         --ent-coef 0 \
+#         --wandb --wandb-project "ss-hab-bc-probing" --wandb-entity dosssman \
+#         --logdir-prefix $LOGDIR_PREFIX \
+#         --total-steps $TOTAL_STEPS \
+#         --n-epochs $N_EPOCHS \
+#         --seed $seed \
+#     ) & # >& /dev/null &
+# done
+# endregion: Probing ppo_bc__rgbd_spectro__pgwt__SAVi, affine probe, depth = 1
+
+
 # region: Probing ppo_bc__rgbd_spectro__gru__SAVi, beefier probes
 # for seed in 111; do
 #     TOTAL_STEPS=500000; N_EPOCHS=10;
