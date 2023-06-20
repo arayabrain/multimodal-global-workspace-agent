@@ -54,6 +54,8 @@ echo "${LD_LIBRARY_PATH}"
 # done
 # endregion: Probing ppo_pgwt__random
 
+
+
 # region: Probing ppo_bc__rgbd_spectro__gru__SAVi
 # for seed in 111; do
 #     TOTAL_STEPS=500000; N_EPOCHS=10;
@@ -91,6 +93,7 @@ echo "${LD_LIBRARY_PATH}"
 #     ) & # >& /dev/null &
 # done
 # endregion: Probing ppo_bc__rgbd_spectro__pgwt__SAVi
+
 
 
 # region: Probing ppo_bc__rgb_spectro__gru__SAVi (No depth), Linear probe
@@ -132,6 +135,7 @@ echo "${LD_LIBRARY_PATH}"
 # endregion: Probing ppo_bc__rgb_spectro__pgwt__SAVi (No depth), Linear probe
 
 
+
 # region: Probing ppo_bc__rgb_spectro__gru__SAVi (No depth) @10M steps, Linear probe
 # for seed in 111; do
 #     TOTAL_STEPS=500000; N_EPOCHS=10;
@@ -169,6 +173,49 @@ echo "${LD_LIBRARY_PATH}"
 #     ) & # >& /dev/null &
 # done
 # endregion: Probing ppo_bc__rgb_spectro__pgwt__SAVi (No depth) @10M steps, Linear probe
+
+
+
+# region: Probing ppo_bc__rgb_spectro__gru__SAVi (No depth) @10M steps, beefier linear probe
+# for seed in 111; do
+#     TOTAL_STEPS=500000; N_EPOCHS=10;
+#     (sleep 1s && python ppo_bc_probe_train.py \
+#         --exp-name "ppo_bc__rgb_spectro__gru__SAVi__9990001__prb_depth_2" \
+#         --probe-depth 2 \
+#         --pretrained-model-name "ppo_bc__rgb_spectro__gru__SAVi" \
+#         --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_spectro__gru_seed_222__2023_06_17_21_24_12_718867.musashi/models/ppo_agent.9990001.ckpt.pth" \
+#         --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+#         --save-videos False \
+#         --ent-coef 0 \
+#         --wandb --wandb-project "ss-hab-bc-probing" --wandb-entity dosssman \
+#         --logdir-prefix $LOGDIR_PREFIX \
+#         --total-steps $TOTAL_STEPS \
+#         --n-epochs $N_EPOCHS \
+#         --seed $seed \
+#     ) & # >& /dev/null &
+# done
+# endregion: Probing ppo_bc__rgb_spectro__gru__SAVi (No depth) @10M steps, beefier linear probe
+
+# region: Probing ppo_bc__rgb_spectro__pgwt__SAVi (No depth) @10M steps, beefier linear probe
+# for seed in 111; do
+#     TOTAL_STEPS=500000; N_EPOCHS=10;
+#     (sleep 1s && python ppo_bc_probe_train.py \
+#         --exp-name "ppo_bc__rgb_spectro__pgwt__SAVi__9990001__prb_depth_2" \
+#         --probe-depth 2 \
+#         --pretrained-model-name "ppo_bc__rgb_spectro__pgwt__SAVi" \
+#         --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb__spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats_seed_222__2023_06_17_21_24_10_884437.musashi/models/ppo_agent.9990001.ckpt.pth" \
+#         --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+#         --save-videos False \
+#         --ent-coef 0 \
+#         --wandb --wandb-project "ss-hab-bc-probing" --wandb-entity dosssman \
+#         --logdir-prefix $LOGDIR_PREFIX \
+#         --total-steps $TOTAL_STEPS \
+#         --n-epochs $N_EPOCHS \
+#         --seed $seed \
+#     ) & # >& /dev/null &
+# done
+# endregion: Probing ppo_bc__rgb_spectro__pgwt__SAVi (No depth) @10M steps, beefier linear probe
+
 
 
 # region: Probing ppo_bc__rgbd_spectro__gru__SAVi, affine probe, depth = 1
@@ -210,6 +257,7 @@ echo "${LD_LIBRARY_PATH}"
 #     ) & # >& /dev/null &
 # done
 # endregion: Probing ppo_bc__rgbd_spectro__pgwt__SAVi, affine probe, depth = 1
+
 
 
 # region: Probing ppo_bc__rgbd_spectro__gru__SAVi, beefier probes
