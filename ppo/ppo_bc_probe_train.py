@@ -438,7 +438,7 @@ def make_dataloader3(dataset_path, batch_size, batch_length, seed=111, num_worke
 
 # Instantiate the dataset object
 dloader = make_dataloader3(args.dataset_path, batch_size=args.num_envs,
-                            batch_length=args.num_steps, seed=args.seed, num_workers=8)
+                            batch_length=args.num_steps, seed=args.seed, num_workers=4)
 
 # TODO: consider pre-computing CE weights for categories / scenes to balance the CE loss ?
 
