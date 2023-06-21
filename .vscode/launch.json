@@ -112,7 +112,8 @@
                 "--log-training-stats-every", "1",
                 "--pretrained-model-name", "ppo_bc__rgbd_spectro__pgwt__SAVi",
                 "--pretrained-model-path", "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgbd__spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats_seed_111__2023_06_10_16_05_37_098602.musashi/models/ppo_agent.4995001.ckpt.pth",
-                "--probe-depth", "2"
+                "--num-minibatches", "10"
+                // "--probe-depth", "2"
             ]
 
             // Custom PPO Debug with AudioCLIP audio encoder
