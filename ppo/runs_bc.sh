@@ -193,7 +193,7 @@ echo "${LD_LIBRARY_PATH}"
         # export MASTER_PORT=8738 # Default port is 8738
         export TOTAL_STEPS=10000000
         (sleep 1s && python ppo_bc.py \
-          --exp-name "ppo_bc__savi_ss1__spectro__gru" \
+          --exp-name "ppo_bc__savi_ss1_spectro__gru" \
           --config-path "env_configs/savi/savi_ss1_spectro.yaml" \
           --save-videos False \
           --ent-coef 0 \
@@ -210,7 +210,7 @@ echo "${LD_LIBRARY_PATH}"
         # export MASTER_PORT=8748 # Default port is 8738
         export TOTAL_STEPS=10000000
         (sleep 1s && python ppo_bc.py \
-          --exp-name "ppo_bc__savi_ss1_rgb__spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats" \
+          --exp-name "ppo_bc__savi_ss1_spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats" \
           --config-path "env_configs/savi/savi_ss1_spectro.yaml" \
           --agent-type "perceiver-gwt-gwwm" \
           --ent-coef 0 \

@@ -415,9 +415,11 @@ def main():
     envs = construct_envs(env_config, get_env_class(env_config.ENV_NAME))
     single_observation_space = envs.observation_spaces[0]
     single_action_space = envs.action_spaces[0]
+    
     # Override the observation space for "rgb" and "depth" from (256,256,C) to (128,128,C)
     from gym import spaces
-    single_observation_space["rgb"] = spaces.Box(shape=[128,128,3], low=0, high=255, dtype=np.uint8)
+    if "RGB_SENSOR" in env_config.SENSORS:
+        single_observation_space["rgb"] = spaces.Box(shape=[128,128,3], low=0, high=255, dtype=np.uint8)
 
 
     # TODO: delete the envrionemtsn / find a more efficient method to do this
