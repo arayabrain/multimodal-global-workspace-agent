@@ -172,7 +172,7 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
         obs_th = tensorize_obs_dict(obs, device)
 
         # Sample action
-        action, _, _, _, _, _, rnn_hidden_state = \
+        action, _, _, _, _, _, rnn_hidden_state, _ = \
             agent.act(obs_th, rnn_hidden_state, masks=masks, deterministic=True) #, prev_actions=prev_acts if args.prev_actions else None)
         outputs = eval_envs.step([a[0].item() for a in action])
         obs, reward, done, info = [list(x) for x in zip(*outputs)]
