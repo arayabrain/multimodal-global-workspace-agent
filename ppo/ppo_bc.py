@@ -333,6 +333,11 @@ def main():
         get_arg_dict("dataset-ce-weights", bool, True, metatype="bool"), # If True, will read CEL weights based on action dist. from the 'dataset_statistics.bz2' file.
         get_arg_dict("ce-weights", float, None, metatype="list"), # Weights for the Cross Entropy loss
 
+        ## SSL Support
+        get_arg_dict("obs-center", bool, False, metatype="bool"), # Centers the rgb_observations' range to [-0.5,0.5]
+        get_arg_dict("ssl-tasks", str, None, metatype="list"), # Expects something like ["rec-rgb", "rec-depth", "rec-spectr"]
+        get_arg_dict("ssl-task-coefs", float, None, metatype="list"), # For each ssl-task, specifies the loss coeff. during computation
+
         # Eval protocol
         get_arg_dict("eval", bool, True, metatype="bool"),
         get_arg_dict("eval-every", int, int(1.5e4)), # Every X frames || steps sampled
@@ -412,22 +417,34 @@ def main():
     env_config.freeze()
 
     # Environment instantiation
-    envs = construct_envs(env_config, get_env_class(env_config.ENV_NAME))
-    single_observation_space = envs.observation_spaces[0]
-    single_action_space = envs.action_spaces[0]
+    if args.eval:
+        # In case there is need for eval, instantiate some environments
+        envs = construct_envs(env_config, get_env_class(env_config.ENV_NAME))
+        single_observation_space = envs.observation_spaces[0]
+        single_action_space = envs.action_spaces[0]
+    else:
+        # Otherwise, just use dummy obs. and act. spaces for agent structure init
+        from gym import spaces
+        single_action_space = spaces.Discrete(4)
+        single_observation_space = spaces.Dict({
+            # "rgb": spaces.Box(shape=[128,128,3], low=0, high=255, dtype=np.uint8),
+            # "depth": spaces.Box(shape=[128,128,1], low=0, high=255, dtype=np.uint8),
+            "audiogoal": spaces.Box(shape=[2,16000], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32),
+            "spectrogram": spaces.Box(shape=[65,26,2], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32)
+        })
     
     # Override the observation space for "rgb" and "depth" from (256,256,C) to (128,128,C)
     from gym import spaces
     if "RGB_SENSOR" in env_config.SENSORS:
         single_observation_space["rgb"] = spaces.Box(shape=[128,128,3], low=0, high=255, dtype=np.uint8)
-
+    if "DEPTH_SENSOR" in env_config.SENSORS:
+        single_observation_space["rgb"] = spaces.Box(shape=[128,128,1], low=0, high=255, dtype=np.uint8)
 
     # TODO: delete the envrionemtsn / find a more efficient method to do this
 
     # TODO: make the ActorCritic components parameterizable through comand line ?
     if args.agent_type == "ss-default":
-        agent = ActorCritic(single_observation_space, single_action_space,
-            args.hidden_size, extra_rgb=agent_extra_rgb, prev_actions=args.prev_actions).to(device)
+        agent = ActorCritic(single_observation_space, single_action_space, args, extra_rgb=agent_extra_rgb).to(device)
     elif args.agent_type == "perceiver-gwt-gwwm":
         agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space,
             args, extra_rgb=agent_extra_rgb).to(device)
@@ -489,6 +506,8 @@ def main():
     print("")
     print(agent)
     print("")
+
+    # Adding independent components for SSL
 
     # Checking the dataset steps
     print(" ### INFO: Dataset statistics ###")
@@ -560,14 +579,28 @@ def main():
                 raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 
             # TODO: maybe detach the rnn_hidden_state between two chunks ?
-            actions, _, _, action_logits, entropies, _, _ = \
-                agent.act(obs_list, rnn_hidden_state,
-                    masks=mask_list) #, prev_actions=prev_actions_list)
+            actions, _, _, action_logits, entropies, _, _, ssl_outputs = \
+                agent.act(obs_list, rnn_hidden_state, masks=mask_list, ssl_tasks=args.ssl_tasks) #, prev_actions=prev_actions_list)
 
 
             bc_loss = F.cross_entropy(action_logits, action_list.long(),
                                         weight=ce_weights, reduction="mean")
-            
+        
+            ssl_losses = {}
+            if args.ssl_tasks is not None:
+                for i, ssl_task in enumerate(args.ssl_tasks):
+                    ssl_task_coef = 1 if args.ssl_task_coefs is None else float(args.ssl_task_coefs[i])
+                    if ssl_task == "rec-rgb":
+                        assert args.obs_center, f"SSL task rec-rgb expects having args.obs_center = True, which is not the case now."
+                        rec_rgb_mean = ssl_outputs[ssl_task]
+                        rec_rgb_dist = th.distributions.Independent(
+                            th.distributions.Normal(rec_rgb_mean, 1), 3)
+                        rec_rgb_loss = rec_rgb_dist.log_prob(obs_list["rgb"].permute(0, 3, 1, 2) / 255.0 - 0.5).neg().mean()
+                        bc_loss += ssl_task_coef * rec_rgb_loss
+                        ssl_losses[ssl_task] = rec_rgb_loss
+                    else:
+                        raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
+
             # Entropy loss
             # TODO: consider making this decaying as training progresses
             entropy = entropies.mean()
@@ -592,7 +625,18 @@ def main():
             } # * n_bchunks undoes the scaling applied during grad accum
             
             tblogger.log_stats(train_stats, global_step, prefix="train")
-        
+            tblogger.log_stats({k: v.item() for k, v in ssl_losses.items()},
+                                global_step, prefix="train/ssl")
+
+            # TODO: maybe do not reconstruct so often ?
+            if "rec-rgb" in ssl_losses:
+                tmp_img_data = th.cat([
+                        obs_list["rgb"][:3].permute(0, 3, 1, 2).int(),
+                        ((rec_rgb_mean[:3].detach() + 0.5) * 255).int()],
+                    dim=2)
+                img_data = th.cat([i for i in tmp_img_data], dim=2).cpu().numpy().astype(np.uint8)
+                tblogger.log_image("rec-rgb", img_data, global_step, prefix="ssl")
+
             # TODO: Additional dbg stats; add if needed
             # debug_stats = {
             #     # Additional debug stats
@@ -658,8 +702,9 @@ def main():
                 th.save(agent.state_dict(), model_save_fullpath)
 
     # Clean up
-    tblogger.close() 
-    envs.close()
+    tblogger.close()
+    if args.eval:
+        envs.close()
 
 if __name__ =="__main__":
     main()

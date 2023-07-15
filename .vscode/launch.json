@@ -100,19 +100,24 @@
                 // PPO BC with richer SAVI dataset config
                 // "--dataset-path", "SAVI_Oracle_Dataset_v0_10K",
                 "--dataset-path", "SAVI_Oracle_Dataset_v0",
-                "--config-path", "env_configs/savi/savi_ss1_rgbd_spectro.yaml",
+                "--config-path", "env_configs/savi/savi_ss1_rgb_spectro.yaml",
                 "--total-steps", "10000",
                 "--save-videos", "False",
-                "--eval", "True",
+                "--eval", "False",
                 "--eval-every", "5",
-                
-                // Probing debugging
                 "--num-envs", "2",
                 "--num-steps", "15",
                 "--log-training-stats-every", "1",
-                "--pretrained-model-name", "ppo_bc__rgbd_spectro__pgwt__SAVi",
-                "--pretrained-model-path", "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgbd__spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats_seed_111__2023_06_10_16_05_37_098602.musashi/models/ppo_agent.4995001.ckpt.pth",
-                "--num-minibatches", "10"
+                
+                // SSL Debugging
+                "--obs-center", "True",
+                "--ssl-tasks", "rec-rgb",
+                // "--agent-type", "perceiver-gwt-gwwm",
+
+                // Probing debugging
+                // "--pretrained-model-name", "ppo_bc__rgbd_spectro__pgwt__SAVi",
+                // "--pretrained-model-path", "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgbd__spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats_seed_111__2023_06_10_16_05_37_098602.musashi/models/ppo_agent.4995001.ckpt.pth",
+                // "--num-minibatches", "10"
                 // "--probe-depth", "2"
             ]
 

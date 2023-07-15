@@ -80,7 +80,7 @@ class VisualCNN(nn.Module):
         output_size: The size of the embedding vector
     """
 
-    def __init__(self, observation_space, output_size, extra_rgb):
+    def __init__(self, observation_space, output_size, extra_rgb, obs_center=False):
         super().__init__()
         if "rgb" in observation_space.spaces and not extra_rgb:
             self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
@@ -91,6 +91,9 @@ class VisualCNN(nn.Module):
             self._n_input_depth = observation_space.spaces["depth"].shape[2]
         else:
             self._n_input_depth = 0
+
+        self.output_size = output_size
+        self.obs_center = obs_center
 
         # kernel size for different CNN layers
         self._cnn_layers_kernel_size = [(8, 8), (4, 4), (3, 3)]
@@ -113,7 +116,7 @@ class VisualCNN(nn.Module):
             for kernel_size, stride in zip(
                 self._cnn_layers_kernel_size, self._cnn_layers_stride
             ):
-                cnn_dims = conv_output_dim(
+                self.cnn_dims = cnn_dims = conv_output_dim(
                     dimension=cnn_dims,
                     padding=np.array([0, 0], dtype=np.float32),
                     dilation=np.array([1, 1], dtype=np.float32),
@@ -161,17 +164,81 @@ class VisualCNN(nn.Module):
             # permute tensor to dimension [BATCH x CHANNEL x HEIGHT X WIDTH]
             rgb_observations = rgb_observations.permute(0, 3, 1, 2)
             rgb_observations = rgb_observations / 255.0  # normalize RGB
+            if self.obs_center:
+                rgb_observations -= 0.5
             cnn_input.append(rgb_observations)
 
         if self._n_input_depth > 0:
             depth_observations = observations["depth"]
             # permute tensor to dimension [BATCH x CHANNEL x HEIGHT X WIDTH]
             depth_observations = depth_observations.permute(0, 3, 1, 2)
+            if self.obs_center:
+                depth_observations -= 0.5
             cnn_input.append(depth_observations)
 
         cnn_input = th.cat(cnn_input, dim=1)
 
         return self.cnn(cnn_input)
+
+"""
+    Mirrors upon the default Visual Encoder for SSL reconstruction task
+"""
+class ReshapeLayer(nn.Module):
+    def __init__(self, output_shape):
+        super().__init__()
+        self.output_shape = output_shape
+    
+    def forward(self, x):
+        B = x.shape[0]
+        return x.reshape(B, *self.output_shape)
+    
+class VisualCNNDecoder(nn.Module):
+    def __init__(self, visual_encoder):
+        super().__init__()
+        # Reference visual encoder that will be mirrored
+        # self.visual_encoder = visual_encoder
+        output_size = visual_encoder.output_size
+        cnn_dims = visual_encoder.cnn_dims
+        kernel_sizes = visual_encoder._cnn_layers_kernel_size
+        stride_sizes = visual_encoder._cnn_layers_stride
+
+        if visual_encoder.is_blind:
+            self.cnn = nn.Sequential()
+        else:
+            self.cnn = nn.Sequential(
+                nn.Linear(output_size, 64 * cnn_dims[0] * cnn_dims[1]),
+                nn.ReLU(True),
+                ReshapeLayer([64, cnn_dims[0], cnn_dims[1]]),
+
+                nn.ConvTranspose2d(
+                    in_channels=64,
+                    out_channels=64,
+                    kernel_size=kernel_sizes[-1],
+                    stride=stride_sizes[-1],
+                    output_padding=1
+                ),
+                nn.ReLU(True),
+
+                nn.ConvTranspose2d(
+                    in_channels=64,
+                    out_channels=32,
+                    kernel_size=kernel_sizes[-2],
+                    stride=stride_sizes[-2],
+                    output_padding=1
+                ),
+                nn.ReLU(True),
+
+                nn.ConvTranspose2d(
+                    in_channels=32,
+                    out_channels=3,
+                    kernel_size=kernel_sizes[-3],
+                    stride=stride_sizes[-3],
+                    # padding=2
+                )
+            )
+    
+    def forward(self, x):
+        return self.cnn(x)
 
 # endregion: Vision modules       #
 ###################################
@@ -428,13 +495,16 @@ class ActorCritic(nn.Module):
     def __init__(self, 
                  observation_space,
                  action_space,
-                 hidden_size,
+                 args,
                  extra_rgb=False,
-                 prev_actions = False,
                  analysis_layers=[]):
         super().__init__()
 
-        self.prev_actions = prev_actions
+        self.args = args
+
+        hidden_size = args.hidden_size
+        self.prev_actions = prev_actions = args.prev_actions
+
         if prev_actions:
             self.prev_action_embedding = nn.Linear(action_space.n, hidden_size)
 
@@ -442,7 +512,8 @@ class ActorCritic(nn.Module):
         # - support for blind agent
         # - support for RGB + Depth as 4 channel dim (default SS / SAVi behavior)
         # - support for RGB CNN and Depth CNN separated (geared toward PGWT modality)
-        self.visual_encoder = VisualCNN(observation_space, hidden_size, extra_rgb=extra_rgb)
+        self.visual_encoder = VisualCNN(observation_space, hidden_size, 
+            extra_rgb=extra_rgb, obs_center=args.obs_center)
         self.audio_encoder = AudioCNN(observation_space, hidden_size, "spectrogram")
         
         if self.visual_encoder.is_blind:
@@ -469,6 +540,18 @@ class ActorCritic(nn.Module):
             for layer_id in analysis_layers:
                 layer = dict([*self.named_modules()])[layer_id]
                 layer.register_forward_hook(self.save_outputs_hook(layer_id))
+        
+        # SSL tasks
+        if args.ssl_tasks is not None:
+            self.ssl_modules = nn.ModuleDict()
+            for ssl_task in args.ssl_tasks:
+                if ssl_task == "rec-rgb":
+                    # TODO: check that the Vis. Encoder is actually using RGB, not RGBD
+                    self.ssl_modules["rec-rgb"] = VisualCNNDecoder(self.visual_encoder)
+                else:
+                    raise NotImplementedError(f"Unsupported ssl-task: {ssl_task}")
+                # elif ssl_task == "rec-spectr":
+                #     pass
     
     def save_outputs_hook(self, layer_id: str) -> Callable:
         def fn(_, __, output):
@@ -511,7 +594,7 @@ class ActorCritic(nn.Module):
         return x2, rnn_hidden_states2
     
     def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None, prev_actions=None,
-                  value_feat_detach=False, actor_feat_detach=False):
+                  value_feat_detach=False, actor_feat_detach=False, ssl_tasks=None):
         features, rnn_hidden_states = self(observations, rnn_hidden_states, masks, prev_actions=prev_actions)
 
         # Estimate the value function
@@ -530,7 +613,17 @@ class ActorCritic(nn.Module):
 
         distribution_entropy = distribution.entropy()
 
-        return actions, distribution.probs, action_log_probs, action_logits, distribution_entropy, values, rnn_hidden_states
+        # Additonal SSL tasks outputs
+        ssl_outputs = {}
+        if ssl_tasks is not None:
+            for ssl_task in ssl_tasks:
+                if ssl_task == "rec-rgb":
+                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](features)
+                else:
+                    raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
+
+        return actions, distribution.probs, action_log_probs, action_logits, \
+               distribution_entropy, values, rnn_hidden_states, ssl_outputs
     
     def get_value(self, observations, rnn_hidden_states, masks, prev_actions=None):
         features, _ = self(observations, rnn_hidden_states, masks, prev_actions=prev_actions)
@@ -548,12 +641,12 @@ from perceiver_gwt import Perceiver_GWT
 from perceiverio_gwt import PerceiverIO_GWT
 
 class Perceiver_GWT_ActorCritic(nn.Module):
-    def __init__(self, observation_space, action_space, config, extra_rgb=False):
+    def __init__(self, observation_space, action_space, config, extra_rgb=False, obs_center=False):
         super().__init__()
         self.config = config
 
         # TODO: later, we might want to augment the RGB info with the depth.
-        self.visual_encoder = VisualCNN(observation_space, config.hidden_size, extra_rgb=extra_rgb)
+        self.visual_encoder = VisualCNN(observation_space, config.hidden_size, extra_rgb=extra_rgb, obs_center=False)
         self.audio_encoder = AudioCNN(observation_space, config.hidden_size, "spectrogram")
 
         self.state_encoder = Perceiver_GWT(
@@ -668,7 +761,8 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
         # - support for blind agent
         # - support for RGB + Depth as 4 channel dim (default SS / SAVi behavior)
         # - support for RGB CNN and Depth CNN separated (geared toward PGWT modality)
-        self.visual_encoder = VisualCNN(observation_space, config.hidden_size, extra_rgb=extra_rgb)
+        self.visual_encoder = VisualCNN(observation_space, config.hidden_size,
+            extra_rgb=extra_rgb, obs_center=config.obs_center)
         self.audio_encoder = AudioCNN(observation_space, config.hidden_size, "spectrogram")
         
         # Override the state encoder with a custom PerceiverIO
@@ -704,6 +798,18 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
             for layer_id in analysis_layers:
                 layer = dict([*self.named_modules()])[layer_id]
                 layer.register_forward_hook(self.save_outputs_hook(layer_id))
+
+        # SSL tasks
+        if config.ssl_tasks is not None:
+            self.ssl_modules = nn.ModuleDict()
+            for ssl_task in config.ssl_tasks:
+                if ssl_task == "rec-rgb":
+                    # TODO: check that the Vis. Encoder is actually using RGB, not RGBD
+                    self.ssl_modules["rec-rgb"] = VisualCNNDecoder(self.visual_encoder)
+                else:
+                    raise NotImplementedError(f"Unsupported ssl-task: {ssl_task}")
+                # elif ssl_task == "rec-spectr":
+                #     pass
         
     def forward(self, observations, prev_latents, masks):
         x1 = []
@@ -729,7 +835,7 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
         return state_feat, latents
     
     def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None,
-                  value_feat_detach=False, actor_feat_detach=False):
+                  value_feat_detach=False, actor_feat_detach=False, ssl_tasks=None):
         features, rnn_hidden_states = self(observations, rnn_hidden_states, masks)
 
         # Estimate the value function
@@ -748,7 +854,17 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
 
         distribution_entropy = distribution.entropy()
 
-        return actions, distribution.probs, action_log_probs, action_logits, distribution_entropy, values, rnn_hidden_states
+        # Additonal SSL tasks outputs
+        ssl_outputs = {}
+        if ssl_tasks is not None:
+            for ssl_task in ssl_tasks:
+                if ssl_task == "rec-rgb":
+                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](features)
+                else:
+                    raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
+
+        return actions, distribution.probs, action_log_probs, action_logits, \
+               distribution_entropy, values, rnn_hidden_states, ssl_outputs
     
     def get_value(self, observations, rnn_hidden_states, masks):
         features, _ = self(observations, rnn_hidden_states, masks)
