@@ -601,7 +601,7 @@ def main():
                         ssl_losses[ssl_task] = rec_rgb_loss
                     else:
                         raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
-            ssl_losses["full_ssl_loss"] = full_ssl_loss
+                ssl_losses["full_ssl_loss"] = full_ssl_loss
 
             # Entropy loss
             # TODO: consider making this decaying as training progresses
