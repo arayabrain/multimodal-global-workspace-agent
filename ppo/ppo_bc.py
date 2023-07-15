@@ -585,8 +585,9 @@ def main():
 
             bc_loss = F.cross_entropy(action_logits, action_list.long(),
                                         weight=ce_weights, reduction="mean")
-        
+
             ssl_losses = {}
+            full_ssl_loss = 0
             if args.ssl_tasks is not None:
                 for i, ssl_task in enumerate(args.ssl_tasks):
                     ssl_task_coef = 1 if args.ssl_task_coefs is None else float(args.ssl_task_coefs[i])
@@ -596,17 +597,18 @@ def main():
                         rec_rgb_dist = th.distributions.Independent(
                             th.distributions.Normal(rec_rgb_mean, 1), 3)
                         rec_rgb_loss = rec_rgb_dist.log_prob(obs_list["rgb"].permute(0, 3, 1, 2) / 255.0 - 0.5).neg().mean()
-                        bc_loss += ssl_task_coef * rec_rgb_loss
+                        full_ssl_loss += ssl_task_coef * rec_rgb_loss
                         ssl_losses[ssl_task] = rec_rgb_loss
                     else:
                         raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
+            ssl_losses["full_ssl_loss"] = full_ssl_loss
 
             # Entropy loss
             # TODO: consider making this decaying as training progresses
             entropy = entropies.mean()
 
             # Backpropagate and accumulate gradients over the batch size axis
-            (bc_loss - args.ent_coef * entropy).backward()
+            (bc_loss - args.ent_coef * entropy + full_ssl_loss).backward()
 
             grad_norms_preclip = agent.get_grad_norms()
             if args.max_grad_norm > 0:
