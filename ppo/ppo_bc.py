@@ -630,15 +630,6 @@ def main():
             tblogger.log_stats({k: v.item() for k, v in ssl_losses.items()},
                                 global_step, prefix="train/ssl")
 
-            # TODO: maybe do not reconstruct so often ?
-            if "rec-rgb" in ssl_losses:
-                tmp_img_data = th.cat([
-                        obs_list["rgb"][:3].permute(0, 3, 1, 2).int(),
-                        ((rec_rgb_mean[:3].detach() + 0.5) * 255).int()],
-                    dim=2)
-                img_data = th.cat([i for i in tmp_img_data], dim=2).cpu().numpy().astype(np.uint8)
-                tblogger.log_image("rec-rgb", img_data, global_step, prefix="ssl")
-
             # TODO: Additional dbg stats; add if needed
             # debug_stats = {
             #     # Additional debug stats
@@ -696,6 +687,15 @@ def main():
             episode_stats["last_actions_min"] = np.min(eval_window_episode_stas["last_actions"])
             tblogger.log_stats(episode_stats, global_step, "metrics")
         
+            # TODO: maybe do not reconstruct so often ?
+            if "rec-rgb" in ssl_losses:
+                tmp_img_data = th.cat([
+                        obs_list["rgb"][:3].permute(0, 3, 1, 2).int(),
+                        ((rec_rgb_mean[:3].detach() + 0.5) * 255).int()],
+                    dim=2)
+                img_data = th.cat([i for i in tmp_img_data], dim=2).cpu().numpy().astype(np.uint8)
+                tblogger.log_image("rec-rgb", img_data, global_step, prefix="ssl")
+
             if args.save_model:
                 model_save_dir = tblogger.get_models_savedir()
                 model_save_name = f"ppo_agent.{global_step}.ckpt.pth"

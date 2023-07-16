@@ -103,7 +103,7 @@
                 "--config-path", "env_configs/savi/savi_ss1_rgb_spectro.yaml",
                 "--total-steps", "10000",
                 "--save-videos", "False",
-                "--eval", "False",
+                "--eval", "True",
                 "--eval-every", "5",
                 "--num-envs", "2",
                 "--num-steps", "15",
