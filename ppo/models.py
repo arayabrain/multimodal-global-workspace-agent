@@ -240,6 +240,53 @@ class VisualCNNDecoder(nn.Module):
     def forward(self, x):
         return self.cnn(x)
 
+class VisualCNNDecoder2(nn.Module):
+    def __init__(self, visual_encoder):
+        super().__init__()
+        # Reference visual encoder that will be mirrored
+        # self.visual_encoder = visual_encoder
+        output_size = visual_encoder.output_size
+        cnn_dims = visual_encoder.cnn_dims
+        kernel_sizes = visual_encoder._cnn_layers_kernel_size
+        stride_sizes = visual_encoder._cnn_layers_stride
+
+        if visual_encoder.is_blind:
+            self.cnn = nn.Sequential()
+        else:
+            self.cnn = nn.Sequential(
+                nn.Linear(output_size, 96 * cnn_dims[0] * cnn_dims[1]),
+                nn.ReLU(True),
+                ReshapeLayer([96, cnn_dims[0], cnn_dims[1]]),
+
+                nn.ConvTranspose2d(
+                    in_channels=96,
+                    out_channels=64,
+                    kernel_size=kernel_sizes[-1],
+                    stride=stride_sizes[-1],
+                    output_padding=1
+                ),
+                nn.ReLU(True),
+
+                nn.ConvTranspose2d(
+                    in_channels=64,
+                    out_channels=48,
+                    kernel_size=kernel_sizes[-2],
+                    stride=stride_sizes[-2],
+                    output_padding=1
+                ),
+                nn.ReLU(True),
+
+                nn.ConvTranspose2d(
+                    in_channels=48,
+                    out_channels=3,
+                    kernel_size=kernel_sizes[-3],
+                    stride=stride_sizes[-3],
+                    # padding=2
+                )
+            )
+    
+    def forward(self, x):
+        return self.cnn(x)
 # endregion: Vision modules       #
 ###################################
 
@@ -508,7 +555,7 @@ class ActorCritic(nn.Module):
         if prev_actions:
             self.prev_action_embedding = nn.Linear(action_space.n, hidden_size)
 
-        # TODO: 
+        # TODO:
         # - support for blind agent
         # - support for RGB + Depth as 4 channel dim (default SS / SAVi behavior)
         # - support for RGB CNN and Depth CNN separated (geared toward PGWT modality)
@@ -545,13 +592,13 @@ class ActorCritic(nn.Module):
         if args.ssl_tasks is not None:
             self.ssl_modules = nn.ModuleDict()
             for ssl_task in args.ssl_tasks:
-                if ssl_task == "rec-rgb":
+                if ssl_task in ["rec-rgb-ae", "rec-rgb-vis-ae"]:
                     # TODO: check that the Vis. Encoder is actually using RGB, not RGBD
-                    self.ssl_modules["rec-rgb"] = VisualCNNDecoder(self.visual_encoder)
+                    self.ssl_modules[ssl_task] = VisualCNNDecoder(self.visual_encoder)
+                elif ssl_task in ["rec-rgb-ae-2"]:
+                    self.ssl_modules[ssl_task] = VisualCNNDecoder2(self.visual_encoder)
                 else:
                     raise NotImplementedError(f"Unsupported ssl-task: {ssl_task}")
-                # elif ssl_task == "rec-spectr":
-                #     pass
     
     def save_outputs_hook(self, layer_id: str) -> Callable:
         def fn(_, __, output):
@@ -560,11 +607,13 @@ class ActorCritic(nn.Module):
 
     def forward(self, observations, rnn_hidden_states, masks, prev_actions=None):
         x1 = []
+        modality_features = {} # For SSL namely
 
         # Extracts audio featues
         # TODO: consider having waveform data too ?
         audio_features = self.audio_encoder(observations)
         x1.append(audio_features)
+        modality_features["audio"] = audio_features
 
         # Extracts vision features
         ## TODO: consider having
@@ -573,6 +622,7 @@ class ActorCritic(nn.Module):
         if not self.visual_encoder.is_blind:
             video_features = self.visual_encoder(observations)
             x1.append(video_features)
+            modality_features["vision"] = video_features
 
         if self.prev_actions:
             prev_actions *= masks
@@ -591,11 +641,13 @@ class ActorCritic(nn.Module):
             print('mask', th.isnan(masks).any().item())
             assert True
         
-        return x2, rnn_hidden_states2
+
+        return x2, rnn_hidden_states2, modality_features
     
     def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None, prev_actions=None,
                   value_feat_detach=False, actor_feat_detach=False, ssl_tasks=None):
-        features, rnn_hidden_states = self(observations, rnn_hidden_states, masks, prev_actions=prev_actions)
+        features, rnn_hidden_states, modality_features = \
+            self(observations, rnn_hidden_states, masks, prev_actions=prev_actions)
 
         # Estimate the value function
         values = self.critic(features.detach() if value_feat_detach else features)
@@ -617,8 +669,10 @@ class ActorCritic(nn.Module):
         ssl_outputs = {}
         if ssl_tasks is not None:
             for ssl_task in ssl_tasks:
-                if ssl_task == "rec-rgb":
+                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2"]:
                     ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](features)
+                elif ssl_task in ["rec-rgb-vis-ae"]:
+                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](modality_features["vision"])
                 else:
                     raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
 
@@ -803,9 +857,11 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
         if config.ssl_tasks is not None:
             self.ssl_modules = nn.ModuleDict()
             for ssl_task in config.ssl_tasks:
-                if ssl_task == "rec-rgb":
+                if ssl_task in ["rec-rgb-ae", "rec-rgb-vis-ae"]:
                     # TODO: check that the Vis. Encoder is actually using RGB, not RGBD
-                    self.ssl_modules["rec-rgb"] = VisualCNNDecoder(self.visual_encoder)
+                    self.ssl_modules[ssl_task] = VisualCNNDecoder(self.visual_encoder)
+                elif ssl_task in ["rec-rgb-ae-2"]:
+                    self.ssl_modules[ssl_task] = VisualCNNDecoder2(self.visual_encoder)
                 else:
                     raise NotImplementedError(f"Unsupported ssl-task: {ssl_task}")
                 # elif ssl_task == "rec-spectr":
@@ -813,10 +869,12 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
         
     def forward(self, observations, prev_latents, masks):
         x1 = []
-        
+        modality_features = {} # For SSL namely
+
         # Extracts audio featues
         # TODO: consider having waveform data too ?
         audio_features = self.audio_encoder(observations)
+        modality_features["audio"] = audio_features
         x1.append(audio_features[:, None, :]) # [B, H] -> [B, 1, H]
 
         # Extracts vision features
@@ -825,6 +883,7 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
         ## - deparate encoders for rgb and depth, give one more modality to PGWT
         if not self.visual_encoder.is_blind:
             video_features = self.visual_encoder(observations)
+            modality_features["vision"] = video_features
             x1.append(video_features[:, None, :]) # [B, H] -> [B, 1, H]
         
         # For the transformer, prepaer the input data in the [B, N_MODALITY, H] shape
@@ -832,11 +891,11 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
 
         state_feat, latents = self.state_encoder(obs_feat, prev_latents, masks) # [B, num_latents, latent_dim]
 
-        return state_feat, latents
+        return state_feat, latents, modality_features
     
     def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None,
                   value_feat_detach=False, actor_feat_detach=False, ssl_tasks=None):
-        features, rnn_hidden_states = self(observations, rnn_hidden_states, masks)
+        features, rnn_hidden_states, modality_features = self(observations, rnn_hidden_states, masks)
 
         # Estimate the value function
         values = self.critic(features.detach() if value_feat_detach else features)
@@ -858,8 +917,10 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
         ssl_outputs = {}
         if ssl_tasks is not None:
             for ssl_task in ssl_tasks:
-                if ssl_task == "rec-rgb":
+                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2"]:
                     ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](features)
+                elif ssl_task in ["rec-rgb-vis-ae"]:
+                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](modality_features["vision"])
                 else:
                     raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
 
