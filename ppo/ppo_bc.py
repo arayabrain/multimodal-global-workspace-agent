@@ -600,6 +600,13 @@ def main():
                         rec_rgb_loss = rec_rgb_dist.log_prob(obs_list["rgb"].permute(0, 3, 1, 2) / 255.0 - 0.5).neg().mean()
                         full_ssl_loss += ssl_task_coef * rec_rgb_loss
                         ssl_losses[ssl_task] = rec_rgb_loss
+                    elif ssl_task in ["rec-rgb-vis-ae-mse"]:
+                        rec_rgb_mean = ssl_outputs[ssl_task]
+                        rec_rgb_loss = F.mse_loss(rec_rgb_mean, 
+                                        obs_list["rgb"].permute(0, 3, 1, 2) / 255.0 - 0.5, reduction="none"
+                                       ).mean(dim=0).sum()
+                        full_ssl_loss += ssl_task_coef * rec_rgb_loss
+                        ssl_losses[ssl_task] = rec_rgb_loss
                     else:
                         raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
                 ssl_losses["full_ssl_loss"] = full_ssl_loss
@@ -681,7 +688,7 @@ def main():
         for ssl_task in args.ssl_tasks:
             # Vision based SSL tasks: reconstruction to gauge how good
             if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3",
-                            "rec-rgb-vis-ae", "rec-rgb-vis-ae-3"]:
+                            "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-mse"]:
                 rec_rgb_mean = ssl_outputs[ssl_task]
                 tmp_img_data = th.cat([
                     obs_list["rgb"][:3].permute(0, 3, 1, 2).int(),
@@ -705,7 +712,7 @@ def main():
             for ssl_task in args.ssl_tasks:
                 # Vision based SSL tasks: reconstruction to gauge how good
                 if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3",
-                                "rec-rgb-vis-ae", "rec-rgb-vis-ae-3"]:
+                                "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-mse"]:
                     rec_rgb_mean = ssl_outputs[ssl_task]
                     tmp_img_data = th.cat([
                         obs_list["rgb"][:3].permute(0, 3, 1, 2).int(),

@@ -112,7 +112,7 @@
                 // SSL Debugging
                 "--obs-center", "True",
                 // "--ssl-tasks", "rec-rgb",
-                "--ssl-tasks", "rec-rgb-vis-ae-3",
+                "--ssl-tasks", "rec-rgb-vis-ae-mse",
                 "--agent-type", "perceiver-gwt-gwwm",
 
                 // Probing debugging

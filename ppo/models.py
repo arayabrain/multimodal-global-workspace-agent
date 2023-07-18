@@ -756,7 +756,7 @@ class ActorCritic(nn.Module):
         if args.ssl_tasks is not None:
             self.ssl_modules = nn.ModuleDict()
             for ssl_task in args.ssl_tasks:
-                if ssl_task in ["rec-rgb-ae", "rec-rgb-vis-ae"]:
+                if ssl_task in ["rec-rgb-ae", "rec-rgb-vis-ae", "rec-rgb-vis-ae-mse"]:
                     # TODO: check that the Vis. Encoder is actually using RGB, not RGBD
                     self.ssl_modules[ssl_task] = VisualCNNDecoder(self.visual_encoder)
                 elif ssl_task in ["rec-rgb-ae-2"]:
@@ -837,7 +837,7 @@ class ActorCritic(nn.Module):
             for ssl_task in ssl_tasks:
                 if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3"]:
                     ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](features)
-                elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3"]:
+                elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-mse"]:
                     ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](modality_features["vision"])
                 else:
                     raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
@@ -1027,7 +1027,7 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
         if config.ssl_tasks is not None:
             self.ssl_modules = nn.ModuleDict()
             for ssl_task in config.ssl_tasks:
-                if ssl_task in ["rec-rgb-ae", "rec-rgb-vis-ae"]:
+                if ssl_task in ["rec-rgb-ae", "rec-rgb-vis-ae", "rec-rgb-vis-ae-mse"]:
                     # TODO: check that the Vis. Encoder is actually using RGB, not RGBD
                     self.ssl_modules[ssl_task] = VisualCNNDecoder(self.visual_encoder)
                 elif ssl_task in ["rec-rgb-ae-2"]:
@@ -1091,7 +1091,7 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
             for ssl_task in ssl_tasks:
                 if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3"]:
                     ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](features)
-                elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3"]:
+                elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-mse"]:
                     ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](modality_features["vision"])
                 else:
                     raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
