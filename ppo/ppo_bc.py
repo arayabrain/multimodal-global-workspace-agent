@@ -591,7 +591,8 @@ def main():
             if args.ssl_tasks is not None:
                 for i, ssl_task in enumerate(args.ssl_tasks):
                     ssl_task_coef = 1 if args.ssl_task_coefs is None else float(args.ssl_task_coefs[i])
-                    if ssl_task in ["rec-rgb-vis", "rec-rgb-ae-2", "rec-rgb-vis-ae"]:
+                    if ssl_task in ["rec-rgb-vis", "rec-rgb-ae-2", "rec-rgb-ae-3",
+                                    "rec-rgb-vis-ae", "rec-rgb-vis-ae-3"]:
                         assert args.obs_center, f"SSL task rec-rgb expects having args.obs_center = True, which is not the case now."
                         rec_rgb_mean = ssl_outputs[ssl_task]
                         rec_rgb_dist = th.distributions.Independent(
@@ -677,16 +678,17 @@ def main():
             tblogger.log_stats(info_stats, global_step, "info")
 
         # TODO: remove after debugs
-        # for ssl_task in args.ssl_tasks:
-        #     # Vision based SSL tasks: reconstruction to gauge how good
-        #     if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-vis-ae"]:
-        #         rec_rgb_mean = ssl_outputs[ssl_task]
-        #         tmp_img_data = th.cat([
-        #             obs_list["rgb"][:3].permute(0, 3, 1, 2).int(),
-        #             ((rec_rgb_mean[:3].detach() + 0.5).clamp(0, 1) * 255).int()],
-        #         dim=2)
-        #         img_data = th.cat([i for i in tmp_img_data], dim=2).cpu().numpy().astype(np.uint8)
-        #         tblogger.log_image(ssl_task, img_data, global_step, prefix="ssl")
+        for ssl_task in args.ssl_tasks:
+            # Vision based SSL tasks: reconstruction to gauge how good
+            if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3",
+                            "rec-rgb-vis-ae", "rec-rgb-vis-ae-3"]:
+                rec_rgb_mean = ssl_outputs[ssl_task]
+                tmp_img_data = th.cat([
+                    obs_list["rgb"][:3].permute(0, 3, 1, 2).int(),
+                    ((rec_rgb_mean[:3].detach() + 0.5).clamp(0, 1) * 255).int()],
+                dim=2)
+                img_data = th.cat([i for i in tmp_img_data], dim=2).cpu().numpy().astype(np.uint8)
+                tblogger.log_image(ssl_task, img_data, global_step, prefix="ssl")
 
         if args.eval and should_eval(global_step):
             eval_window_episode_stas = eval_agent(args, envs, agent,
@@ -702,7 +704,8 @@ def main():
             # SSL qualitative eval
             for ssl_task in args.ssl_tasks:
                 # Vision based SSL tasks: reconstruction to gauge how good
-                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-vis-ae"]:
+                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3",
+                                "rec-rgb-vis-ae", "rec-rgb-vis-ae-3"]:
                     rec_rgb_mean = ssl_outputs[ssl_task]
                     tmp_img_data = th.cat([
                         obs_list["rgb"][:3].permute(0, 3, 1, 2).int(),

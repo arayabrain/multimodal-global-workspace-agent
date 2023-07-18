@@ -180,6 +180,114 @@ class VisualCNN(nn.Module):
 
         return self.cnn(cnn_input)
 
+class VisualCNN3(nn.Module):
+    def __init__(self, observation_space, output_size, extra_rgb, obs_center=False):
+        super().__init__()
+        if "rgb" in observation_space.spaces and not extra_rgb:
+            self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
+        else:
+            self._n_input_rgb = 0
+
+        if "depth" in observation_space.spaces:
+            self._n_input_depth = observation_space.spaces["depth"].shape[2]
+        else:
+            self._n_input_depth = 0
+
+        self.output_size = output_size
+        self.obs_center = obs_center
+
+        # kernel size for different CNN layers
+        self._cnn_layers_kernel_size = [(3, 3), (3, 3), (4, 4), (4, 4)]
+
+        # strides for different CNN layers
+        self._cnn_layers_stride = [(2, 2), (2, 2), (2, 2), (2, 2)]
+
+        if self._n_input_rgb > 0:
+            cnn_dims = np.array(
+                observation_space.spaces["rgb"].shape[:2], dtype=np.float32
+            )
+        elif self._n_input_depth > 0:
+            cnn_dims = np.array(
+                observation_space.spaces["depth"].shape[:2], dtype=np.float32
+            )
+
+        if self.is_blind:
+            self.cnn = nn.Sequential()
+        else:
+            for kernel_size, stride in zip(
+                self._cnn_layers_kernel_size, self._cnn_layers_stride
+            ):
+                self.cnn_dims = cnn_dims = conv_output_dim(
+                    dimension=cnn_dims,
+                    padding=np.array([0, 0], dtype=np.float32),
+                    dilation=np.array([1, 1], dtype=np.float32),
+                    kernel_size=np.array(kernel_size, dtype=np.float32),
+                    stride=np.array(stride, dtype=np.float32),
+                )
+
+            self.cnn = nn.Sequential(
+                nn.Conv2d(
+                    in_channels=self._n_input_rgb + self._n_input_depth,
+                    out_channels=16,
+                    kernel_size=self._cnn_layers_kernel_size[0],
+                    stride=self._cnn_layers_stride[0]
+                ),
+                nn.ReLU(True),
+                nn.Conv2d(
+                    in_channels=16,
+                    out_channels=32,
+                    kernel_size=self._cnn_layers_kernel_size[1],
+                    stride=self._cnn_layers_stride[1],
+                ),
+                nn.ReLU(True),
+                nn.Conv2d(
+                    in_channels=32,
+                    out_channels=64,
+                    kernel_size=self._cnn_layers_kernel_size[2],
+                    stride=self._cnn_layers_stride[2],
+                ),
+
+                nn.ReLU(True),
+                nn.Conv2d(
+                    in_channels=64,
+                    out_channels=128,
+                    kernel_size=self._cnn_layers_kernel_size[3],
+                    stride=self._cnn_layers_stride[3],
+                ),
+                #  nn.ReLU(True),
+                Flatten(),
+                nn.Linear(128 * cnn_dims[0] * cnn_dims[1], output_size),
+                nn.ReLU(True),
+            )
+
+        layer_init(self.cnn)
+
+    @property
+    def is_blind(self):
+        return self._n_input_rgb + self._n_input_depth == 0
+
+    def forward(self, observations):
+        cnn_input = []
+        if self._n_input_rgb > 0:
+            rgb_observations = observations["rgb"]
+            # permute tensor to dimension [BATCH x CHANNEL x HEIGHT X WIDTH]
+            rgb_observations = rgb_observations.permute(0, 3, 1, 2)
+            rgb_observations = rgb_observations / 255.0  # normalize RGB
+            if self.obs_center:
+                rgb_observations -= 0.5
+            cnn_input.append(rgb_observations)
+
+        if self._n_input_depth > 0:
+            depth_observations = observations["depth"]
+            # permute tensor to dimension [BATCH x CHANNEL x HEIGHT X WIDTH]
+            depth_observations = depth_observations.permute(0, 3, 1, 2)
+            if self.obs_center:
+                depth_observations -= 0.5
+            cnn_input.append(depth_observations)
+
+        cnn_input = th.cat(cnn_input, dim=1)
+
+        return self.cnn(cnn_input)
 """
     Mirrors upon the default Visual Encoder for SSL reconstruction task
 """
@@ -287,6 +395,58 @@ class VisualCNNDecoder2(nn.Module):
     
     def forward(self, x):
         return self.cnn(x)
+
+class VisualCNNDecoder3(nn.Module):
+    def __init__(self, visual_encoder):
+        super().__init__()
+        # Reference visual encoder that will be mirrored
+        # self.visual_encoder = visual_encoder
+        output_size = visual_encoder.output_size
+        cnn_dims = visual_encoder.cnn_dims
+
+        if visual_encoder.is_blind:
+            self.cnn = nn.Sequential()
+        else:
+            self.cnn = nn.Sequential(
+                nn.Linear(output_size, 128 * cnn_dims[0] * cnn_dims[1]), # 128 * 6 * 6
+                nn.ReLU(True),
+                ReshapeLayer([128, cnn_dims[0], cnn_dims[1]]),
+
+                nn.ConvTranspose2d(
+                    in_channels=128,
+                    out_channels=64,
+                    kernel_size=8,
+                    stride=1
+                ),
+                nn.ReLU(True),
+
+                nn.ConvTranspose2d(
+                    in_channels=64,
+                    out_channels=32,
+                    kernel_size=6,
+                    stride=2
+                ),
+                nn.ReLU(True),
+
+                nn.ConvTranspose2d(
+                    in_channels=32,
+                    out_channels=16,
+                    kernel_size=6,
+                    stride=2
+                ),
+                nn.ReLU(True),
+
+                nn.ConvTranspose2d(
+                    in_channels=16,
+                    out_channels=3,
+                    kernel_size=2,
+                    stride=2
+                )
+            )
+    
+    def forward(self, x):
+        return self.cnn(x)
+
 # endregion: Vision modules       #
 ###################################
 
@@ -559,8 +719,12 @@ class ActorCritic(nn.Module):
         # - support for blind agent
         # - support for RGB + Depth as 4 channel dim (default SS / SAVi behavior)
         # - support for RGB CNN and Depth CNN separated (geared toward PGWT modality)
-        self.visual_encoder = VisualCNN(observation_space, hidden_size, 
-            extra_rgb=extra_rgb, obs_center=args.obs_center)
+        if args.ssl_tasks is not None and ("rec-rgb-vis-ae-3" in args.ssl_tasks or "rec-rgb-ae-3" in args.ssl_tasks):
+            self.visual_encoder = VisualCNN3(observation_space, hidden_size,
+                extra_rgb=extra_rgb, obs_center=args.obs_center)
+        else:
+            self.visual_encoder = VisualCNN(observation_space, hidden_size, 
+                extra_rgb=extra_rgb, obs_center=args.obs_center)
         self.audio_encoder = AudioCNN(observation_space, hidden_size, "spectrogram")
         
         if self.visual_encoder.is_blind:
@@ -597,6 +761,8 @@ class ActorCritic(nn.Module):
                     self.ssl_modules[ssl_task] = VisualCNNDecoder(self.visual_encoder)
                 elif ssl_task in ["rec-rgb-ae-2"]:
                     self.ssl_modules[ssl_task] = VisualCNNDecoder2(self.visual_encoder)
+                elif ssl_task in ["rec-rgb-ae-3", "rec-rgb-vis-ae-3"]:
+                    self.ssl_modules[ssl_task] = VisualCNNDecoder3(self.visual_encoder)
                 else:
                     raise NotImplementedError(f"Unsupported ssl-task: {ssl_task}")
     
@@ -669,9 +835,9 @@ class ActorCritic(nn.Module):
         ssl_outputs = {}
         if ssl_tasks is not None:
             for ssl_task in ssl_tasks:
-                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2"]:
+                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3"]:
                     ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](features)
-                elif ssl_task in ["rec-rgb-vis-ae"]:
+                elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3"]:
                     ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](modality_features["vision"])
                 else:
                     raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
@@ -815,8 +981,12 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
         # - support for blind agent
         # - support for RGB + Depth as 4 channel dim (default SS / SAVi behavior)
         # - support for RGB CNN and Depth CNN separated (geared toward PGWT modality)
-        self.visual_encoder = VisualCNN(observation_space, config.hidden_size,
-            extra_rgb=extra_rgb, obs_center=config.obs_center)
+        if args.ssl_tasks is not None and ("rec-rgb-vis-ae-3" in args.ssl_tasks or "rec-rgb-ae-3" in args.ssl_tasks):
+            self.visual_encoder = VisualCNN3(observation_space, hidden_size,
+                extra_rgb=extra_rgb, obs_center=args.obs_center)
+        else:
+            self.visual_encoder = VisualCNN(observation_space, hidden_size, 
+                extra_rgb=extra_rgb, obs_center=args.obs_center)
         self.audio_encoder = AudioCNN(observation_space, config.hidden_size, "spectrogram")
         
         # Override the state encoder with a custom PerceiverIO
@@ -917,9 +1087,9 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
         ssl_outputs = {}
         if ssl_tasks is not None:
             for ssl_task in ssl_tasks:
-                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2"]:
+                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3"]:
                     ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](features)
-                elif ssl_task in ["rec-rgb-vis-ae"]:
+                elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3"]:
                     ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](modality_features["vision"])
                 else:
                     raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
