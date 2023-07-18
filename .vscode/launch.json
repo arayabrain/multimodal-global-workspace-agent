@@ -113,7 +113,7 @@
                 "--obs-center", "True",
                 // "--ssl-tasks", "rec-rgb",
                 "--ssl-tasks", "rec-rgb-vis-ae-3",
-                // "--agent-type", "perceiver-gwt-gwwm",
+                "--agent-type", "perceiver-gwt-gwwm",
 
                 // Probing debugging
                 // "--pretrained-model-name", "ppo_bc__rgbd_spectro__pgwt__SAVi",

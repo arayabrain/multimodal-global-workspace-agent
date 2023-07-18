@@ -372,6 +372,7 @@ echo "${LD_LIBRARY_PATH}"
       # endregion: Custom PPO + Perceiver GWT GWWM ; RGB + Spectrogram SS1, rec-rgb-vis-ae-2
       # Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents
 
+
       # region: Custom PPO + Perceiver GWT GWWM ; RGB + Spectrogram SS1, rec-rgb-vis-ae-3
       # Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents
       for seed in 111 222; do
@@ -381,6 +382,37 @@ echo "${LD_LIBRARY_PATH}"
           --exp-name "ppo_bc__savi_ss1_rgb_cntr__spectro__pgwt__rec_rgb_vis_ae_3__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats" \
           --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
           --obs-center True \
+          --ssl-tasks "rec-rgb-vis-ae-3" \
+          --agent-type "perceiver-gwt-gwwm" \
+          --ent-coef 0 \
+          --pgwt-depth 1 \
+          --pgwt-num-latents 8 \
+          --pgwt-latent-dim 64 \
+          --pgwt-cross-heads 1 \
+          --pgwt-latent-heads 4 \
+          --pgwt-use-sa False \
+          --pgwt-mod-embed 0 \
+          --pgwt-ca-prev-latents True \
+          --save-videos False \
+          --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+          --total-steps $TOTAL_STEPS \
+          --logdir-prefix $LOGDIR_PREFIX \
+          --seed $seed \
+        ) & # >& /dev/null &
+      done
+      # endregion: Custom PPO + Perceiver GWT GWWM ; RGB + Spectrogram SS1, rec-rgb-vis-ae-3
+      # Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents
+
+      # region: Custom PPO + Perceiver GWT GWWM ; RGB + Spectrogram SS1, rec-rgb-vis-ae-3
+      # Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents
+      for seed in 111; do
+        # export MASTER_PORT=8748 # Default port is 8738
+        export TOTAL_STEPS=10000000
+        (sleep 1s && python ppo_bc.py \
+          --exp-name "ppo_bc__savi_ss1_rgb_cntr__spectro__pgwt__rec_rgb_vis_ae_3__nogrdnrm__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats" \
+          --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+          --obs-center True \
+          --max-grad-norm 0 \
           --ssl-tasks "rec-rgb-vis-ae-3" \
           --agent-type "perceiver-gwt-gwwm" \
           --ent-coef 0 \

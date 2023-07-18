@@ -981,12 +981,12 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
         # - support for blind agent
         # - support for RGB + Depth as 4 channel dim (default SS / SAVi behavior)
         # - support for RGB CNN and Depth CNN separated (geared toward PGWT modality)
-        if args.ssl_tasks is not None and ("rec-rgb-vis-ae-3" in args.ssl_tasks or "rec-rgb-ae-3" in args.ssl_tasks):
-            self.visual_encoder = VisualCNN3(observation_space, hidden_size,
-                extra_rgb=extra_rgb, obs_center=args.obs_center)
+        if config.ssl_tasks is not None and ("rec-rgb-vis-ae-3" in config.ssl_tasks or "rec-rgb-ae-3" in config.ssl_tasks):
+            self.visual_encoder = VisualCNN3(observation_space, config.hidden_size,
+                extra_rgb=extra_rgb, obs_center=config.obs_center)
         else:
-            self.visual_encoder = VisualCNN(observation_space, hidden_size, 
-                extra_rgb=extra_rgb, obs_center=args.obs_center)
+            self.visual_encoder = VisualCNN(observation_space, config.hidden_size, 
+                extra_rgb=extra_rgb, obs_center=config.obs_center)
         self.audio_encoder = AudioCNN(observation_space, config.hidden_size, "spectrogram")
         
         # Override the state encoder with a custom PerceiverIO
@@ -1032,6 +1032,8 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
                     self.ssl_modules[ssl_task] = VisualCNNDecoder(self.visual_encoder)
                 elif ssl_task in ["rec-rgb-ae-2"]:
                     self.ssl_modules[ssl_task] = VisualCNNDecoder2(self.visual_encoder)
+                elif ssl_task in ["rec-rgb-ae-3", "rec-rgb-vis-ae-3"]:
+                    self.ssl_modules[ssl_task] = VisualCNNDecoder3(self.visual_encoder)
                 else:
                     raise NotImplementedError(f"Unsupported ssl-task: {ssl_task}")
                 # elif ssl_task == "rec-spectr":
