@@ -56,11 +56,11 @@ class Agent(nn.Module):
   def __init__(self, hidden_size, channels):
     super().__init__()
     self.vision_encoder, self.audio_encoder = VisionEncoder(channels), AudioEncoder(channels)
-    self.memory_vision_att_embedding, self.memory_audio_att_embedding = nn.Linear(hidden_size, 2304), nn.Linear(hidden_size, 2496)
+    self.memory_vision_att_embedding, self.memory_audio_att_embedding = nn.Linear(hidden_size, 72 * channels), nn.Linear(hidden_size, 78 * channels)
     self.vision_attention, self.audio_attention = Attention2d(4 * channels, 2 * channels), Attention2d(4 * channels, 2 * channels)
-    self.vision_embedding, self.audio_embedding = nn.Sequential(nn.Flatten(), nn.Linear(2304, hidden_size)), nn.Sequential(nn.Flatten(), nn.Linear(2496, hidden_size))
+    self.vision_embedding, self.audio_embedding = nn.Sequential(nn.Flatten(), nn.Linear(72 * channels, hidden_size)), nn.Sequential(nn.Flatten(), nn.Linear(78 * channels, hidden_size))
     self.working_memory = nn.GRUCell(2 * hidden_size, hidden_size)
-    self.policy = nn.Sequential(nn.Linear(3 * hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 4))
+    self.policy = nn.Sequential(nn.Linear(3 * hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 4))
 
   def forward(self, rgb, spectrogram, memory):
     enc_vision, enc_audio = self.vision_encoder(rgb), self.audio_encoder(spectrogram)
