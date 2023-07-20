@@ -112,8 +112,9 @@
                 // SSL Debugging
                 "--obs-center", "True",
                 // "--ssl-tasks", "rec-rgb",
-                "--ssl-tasks", "rec-rgb-vis-ae-mse",
-                "--agent-type", "perceiver-gwt-gwwm",
+                // "--ssl-tasks", "rec-rgb-vis-ae-mse",
+                // "--agent-type", "perceiver-gwt-gwwm",
+                "--agent-type", "custom-gru",
 
                 // Probing debugging
                 // "--pretrained-model-name", "ppo_bc__rgbd_spectro__pgwt__SAVi",

@@ -30,7 +30,7 @@ def compute_grad_norm(model):
 # region: Vision modules          #
 
 # From ss_baselines/av_nav/models/visual_cnn.py
-from ss_baselines.common.utils import CategoricalNet, Flatten
+from ss_baselines.common.utils import CategoricalNet, CategoricalNet2, Flatten
 
 def conv_output_dim(dimension, padding, dilation, kernel_size, stride
 ):
@@ -852,6 +852,183 @@ class ActorCritic(nn.Module):
 
     def get_grad_norms(self):
         modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution", "critic"]
+        return {mod_name: compute_grad_norm(self.__getattr__(mod_name)) for mod_name in modules}
+
+# Based on ActorCritc, with additional modalities and a different workflow
+# maps to "custom-gru" in the ppo_bc.py
+class ActorCritic2(nn.Module):
+    def __init__(self, 
+                 observation_space,
+                 action_space,
+                 args,
+                 extra_rgb=False,
+                 analysis_layers=[]):
+        super().__init__()
+
+        self.args = args
+
+        hidden_size = args.hidden_size
+        input_dim = 0
+
+        self.prev_actions = prev_actions = args.prev_actions
+
+        if prev_actions:
+            self.prev_action_embedding = nn.Linear(action_space.n, hidden_size)
+
+        # TODO:
+        # - support for blind agent
+        # - support for RGB + Depth as 4 channel dim (default SS / SAVi behavior)
+        # - support for RGB CNN and Depth CNN separated (geared toward PGWT modality)
+        if args.ssl_tasks is not None and ("rec-rgb-vis-ae-3" in args.ssl_tasks or "rec-rgb-ae-3" in args.ssl_tasks):
+            self.visual_encoder = VisualCNN3(observation_space, hidden_size,
+                extra_rgb=extra_rgb, obs_center=args.obs_center)
+        else:
+            self.visual_encoder = VisualCNN(observation_space, hidden_size, 
+                extra_rgb=extra_rgb, obs_center=args.obs_center)
+        self.audio_encoder = AudioCNN(observation_space, hidden_size, "spectrogram")
+        
+        self.use_proprio = False
+        if "pose" in list(observation_space.keys()):
+            self.use_proprio = True
+            self.proprio_encoder = nn.Linear(4, hidden_size)
+            input_dim += hidden_size
+
+        if self.visual_encoder.is_blind:
+            input_dim += hidden_size
+        else:
+            input_dim += hidden_size * 2
+
+        if self.prev_actions:
+            input_dim += hidden_size
+
+        self.state_encoder = RNNStateEncoder(input_dim, hidden_size)
+
+        self.action_distribution = CategoricalNet2(input_dim + hidden_size, hidden_size, action_space.n) # Policy fn
+        self.critic = CriticHead(hidden_size) # Value fn
+
+        self.train()
+
+        # Layers to record for neuroscience based analysis
+        self.analysis_layers = analysis_layers
+
+        # Hooks for intermediate features storage
+        if len(analysis_layers):
+            self._features = {layer: th.empty(0) for layer in self.analysis_layers}
+            for layer_id in analysis_layers:
+                layer = dict([*self.named_modules()])[layer_id]
+                layer.register_forward_hook(self.save_outputs_hook(layer_id))
+        
+        # SSL tasks
+        if args.ssl_tasks is not None:
+            self.ssl_modules = nn.ModuleDict()
+            for ssl_task in args.ssl_tasks:
+                if ssl_task in ["rec-rgb-ae", "rec-rgb-vis-ae", "rec-rgb-vis-ae-mse"]:
+                    # TODO: check that the Vis. Encoder is actually using RGB, not RGBD
+                    self.ssl_modules[ssl_task] = VisualCNNDecoder(self.visual_encoder)
+                elif ssl_task in ["rec-rgb-ae-2"]:
+                    self.ssl_modules[ssl_task] = VisualCNNDecoder2(self.visual_encoder)
+                elif ssl_task in ["rec-rgb-ae-3", "rec-rgb-vis-ae-3"]:
+                    self.ssl_modules[ssl_task] = VisualCNNDecoder3(self.visual_encoder)
+                else:
+                    raise NotImplementedError(f"Unsupported ssl-task: {ssl_task}")
+
+    def save_outputs_hook(self, layer_id: str) -> Callable:
+        def fn(_, __, output):
+            self._features[layer_id] = output
+        return fn
+
+    def forward(self, observations, rnn_hidden_states, masks, prev_actions=None):
+        x1 = []
+        modality_features = {} # For SSL namely
+
+        # Extracts audio featues
+        # TODO: consider having waveform data too ?
+        audio_features = self.audio_encoder(observations)
+        x1.append(audio_features)
+        modality_features["audio"] = audio_features
+
+        # Extracts vision features
+        ## TODO: consider having
+        ## - rgb and depth simulatenous input as 4 channel dim input
+        ## - deparate encoders for rgb and depth, give one more modality to PGWT
+        if not self.visual_encoder.is_blind:
+            video_features = self.visual_encoder(observations)
+            x1.append(video_features)
+            modality_features["vision"] = video_features
+
+        if self.use_proprio:
+            proprio_features = self.proprio_encoder(observations["pose"]. view(-1, 4))
+            x1.append(proprio_features)
+            modality_features["proprio"] = proprio_features
+
+        if self.prev_actions:
+            prev_actions *= masks
+            embed_prev_actions = self.prev_action_embedding(prev_actions)
+            x1.append(embed_prev_actions)
+        
+        x1 = th.cat(x1, dim=1)
+        # Current state, current rnn hidden states, respectively
+        x2, rnn_hidden_states2 = self.state_encoder(x1, rnn_hidden_states, masks)
+
+        if th.isnan(x2).any().item():
+            for key in observations:
+                print(key, th.isnan(observations[key]).any().item())
+            print('rnn_old', th.isnan(rnn_hidden_states).any().item())
+            print('rnn_new', th.isnan(rnn_hidden_states2).any().item())
+            print('mask', th.isnan(masks).any().item())
+            assert True
+
+        return x2, rnn_hidden_states2, modality_features
+    
+    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None, prev_actions=None,
+                  value_feat_detach=False, actor_feat_detach=False, ssl_tasks=None):
+        features, rnn_hidden_states, modality_features = \
+            self(observations, rnn_hidden_states, masks, prev_actions=prev_actions)
+
+        # Estimate the value function
+        values = self.critic(features.detach() if value_feat_detach else features)
+
+        # Estimate the policy as distribution to sample actions from
+        policy_features = th.cat([
+            features,
+            *[v for v in modality_features.values()]
+        ], dim=1)
+        distribution, action_logits = self.action_distribution(policy_features.detach() if actor_feat_detach else policy_features)
+
+        if actions is None:
+            if deterministic:
+                actions = distribution.mode()
+            else:
+                actions = distribution.sample()
+        # TODO: maybe some assert on the 
+        action_log_probs = distribution.log_probs(actions)
+
+        distribution_entropy = distribution.entropy()
+
+        # Additonal SSL tasks outputs
+        ssl_outputs = {}
+        if ssl_tasks is not None:
+            for ssl_task in ssl_tasks:
+                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3"]:
+                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](features)
+                elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-mse"]:
+                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](modality_features["vision"])
+                else:
+                    raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
+
+        return actions, distribution.probs, action_log_probs, action_logits, \
+               distribution_entropy, values, rnn_hidden_states, ssl_outputs
+    
+    def get_value(self, observations, rnn_hidden_states, masks, prev_actions=None):
+        features, _ = self(observations, rnn_hidden_states, masks, prev_actions=prev_actions)
+
+        return self.critic(features)
+
+    def get_grad_norms(self):
+        modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution", "critic"]
+        if self.use_proprio:
+            modules.append("proprio_encoder")
+        
         return {mod_name: compute_grad_norm(self.__getattr__(mod_name)) for mod_name in modules}
 
 # Actor critic variant that uses Perceiver as an RNN internally

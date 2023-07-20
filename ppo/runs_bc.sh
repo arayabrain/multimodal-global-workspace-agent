@@ -137,7 +137,6 @@ echo "${LD_LIBRARY_PATH}"
     # endregion: PPO GRU: batch_size 32; batch_chunk_len: 32;  seq_length == chunk_length: 50 (accum grad over 4 mini batches), Entropy coef: 0 (reference), CE Weights 38.6 0.67 0.84 0.78, no grad norm
   # endregion: AvNav
 
-
   # region: SAVI
 
     ## RGB + Spectrogram based section
@@ -158,6 +157,24 @@ echo "${LD_LIBRARY_PATH}"
       #   ) & # >& /dev/null &
       # done
       # endregion: PPO GRU - BC with default hyparams
+
+      # region: PPO GRU2 - BC with default hyparams
+      for seed in 111; do
+        # export MASTER_PORT=8738 # Default port is 8738
+        export TOTAL_STEPS=10000000
+        (sleep 1s && python ppo_bc.py \
+          --exp-name "ppo_bc__savi_ss1_rgb_spectro__gru2" \
+          --agent-type "custom-gru" \
+          --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+          --save-videos False \
+          --ent-coef 0 \
+          --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+          --logdir-prefix $LOGDIR_PREFIX \
+          --total-steps $TOTAL_STEPS \
+          --seed $seed \
+        ) & # >& /dev/null &
+      done
+      # endregion: PPO GRU2 - BC with default hyparams
 
       # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1
       # for seed in 111 222; do
@@ -342,6 +359,68 @@ echo "${LD_LIBRARY_PATH}"
       # endregion: Custom PPO + Perceiver GWT GWWM ; RGB + Spectrogram SS1, rec-rgb-vis-ae
       # Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents
 
+      # region: Custom PPO + Perceiver GWT GWWM ; RGB + Spectrogram SS1, rec-rgb-ae, H=1024 eq. to Latents: 16 * 64
+      # Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents
+      # for seed in 111; do
+      #   # export MASTER_PORT=8748 # Default port is 8738
+      #   export TOTAL_STEPS=10000000
+      #   (sleep 1s && python ppo_bc.py \
+      #     --exp-name "ppo_bc__savi_ss1_rgb_cntr__spectro__pgwt__rec_rgb_ae_H_1024__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats" \
+      #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      #     --obs-center True \
+      #     --ssl-tasks "rec-rgb-ae" \
+      #     --hidden-size 1024 \
+      #     --agent-type "perceiver-gwt-gwwm" \
+      #     --ent-coef 0 \
+      #     --pgwt-depth 1 \
+      #     --pgwt-num-latents 16 \
+      #     --pgwt-latent-dim 64 \
+      #     --pgwt-cross-heads 1 \
+      #     --pgwt-latent-heads 4 \
+      #     --pgwt-use-sa False \
+      #     --pgwt-mod-embed 0 \
+      #     --pgwt-ca-prev-latents True \
+      #     --save-videos False \
+      #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+      #     --total-steps $TOTAL_STEPS \
+      #     --logdir-prefix $LOGDIR_PREFIX \
+      #     --seed $seed \
+      #   ) & # >& /dev/null &
+      # done
+      # endregion: Custom PPO + Perceiver GWT GWWM ; RGB + Spectrogram SS1, rec-rgb-ae, H=1024 eq. to Latents: 16 * 64
+      # Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents
+
+      # region: Custom PPO + Perceiver GWT GWWM ; RGB + Spectrogram  SS1, rec-rgb-vis-ae, H=1024 eq. to Latents: 16 * 64
+      # Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents
+      # for seed in 111; do
+      #   # export MASTER_PORT=8748 # Default port is 8738
+      #   export TOTAL_STEPS=10000000
+      #   (sleep 1s && python ppo_bc.py \
+      #     --exp-name "ppo_bc__savi_ss1_rgb_cntr__spectro__pgwt__rec_rgb_vis_ae_H_1024__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats" \
+      #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      #     --obs-center True \
+      #     --ssl-tasks "rec-rgb-vis-ae" \
+      #     --hidden-size 1024 \
+      #     --agent-type "perceiver-gwt-gwwm" \
+      #     --ent-coef 0 \
+      #     --pgwt-depth 1 \
+      #     --pgwt-num-latents 16 \
+      #     --pgwt-latent-dim 64 \
+      #     --pgwt-cross-heads 1 \
+      #     --pgwt-latent-heads 4 \
+      #     --pgwt-use-sa False \
+      #     --pgwt-mod-embed 0 \
+      #     --pgwt-ca-prev-latents True \
+      #     --save-videos False \
+      #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+      #     --total-steps $TOTAL_STEPS \
+      #     --logdir-prefix $LOGDIR_PREFIX \
+      #     --seed $seed \
+      #   ) & # >& /dev/null &
+      # done
+      # endregion: Custom PPO + Perceiver GWT GWWM ; RGB + Spectrogram SS1, rec-rgb-vis-ae, H=1024 eq. to Latents: 16 * 64
+      # Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents
+
       # region: Custom PPO + Perceiver GWT GWWM ; RGB + Spectrogram SS1, rec-rgb-vis-ae-2
       # Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents
       # for seed in 111; do
@@ -371,7 +450,6 @@ echo "${LD_LIBRARY_PATH}"
       # done
       # endregion: Custom PPO + Perceiver GWT GWWM ; RGB + Spectrogram SS1, rec-rgb-vis-ae-2
       # Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents
-
 
       # region: Custom PPO + Perceiver GWT GWWM ; RGB + Spectrogram SS1, rec-rgb-vis-ae-3
       # Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents
