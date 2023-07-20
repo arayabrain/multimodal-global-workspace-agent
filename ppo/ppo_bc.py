@@ -148,7 +148,7 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
     prev_acts = th.zeros([n_eval_envs, 4], device=device)
 
     masks = 1. - done_th[:, None]
-    if args.agent_type == "ss-default":
+    if args.agent_type in ["ss-default", "custom-gru"]:
         rnn_hidden_state = th.zeros((1, n_eval_envs, args.hidden_size), device=device)
     elif args.agent_type in ["perceiver-gwt-gwwm"]:
         rnn_hidden_state = agent.state_encoder.latents.clone().repeat(n_eval_envs, 1, 1)
