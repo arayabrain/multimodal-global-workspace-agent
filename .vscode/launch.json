@@ -103,18 +103,21 @@
                 "--config-path", "env_configs/savi/savi_ss1_rgb_spectro.yaml",
                 "--total-steps", "10000",
                 "--save-videos", "False",
+                // With eval
+                // "--eval", "True",
+                // "--eval-every", "5000",
+                // Without eval
                 "--eval", "False",
-                "--eval-every", "5",
                 "--num-envs", "2",
                 "--num-steps", "15",
                 "--log-training-stats-every", "1",
                 
                 // SSL Debugging
-                "--obs-center", "True",
+                // "--obs-center", "True",
                 // "--ssl-tasks", "rec-rgb",
                 // "--ssl-tasks", "rec-rgb-vis-ae-mse",
                 // "--agent-type", "perceiver-gwt-gwwm",
-                "--agent-type", "custom-gru",
+                "--agent-type", "custom-gwt",
 
                 // Probing debugging
                 // "--pretrained-model-name", "ppo_bc__rgbd_spectro__pgwt__SAVi",

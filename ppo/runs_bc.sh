@@ -158,13 +158,31 @@ echo "${LD_LIBRARY_PATH}"
       # done
       # endregion: PPO GRU - BC with default hyparams
 
-      # region: PPO GRU2 - BC with default hyparams
+      # region: PPO GRU 2 - BC with default hyparams, with pose
+      # for seed in 111; do
+      #   # export MASTER_PORT=8738 # Default port is 8738
+      #   export TOTAL_STEPS=10000000
+      #   (sleep 1s && python ppo_bc.py \
+      #     --exp-name "ppo_bc__savi_ss1_rgb_spectro__gru2" \
+      #     --agent-type "custom-gru" \
+      #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      #     --save-videos False \
+      #     --ent-coef 0 \
+      #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+      #     --logdir-prefix $LOGDIR_PREFIX \
+      #     --total-steps $TOTAL_STEPS \
+      #     --seed $seed \
+      #   ) & # >& /dev/null &
+      # done
+      # endregion: PPO GRU2 - BC with default hyparams
+
+      # region: PPO Custom GWT with GRU - BC with default hyparams
       for seed in 111; do
         # export MASTER_PORT=8738 # Default port is 8738
         export TOTAL_STEPS=10000000
         (sleep 1s && python ppo_bc.py \
-          --exp-name "ppo_bc__savi_ss1_rgb_spectro__gru2" \
-          --agent-type "custom-gru" \
+          --exp-name "ppo_bc__savi_ss1_rgb_spectro__gwt_bu_td" \
+          --agent-type "custom-gwt" \
           --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
           --save-videos False \
           --ent-coef 0 \
@@ -174,7 +192,7 @@ echo "${LD_LIBRARY_PATH}"
           --seed $seed \
         ) & # >& /dev/null &
       done
-      # endregion: PPO GRU2 - BC with default hyparams
+      # endregion: PPO Custom GWT with GRU - BC with default hyparams
 
       # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1
       # for seed in 111 222; do

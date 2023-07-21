@@ -25,6 +25,7 @@ from ss_baselines.common.utils import images_to_video_with_audio
 
 # Custom ActorCritic agent for PPO
 from models import ActorCritic, ActorCritic2, Perceiver_GWT_GWWM_ActorCritic
+from models2 import GWTAgent
 
 # Dataset utils
 from torch.utils.data import IterableDataset, DataLoader
@@ -148,7 +149,7 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
     prev_acts = th.zeros([n_eval_envs, 4], device=device)
 
     masks = 1. - done_th[:, None]
-    if args.agent_type in ["ss-default", "custom-gru"]:
+    if args.agent_type in ["ss-default", "custom-gru", "custom-gwt"]:
         rnn_hidden_state = th.zeros((1, n_eval_envs, args.hidden_size), device=device)
     elif args.agent_type in ["perceiver-gwt-gwwm"]:
         rnn_hidden_state = agent.state_encoder.latents.clone().repeat(n_eval_envs, 1, 1)
@@ -303,7 +304,7 @@ def main():
         get_arg_dict("optim-wd", float, 0), # weight decay for adam optim
         ## Agent network params
         get_arg_dict("agent-type", str, "ss-default", metatype="choice",
-            choices=["ss-default", "custom-gru", "perceiver-gwt-gwwm"]),
+            choices=["ss-default", "custom-gru", "custom-gwt", "perceiver-gwt-gwwm"]),
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
         ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
         get_arg_dict("pgwt-latent-type", str, "randn", metatype="choice",
@@ -333,6 +334,11 @@ def main():
         get_arg_dict("dataset-ce-weights", bool, True, metatype="bool"), # If True, will read CEL weights based on action dist. from the 'dataset_statistics.bz2' file.
         get_arg_dict("ce-weights", float, None, metatype="list"), # Weights for the Cross Entropy loss
 
+        ## Custom GWT Agent with BU and TD attentions
+        get_arg_dict("gwt-use-proprio", bool, False, metatype="bool"),
+        get_arg_dict("gwt-hid-size", int, 512),
+        get_arg_dict("gwt-channels", int, 32),
+        
         ## SSL Support
         get_arg_dict("obs-center", bool, False, metatype="bool"), # Centers the rgb_observations' range to [-0.5,0.5]
         get_arg_dict("ssl-tasks", str, None, metatype="list"), # Expects something like ["rec-rgb-vis", "rec-depth", "rec-spectr"]
@@ -431,7 +437,7 @@ def main():
             # "depth": spaces.Box(shape=[128,128,1], low=0, high=255, dtype=np.uint8),
             "audiogoal": spaces.Box(shape=[2,16000], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32),
             "spectrogram": spaces.Box(shape=[65,26,2], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32),
-            "pose": spaces.Box(shape=[4], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32)
+            # "pose": spaces.Box(shape=[4], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32)
         })
     
     # Override the observation space for "rgb" and "depth" from (256,256,C) to (128,128,C)
@@ -449,6 +455,8 @@ def main():
     elif args.agent_type == "custom-gru":
         # TODO: add toggle for 'pose' usage for ablations later ?
         agent = ActorCritic2(single_observation_space, single_action_space, args, extra_rgb=agent_extra_rgb).to(device)
+    elif args.agent_type == "custom-gwt":
+        agent = GWTAgent(single_action_space, args).to(device)
     elif args.agent_type == "perceiver-gwt-gwwm":
         agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space,
             args, extra_rgb=agent_extra_rgb).to(device)
@@ -575,7 +583,7 @@ def main():
             optimizer.zero_grad()
 
             # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
-            if args.agent_type in ["ss-default", "custom-gru"]:
+            if args.agent_type in ["ss-default", "custom-gru", "custom-gwt"]:
                 rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
             elif args.agent_type in ["perceiver-gwt-gwwm"]:
                 rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)
@@ -689,24 +697,24 @@ def main():
             tblogger.log_stats(info_stats, global_step, "info")
 
         # TODO: remove after debugs
-        if args.ssl_tasks is not None and\
-            isinstance(args.ssl_tasks, list) and \
-            len(args.ssl_tasks):
+        # if args.ssl_tasks is not None and \
+        #     isinstance(args.ssl_tasks, list) and \
+        #     len(args.ssl_tasks):
 
-            for ssl_task in args.ssl_tasks:
-                # Vision based SSL tasks: reconstruction to gauge how good
-                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3",
-                                "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-mse"]:
-                    rec_rgb_mean = ssl_outputs[ssl_task]
-                    tmp_img_data = th.cat([
-                        obs_list["rgb"][:3].permute(0, 3, 1, 2).int(),
-                        ((rec_rgb_mean[:3].detach() + 0.5).clamp(0, 1) * 255).int()],
-                    dim=2)
-                    img_data = th.cat([i for i in tmp_img_data], dim=2).cpu().numpy().astype(np.uint8)
-                    # tblogger.log_image(ssl_task, img_data, global_step, prefix="ssl")
-                    # NOTE: log the RGB reconstruction under the same tag no matter the ssl_task,
-                    # works better with Wandb
-                    tblogger.log_image("rec-rgb", img_data, global_step, prefix="ssl")
+        #     for ssl_task in args.ssl_tasks:
+        #         # Vision based SSL tasks: reconstruction to gauge how good
+        #         if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3",
+        #                         "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-mse"]:
+        #             rec_rgb_mean = ssl_outputs[ssl_task]
+        #             tmp_img_data = th.cat([
+        #                 obs_list["rgb"][:3].permute(0, 3, 1, 2).int(),
+        #                 ((rec_rgb_mean[:3].detach() + 0.5).clamp(0, 1) * 255).int()],
+        #             dim=2)
+        #             img_data = th.cat([i for i in tmp_img_data], dim=2).cpu().numpy().astype(np.uint8)
+        #             # tblogger.log_image(ssl_task, img_data, global_step, prefix="ssl")
+        #             # NOTE: log the RGB reconstruction under the same tag no matter the ssl_task,
+        #             # works better with Wandb
+        #             tblogger.log_image("rec-rgb", img_data, global_step, prefix="ssl")
 
         if args.eval and should_eval(global_step):
             eval_window_episode_stas = eval_agent(args, envs, agent,
