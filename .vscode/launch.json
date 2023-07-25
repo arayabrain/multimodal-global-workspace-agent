@@ -104,10 +104,11 @@
                 "--total-steps", "5000",
                 "--save-videos", "False",
                 // With eval
-                // "--eval", "True",
-                // "--eval-every", "5000",
+                "--eval", "True",
+                "--eval-every", "5000",
                 // Without eval
-                "--eval", "False",
+                // "--eval", "False",
+
                 "--num-envs", "2",
                 "--num-steps", "15",
                 "--log-training-stats-every", "1",
@@ -117,8 +118,8 @@
                 // "--ssl-tasks", "rec-rgb",
                 // "--ssl-tasks", "rec-rgb-vis-ae-mse",
                 // "--agent-type", "perceiver-gwt-gwwm",
-                "--agent-type", "custom-gru",
-                "--use-pose", "True",
+                "--agent-type", "custom-gwt-bu",
+                // "--use-pose", "True",
                 // "--agent-type", "custom-gwt",
 
                 // Probing debugging
