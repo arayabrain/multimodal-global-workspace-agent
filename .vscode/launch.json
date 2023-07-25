@@ -101,7 +101,7 @@
                 // "--dataset-path", "SAVI_Oracle_Dataset_v0_10K",
                 "--dataset-path", "SAVI_Oracle_Dataset_v0",
                 "--config-path", "env_configs/savi/savi_ss1_rgb_spectro.yaml",
-                "--total-steps", "10000",
+                "--total-steps", "5000",
                 "--save-videos", "False",
                 // With eval
                 // "--eval", "True",
@@ -117,7 +117,9 @@
                 // "--ssl-tasks", "rec-rgb",
                 // "--ssl-tasks", "rec-rgb-vis-ae-mse",
                 // "--agent-type", "perceiver-gwt-gwwm",
-                "--agent-type", "custom-gwt",
+                "--agent-type", "custom-gru",
+                "--use-pose", "True",
+                // "--agent-type", "custom-gwt",
 
                 // Probing debugging
                 // "--pretrained-model-name", "ppo_bc__rgbd_spectro__pgwt__SAVi",

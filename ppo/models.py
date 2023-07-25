@@ -888,7 +888,7 @@ class ActorCritic2(nn.Module):
         self.audio_encoder = AudioCNN(observation_space, hidden_size, "spectrogram")
         
         self.use_proprio = False
-        if "pose" in list(observation_space.keys()):
+        if args.use_pose and "pose" in list(observation_space.keys()):
             self.use_proprio = True
             self.proprio_encoder = nn.Linear(4, hidden_size)
             input_dim += hidden_size

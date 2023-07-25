@@ -305,6 +305,7 @@ def main():
         ## Agent network params
         get_arg_dict("agent-type", str, "ss-default", metatype="choice",
             choices=["ss-default", "custom-gru", "custom-gwt", "perceiver-gwt-gwwm"]),
+        get_arg_dict("use-pose", bool, False, metatype="bool"), # Use "pose" field iin observations
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
         ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
         get_arg_dict("pgwt-latent-type", str, "randn", metatype="choice",
@@ -335,7 +336,6 @@ def main():
         get_arg_dict("ce-weights", float, None, metatype="list"), # Weights for the Cross Entropy loss
 
         ## Custom GWT Agent with BU and TD attentions
-        get_arg_dict("gwt-use-proprio", bool, False, metatype="bool"),
         get_arg_dict("gwt-hid-size", int, 512),
         get_arg_dict("gwt-channels", int, 32),
         
@@ -437,7 +437,7 @@ def main():
             # "depth": spaces.Box(shape=[128,128,1], low=0, high=255, dtype=np.uint8),
             "audiogoal": spaces.Box(shape=[2,16000], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32),
             "spectrogram": spaces.Box(shape=[65,26,2], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32),
-            # "pose": spaces.Box(shape=[4], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32)
+            "pose": spaces.Box(shape=[4], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32)
         })
     
     # Override the observation space for "rgb" and "depth" from (256,256,C) to (128,128,C)
