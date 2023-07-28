@@ -313,45 +313,49 @@ echo "${LD_LIBRARY_PATH}"
       # By detaching the features for the rec-rgb SSL task, the reconstruction
       # just allows us to qualitatively evaluate the quality of the latent
       # SSL in this case will not contribute to learning better features.
-      for seed in 111; do
-        # export MASTER_PORT=8738 # Default port is 8738
-        export TOTAL_STEPS=10000000
-        (sleep 1s && python ppo_bc.py \
-          --exp-name "ppo_bc__savi_ss1_rgb_cntr_spectro__gru__rec_rgb_vis_ae_4_sslfeat_detach" \
-          --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
-          --obs-center True \
-          --ssl-tasks "rec-rgb-vis-ae-4" \
-          --ssl-rec-rgb-detach True \
-          --save-videos False \
-          --ent-coef 0 \
-          --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
-          --logdir-prefix $LOGDIR_PREFIX \
-          --total-steps $TOTAL_STEPS \
-          --seed $seed \
-        ) & # >& /dev/null &
-      done
+      # for seed in 111; do
+      #   # export MASTER_PORT=8738 # Default port is 8738
+      #   export TOTAL_STEPS=10000000
+      #   (sleep 1s && python ppo_bc.py \
+      #     --exp-name "ppo_bc__savi_ss1_rgb_cntr_spectro__gru2__rec_rgb_vis_ae_4_sslfeat_detach" \
+      #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      #     --num-envs 5 \
+      #     --agent-type "custom-gru" \
+      #     --obs-center True \
+      #     --ssl-tasks "rec-rgb-vis-ae-4" \
+      #     --ssl-rec-rgb-detach True \
+      #     --save-videos False \
+      #     --ent-coef 0 \
+      #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+      #     --logdir-prefix $LOGDIR_PREFIX \
+      #     --total-steps $TOTAL_STEPS \
+      #     --seed $seed \
+      #   ) & # >& /dev/null &
+      # done
       # endregion: PPO GRU v2, rec-rgb-vis-ae-4 , detach rec features
 
       # region: PPO GRU v2, rec-rgb-vis-ae-4 , backprop rec-rgb 
       # Backprops from the rec-rgb loss through decoder -> vision features -> encoder
       # Should contribute to learning better features ?
-      for seed in 111; do
-        # export MASTER_PORT=8738 # Default port is 8738
-        export TOTAL_STEPS=10000000
-        (sleep 1s && python ppo_bc.py \
-          --exp-name "ppo_bc__savi_ss1_rgb_cntr_spectro__gru__rec_rgb_vis_ae_4_sslfeat_detach" \
-          --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
-          --obs-center True \
-          --ssl-tasks "rec-rgb-vis-ae-4" \
-          --ssl-rec-rgb-detach False \
-          --save-videos False \
-          --ent-coef 0 \
-          --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
-          --logdir-prefix $LOGDIR_PREFIX \
-          --total-steps $TOTAL_STEPS \
-          --seed $seed \
-        ) & # >& /dev/null &
-      done
+      # for seed in 111; do
+      #   # export MASTER_PORT=8738 # Default port is 8738
+      #   export TOTAL_STEPS=10000000
+      #   (sleep 1s && python ppo_bc.py \
+      #     --exp-name "ppo_bc__savi_ss1_rgb_cntr_spectro__gru2__rec_rgb_vis_ae_4_sslfeat_nodetach" \
+      #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      #     --num-envs 5 \
+      #     --agent-type "custom-gru" \
+      #     --obs-center True \
+      #     --ssl-tasks "rec-rgb-vis-ae-4" \
+      #     --ssl-rec-rgb-detach False \
+      #     --save-videos False \
+      #     --ent-coef 0 \
+      #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+      #     --logdir-prefix $LOGDIR_PREFIX \
+      #     --total-steps $TOTAL_STEPS \
+      #     --seed $seed \
+      #   ) & # >& /dev/null &
+      # done
       # endregion: PPO GRU v2, rec-rgb-vis-ae-4 , backprop rec-rgb 
 
       # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1, rec-rgb
