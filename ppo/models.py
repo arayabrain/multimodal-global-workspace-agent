@@ -288,6 +288,102 @@ class VisualCNN3(nn.Module):
         cnn_input = th.cat(cnn_input, dim=1)
 
         return self.cnn(cnn_input)
+
+class VisualCNN4(nn.Module):
+    # Losely based on Dreamer's AE arch.
+    # Hypothesis to check: does having more powerful AE helps with learned vision features
+    def __init__(self, observation_space, output_size, extra_rgb, obs_center=False):
+        super().__init__()
+        if "rgb" in observation_space.spaces and not extra_rgb:
+            self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
+        else:
+            self._n_input_rgb = 0
+
+        if "depth" in observation_space.spaces:
+            self._n_input_depth = observation_space.spaces["depth"].shape[2]
+        else:
+            self._n_input_depth = 0
+
+        self.output_size = output_size
+        self.obs_center = obs_center
+
+        if self.is_blind:
+            self.cnn = nn.Sequential()
+        else:
+            self.cnn = nn.Sequential(
+                nn.Conv2d(
+                    in_channels=self._n_input_rgb + self._n_input_depth,
+                    out_channels=48,
+                    kernel_size=4,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.Conv2d(
+                    in_channels=48,
+                    out_channels=96,
+                    kernel_size=4,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.Conv2d(
+                    in_channels=96,
+                    out_channels=192,
+                    kernel_size=4,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.Conv2d(
+                    in_channels=192,
+                    out_channels=384,
+                    kernel_size=4,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.Conv2d(
+                    in_channels=384,
+                    out_channels=384,
+                    kernel_size=4,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.Flatten(),
+                nn.Linear(1536, output_size)
+            )
+
+        layer_init(self.cnn)
+
+    @property
+    def is_blind(self):
+        return self._n_input_rgb + self._n_input_depth == 0
+
+    def forward(self, observations):
+        cnn_input = []
+        if self._n_input_rgb > 0:
+            rgb_observations = observations["rgb"]
+            # permute tensor to dimension [BATCH x CHANNEL x HEIGHT X WIDTH]
+            rgb_observations = rgb_observations.permute(0, 3, 1, 2)
+            rgb_observations = rgb_observations / 255.0  # normalize RGB
+            if self.obs_center:
+                rgb_observations -= 0.5
+            cnn_input.append(rgb_observations)
+
+        if self._n_input_depth > 0:
+            depth_observations = observations["depth"]
+            # permute tensor to dimension [BATCH x CHANNEL x HEIGHT X WIDTH]
+            depth_observations = depth_observations.permute(0, 3, 1, 2)
+            if self.obs_center:
+                depth_observations -= 0.5
+            cnn_input.append(depth_observations)
+
+        cnn_input = th.cat(cnn_input, dim=1)
+
+        return self.cnn(cnn_input)
+
 """
     Mirrors upon the default Visual Encoder for SSL reconstruction task
 """
@@ -402,7 +498,6 @@ class VisualCNNDecoder3(nn.Module):
         # Reference visual encoder that will be mirrored
         # self.visual_encoder = visual_encoder
         output_size = visual_encoder.output_size
-        cnn_dims = visual_encoder.cnn_dims
 
         if visual_encoder.is_blind:
             self.cnn = nn.Sequential()
@@ -435,6 +530,64 @@ class VisualCNNDecoder3(nn.Module):
                     stride=2
                 ),
                 nn.ReLU(True),
+
+                nn.ConvTranspose2d(
+                    in_channels=16,
+                    out_channels=3,
+                    kernel_size=2,
+                    stride=2
+                )
+            )
+    
+    def forward(self, x):
+        return self.cnn(x)
+
+class VisualCNNDecoder4(nn.Module):
+    def __init__(self, visual_encoder):
+        super().__init__()
+        # Reference visual encoder that will be mirrored
+        # self.visual_encoder = visual_encoder
+        output_size = visual_encoder.output_size
+
+        if visual_encoder.is_blind:
+            self.cnn = nn.Sequential()
+        else:
+            self.cnn = nn.Sequential(
+                nn.Linear(512, 1536),
+                nn.ELU(True),
+                ReshapeLayer([1536, 1, 1]),
+
+                nn.ConvTranspose2d(
+                    in_channels=1536,
+                    out_channels=192,
+                    kernel_size=5,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.ConvTranspose2d(
+                    in_channels=192,
+                    out_channels=96,
+                    kernel_size=5,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.ConvTranspose2d(
+                    in_channels=96,
+                    out_channels=48,
+                    kernel_size=6,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.ConvTranspose2d(
+                    in_channels=48,
+                    out_channels=16,
+                    kernel_size=6,
+                    stride=2
+                ),
+                nn.ELU(True),
 
                 nn.ConvTranspose2d(
                     in_channels=16,

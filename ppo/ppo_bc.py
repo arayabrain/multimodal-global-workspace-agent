@@ -345,6 +345,8 @@ def main():
         get_arg_dict("obs-center", bool, False, metatype="bool"), # Centers the rgb_observations' range to [-0.5,0.5]
         get_arg_dict("ssl-tasks", str, None, metatype="list"), # Expects something like ["rec-rgb-vis", "rec-depth", "rec-spectr"]
         get_arg_dict("ssl-task-coefs", float, None, metatype="list"), # For each ssl-task, specifies the loss coeff. during computation
+        ### Further parameterization of the SSL vision reconstruction task
+        get_arg_dict("ssl-rec-rgb-detach", bool, True, metatype="bool"), # When doing SSL rec-rgb, detach the grads. from decoder to latents
 
         # Eval protocol
         get_arg_dict("eval", bool, True, metatype="bool"),
