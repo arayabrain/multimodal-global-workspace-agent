@@ -1018,7 +1018,7 @@ class ActorCritic2(nn.Module):
                  analysis_layers=[]):
         super().__init__()
 
-        self.args = args
+        self.args = self.config = args
 
         hidden_size = args.hidden_size
         input_dim = 0
@@ -1034,6 +1034,9 @@ class ActorCritic2(nn.Module):
         # - support for RGB CNN and Depth CNN separated (geared toward PGWT modality)
         if args.ssl_tasks is not None and ("rec-rgb-vis-ae-3" in args.ssl_tasks or "rec-rgb-ae-3" in args.ssl_tasks):
             self.visual_encoder = VisualCNN3(observation_space, hidden_size,
+                extra_rgb=extra_rgb, obs_center=args.obs_center)
+        elif args.ssl_tasks is not None and ("rec-rgb-vis-ae-4" in args.ssl_tasks or "rec-rgb-ae-4" in args.ssl_tasks):
+            self.visual_encoder = VisualCNN4(observation_space, hidden_size,
                 extra_rgb=extra_rgb, obs_center=args.obs_center)
         else:
             self.visual_encoder = VisualCNN(observation_space, hidden_size, 
@@ -1082,6 +1085,8 @@ class ActorCritic2(nn.Module):
                     self.ssl_modules[ssl_task] = VisualCNNDecoder2(self.visual_encoder)
                 elif ssl_task in ["rec-rgb-ae-3", "rec-rgb-vis-ae-3"]:
                     self.ssl_modules[ssl_task] = VisualCNNDecoder3(self.visual_encoder)
+                elif ssl_task in ["rec-rgb-ae-4", "rec-rgb-vis-ae-4"]:
+                    self.ssl_modules[ssl_task] = VisualCNNDecoder4(self.visual_encoder)
                 else:
                     raise NotImplementedError(f"Unsupported ssl-task: {ssl_task}")
 
@@ -1162,12 +1167,16 @@ class ActorCritic2(nn.Module):
         ssl_outputs = {}
         if ssl_tasks is not None:
             for ssl_task in ssl_tasks:
-                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3"]:
-                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](features)
-                elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-mse"]:
-                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](modality_features["vision"])
+                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3", "rec-rgb-ae-4"]:
+                    ssl_features = features.detach() if self.config.ssl_rec_rgb_detach else features
+                elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4", "rec-rgb-vis-ae-mse"]:
+                     ssl_features = modality_features["vision"]
+                     if self.config.ssl_rec_rgb_detach:
+                         ssl_features = ssl_features.detach()
                 else:
                     raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
+                
+                ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](ssl_features)
 
         return actions, distribution.probs, action_log_probs, action_logits, \
                distribution_entropy, values, rnn_hidden_states, ssl_outputs

@@ -105,7 +105,7 @@
                 "--save-videos", "False",
                 // With eval
                 "--eval", "True",
-                "--eval-every", "5000",
+                "--eval-every", "500",
                 // Without eval
                 // "--eval", "False",
 
@@ -114,11 +114,14 @@
                 "--log-training-stats-every", "1",
                 
                 // SSL Debugging
-                // "--obs-center", "True",
+                "--obs-center", "True",
                 // "--ssl-tasks", "rec-rgb",
                 // "--ssl-tasks", "rec-rgb-vis-ae-mse",
+                "--ssl-tasks", "rec-rgb-vis-ae-4",
+                "--ssl-rec-rgb-detach", "False",
                 // "--agent-type", "perceiver-gwt-gwwm",
-                "--agent-type", "custom-gwt-bu",
+                "--agent-type", "custom-gru",
+                // "--agent-type", "custom-gwt-bu",
                 // "--use-pose", "True",
                 // "--agent-type", "custom-gwt",
 

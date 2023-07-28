@@ -609,8 +609,8 @@ def main():
             if args.ssl_tasks is not None:
                 for i, ssl_task in enumerate(args.ssl_tasks):
                     ssl_task_coef = 1 if args.ssl_task_coefs is None else float(args.ssl_task_coefs[i])
-                    if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3",
-                                    "rec-rgb-vis-ae", "rec-rgb-vis-ae-3"]:
+                    if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3", "rec-rgb-ae-4"
+                                    "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4"]:
                         assert args.obs_center, f"SSL task rec-rgb expects having args.obs_center = True, which is not the case now."
                         rec_rgb_mean = ssl_outputs[ssl_task]
                         rec_rgb_dist = th.distributions.Independent(
@@ -702,15 +702,18 @@ def main():
             }
             tblogger.log_stats(info_stats, global_step, "info")
 
-        # TODO: remove after debugs
+        # TODO: remove / comment out after debugs
+        # Same as in the args.eval if condition, but allows us
+        # to check that plotting works without having to wait
+        # for eval_envs instantiation when debugging
         # if args.ssl_tasks is not None and \
         #     isinstance(args.ssl_tasks, list) and \
         #     len(args.ssl_tasks):
 
         #     for ssl_task in args.ssl_tasks:
         #         # Vision based SSL tasks: reconstruction to gauge how good
-        #         if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3",
-        #                         "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-mse"]:
+        #         if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3", "rec-rgb-ae-4",
+        #                         "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4", "rec-rgb-vis-ae-mse"]:
         #             rec_rgb_mean = ssl_outputs[ssl_task]
         #             tmp_img_data = th.cat([
         #                 obs_list["rgb"][:3].permute(0, 3, 1, 2).int(),
@@ -740,8 +743,8 @@ def main():
                 
                 for ssl_task in args.ssl_tasks:
                     # Vision based SSL tasks: reconstruction to gauge how good
-                    if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3",
-                                    "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-mse"]:
+                    if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3", "rec-rgb-ae-4",
+                                    "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4", "rec-rgb-vis-ae-mse"]:
                         rec_rgb_mean = ssl_outputs[ssl_task]
                         tmp_img_data = th.cat([
                             obs_list["rgb"][:3].permute(0, 3, 1, 2).int(),
