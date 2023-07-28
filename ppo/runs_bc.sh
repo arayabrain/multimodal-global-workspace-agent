@@ -309,6 +309,7 @@ echo "${LD_LIBRARY_PATH}"
       # done
       # endregion: PPO GRU - BC with default hyparams, rec-rgb
 
+
       # region: PPO GRU v2, rec-rgb-vis-ae-4 , detach rec features
       # By detaching the features for the rec-rgb SSL task, the reconstruction
       # just allows us to qualitatively evaluate the quality of the latent
@@ -357,6 +358,7 @@ echo "${LD_LIBRARY_PATH}"
       #   ) & # >& /dev/null &
       # done
       # endregion: PPO GRU v2, rec-rgb-vis-ae-4 , backprop rec-rgb 
+
 
       # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1, rec-rgb
       # for seed in 111; do
