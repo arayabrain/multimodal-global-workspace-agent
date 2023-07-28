@@ -359,6 +359,33 @@ echo "${LD_LIBRARY_PATH}"
       # done
       # endregion: PPO GRU v2, rec-rgb-vis-ae-4 , backprop rec-rgb 
 
+      # region: PPO GRU v2, rec-rgb-vis-ae-4 , backprop rec-rgb, H=1024
+      # Backprops from the rec-rgb loss through decoder -> vision features -> encoder
+      # Should contribute to learning better features ?
+      # Preliminary run with H=512 suggest the latent size might not be large enough
+      # How about just using 1024 ?
+      for seed in 111; do
+        # export MASTER_PORT=8738 # Default port is 8738
+        export TOTAL_STEPS=10000000
+        (sleep 1s && python ppo_bc.py \
+          --exp-name "ppo_bc__savi_ss1_rgb_cntr_spectro__gru2__rec_rgb_vis_ae_4_sslfeat_nodetach_H_1024" \
+          --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+          --num-envs 5 \
+          --hidden-size 1024 \
+          --agent-type "custom-gru" \
+          --obs-center True \
+          --ssl-tasks "rec-rgb-vis-ae-4" \
+          --ssl-rec-rgb-detach False \
+          --save-videos False \
+          --ent-coef 0 \
+          --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+          --logdir-prefix $LOGDIR_PREFIX \
+          --total-steps $TOTAL_STEPS \
+          --seed $seed \
+        ) & # >& /dev/null &
+      done
+      # endregion: PPO GRU v2, rec-rgb-vis-ae-4 , backprop rec-rgb, H=1024
+
 
       # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1, rec-rgb
       # for seed in 111; do

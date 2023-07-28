@@ -553,7 +553,7 @@ class VisualCNNDecoder4(nn.Module):
             self.cnn = nn.Sequential()
         else:
             self.cnn = nn.Sequential(
-                nn.Linear(512, 1536),
+                nn.Linear(output_size, 1536),
                 nn.ELU(True),
                 ReshapeLayer([1536, 1, 1]),
 
