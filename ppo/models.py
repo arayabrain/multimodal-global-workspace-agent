@@ -384,6 +384,111 @@ class VisualCNN4(nn.Module):
 
         return self.cnn(cnn_input)
 
+class VisualCNN5(nn.Module):
+    # Losely based on Dreamer's AE arch.
+    # Hypothesis to check: does having more powerful AE helps with learned vision features
+    def __init__(self, config, observation_space, output_size, extra_rgb, obs_center=False):
+        super().__init__()
+        self.config = config
+
+        if "rgb" in observation_space.spaces and not extra_rgb:
+            self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
+        else:
+            self._n_input_rgb = 0
+
+        if "depth" in observation_space.spaces:
+            self._n_input_depth = observation_space.spaces["depth"].shape[2]
+        else:
+            self._n_input_depth = 0
+
+        self.output_size = output_size
+        self.obs_center = obs_center
+        self.mid_size = config.ssl_rec_rgb_mid_size
+
+        if self.is_blind:
+            self.cnn = nn.Sequential()
+        else:
+            self.cnn = nn.Sequential(
+                nn.Conv2d(
+                    in_channels=self._n_input_rgb + self._n_input_depth,
+                    out_channels=48,
+                    kernel_size=4,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.Conv2d(
+                    in_channels=48,
+                    out_channels=96,
+                    kernel_size=4,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.Conv2d(
+                    in_channels=96,
+                    out_channels=192,
+                    kernel_size=4,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.Conv2d(
+                    in_channels=192,
+                    out_channels=384,
+                    kernel_size=4,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.Conv2d(
+                    in_channels=384,
+                    out_channels=384,
+                    kernel_size=4,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.Flatten(),
+                nn.Linear(1536, mid_size)
+            )
+
+        self.linear = nn.Linear(mid_size, output_size)
+
+        layer_init(self.cnn)
+        layer_init(self.linear)
+
+    @property
+    def is_blind(self):
+        return self._n_input_rgb + self._n_input_depth == 0
+
+    def forward(self, observations):
+        cnn_input = []
+        if self._n_input_rgb > 0:
+            rgb_observations = observations["rgb"]
+            # permute tensor to dimension [BATCH x CHANNEL x HEIGHT X WIDTH]
+            rgb_observations = rgb_observations.permute(0, 3, 1, 2)
+            rgb_observations = rgb_observations / 255.0  # normalize RGB
+            if self.obs_center:
+                rgb_observations -= 0.5
+            cnn_input.append(rgb_observations)
+
+        if self._n_input_depth > 0:
+            depth_observations = observations["depth"]
+            # permute tensor to dimension [BATCH x CHANNEL x HEIGHT X WIDTH]
+            depth_observations = depth_observations.permute(0, 3, 1, 2)
+            if self.obs_center:
+                depth_observations -= 0.5
+            cnn_input.append(depth_observations)
+
+        cnn_input = th.cat(cnn_input, dim=1)
+
+        mid_feats = self.cnn(cnn_input) # Fixed to 1536 for now
+        features = self.linear(mid_feats)
+
+        return features, mid_feats
+
+
 """
     Mirrors upon the default Visual Encoder for SSL reconstruction task
 """
@@ -600,6 +705,67 @@ class VisualCNNDecoder4(nn.Module):
     def forward(self, x):
         return self.cnn(x)
 
+class VisualCNNDecoder5(nn.Module):
+    def __init__(self, visual_encoder):
+        super().__init__()
+        # Reference visual encoder that will be mirrored
+        # self.visual_encoder = visual_encoder
+        config = visual_encoder.config
+        mid_size = visual_encoder.mid_size
+        output_size = visual_encoder.output_size
+        use_mid_feats = config.ssl_rec_rgb_mid_feat
+
+        if visual_encoder.is_blind:
+            self.cnn = nn.Sequential()
+        else:
+            dec_input_dim = mid_size if use_mid_feats else output_size
+            self.cnn = nn.Sequential(
+                nn.Linear(dec_input_dim, 1536),
+                nn.ELU(True),
+                ReshapeLayer([1536, 1, 1]),
+
+                nn.ConvTranspose2d(
+                    in_channels=1536,
+                    out_channels=192,
+                    kernel_size=5,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.ConvTranspose2d(
+                    in_channels=192,
+                    out_channels=96,
+                    kernel_size=5,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.ConvTranspose2d(
+                    in_channels=96,
+                    out_channels=48,
+                    kernel_size=6,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.ConvTranspose2d(
+                    in_channels=48,
+                    out_channels=16,
+                    kernel_size=6,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.ConvTranspose2d(
+                    in_channels=16,
+                    out_channels=3,
+                    kernel_size=2,
+                    stride=2
+                )
+            )
+    
+    def forward(self, x):
+        return self.cnn(x)
 # endregion: Vision modules       #
 ###################################
 
@@ -1038,6 +1204,9 @@ class ActorCritic2(nn.Module):
         elif args.ssl_tasks is not None and ("rec-rgb-vis-ae-4" in args.ssl_tasks or "rec-rgb-ae-4" in args.ssl_tasks):
             self.visual_encoder = VisualCNN4(observation_space, hidden_size,
                 extra_rgb=extra_rgb, obs_center=args.obs_center)
+        elif args.ssl_tasks is not None and ("rec-rgb-vis-ae-5" in args.ssl_tasks or "rec-rgb-ae-5" in args.ssl_tasks):
+            self.visual_encoder = VisualCNN5(args, bservation_space, hidden_size,
+                extra_rgb=extra_rgb, obs_center=args.obs_center)
         else:
             self.visual_encoder = VisualCNN(observation_space, hidden_size, 
                 extra_rgb=extra_rgb, obs_center=args.obs_center)
@@ -1110,7 +1279,12 @@ class ActorCritic2(nn.Module):
         ## - rgb and depth simulatenous input as 4 channel dim input
         ## - deparate encoders for rgb and depth, give one more modality to PGWT
         if not self.visual_encoder.is_blind:
-            video_features = self.visual_encoder(observations)
+            if isinstance(self.visual_encoder, VisualCNN5):
+                video_features, video_mid_features = \
+                    self.visual_encoder(observations)
+                    modality_features["vision_mid_features"] = video_features
+            else:
+                video_features = self.visual_encoder(observations)
             x1.append(video_features)
             modality_features["vision"] = video_features
 
@@ -1169,8 +1343,11 @@ class ActorCritic2(nn.Module):
             for ssl_task in ssl_tasks:
                 if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3", "rec-rgb-ae-4"]:
                     ssl_features = features.detach() if self.config.ssl_rec_rgb_detach else features
-                elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4", "rec-rgb-vis-ae-mse"]:
+                elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4", "rec-rgb-vis-ae-5", "rec-rgb-vis-ae-mse"]:
                      ssl_features = modality_features["vision"]
+                     if ssl_task == "rec-rgb-vis-ae-5": # Special case, use larger intermediate features for the reconstruction
+                        if args.ssl_rec_rgb_mid_feat:
+                            ssl_features = modality_features["vision_mid_feats"]
                      if self.config.ssl_rec_rgb_detach:
                          ssl_features = ssl_features.detach()
                 else:

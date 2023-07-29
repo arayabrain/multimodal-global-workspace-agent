@@ -322,7 +322,7 @@ def main():
         get_arg_dict("pgwt-latent-dim-head", int, 64),
         get_arg_dict("pgwt-weight-tie-layers", bool, False, metatype="bool"),
         get_arg_dict("pgwt-ff", bool, False, metatype="bool"),
-        get_arg_dict("pgwt-num-freq-bands", int, 6),
+        get_arg_dict("pgwt-num-freq-bands", int, 6), modality_features["vision"]
         get_arg_dict("pgwt-max-freq", int, 10.),
         get_arg_dict("pgwt-use-sa", bool, False, metatype="bool"),
         ## Peceiver Modality Embedding related
@@ -346,6 +346,8 @@ def main():
         get_arg_dict("ssl-tasks", str, None, metatype="list"), # Expects something like ["rec-rgb-vis", "rec-depth", "rec-spectr"]
         get_arg_dict("ssl-task-coefs", float, None, metatype="list"), # For each ssl-task, specifies the loss coeff. during computation
         ### Further parameterization of the SSL vision reconstruction task
+        get_arg_dict("ssl-rec-rgb-mid-size", int, 512), # Size of intermediate feat in the AE
+        get_arg_dict("ssl-rec-rgb-mid-feat", bool, False, metatype="bool"), # When doing rec-rgb-vis-ae based SSL, use larger, intermediate features for rec.
         get_arg_dict("ssl-rec-rgb-detach", bool, True, metatype="bool"), # When doing SSL rec-rgb, detach the grads. from decoder to latents
 
         # Eval protocol
@@ -610,7 +612,7 @@ def main():
                 for i, ssl_task in enumerate(args.ssl_tasks):
                     ssl_task_coef = 1 if args.ssl_task_coefs is None else float(args.ssl_task_coefs[i])
                     if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3", "rec-rgb-ae-4"
-                                    "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4"]:
+                                    "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4", "rec-rgb-vis-ae-5"]:
                         assert args.obs_center, f"SSL task rec-rgb expects having args.obs_center = True, which is not the case now."
                         rec_rgb_mean = ssl_outputs[ssl_task]
                         rec_rgb_dist = th.distributions.Independent(
@@ -744,7 +746,8 @@ def main():
                 for ssl_task in args.ssl_tasks:
                     # Vision based SSL tasks: reconstruction to gauge how good
                     if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3", "rec-rgb-ae-4",
-                                    "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4", "rec-rgb-vis-ae-mse"]:
+                                    "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4", "rec-rgb-vis-ae-5",
+                                    "rec-rgb-vis-ae-mse"]:
                         rec_rgb_mean = ssl_outputs[ssl_task]
                         tmp_img_data = th.cat([
                             obs_list["rgb"][:3].permute(0, 3, 1, 2).int(),
