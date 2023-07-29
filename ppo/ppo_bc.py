@@ -322,7 +322,7 @@ def main():
         get_arg_dict("pgwt-latent-dim-head", int, 64),
         get_arg_dict("pgwt-weight-tie-layers", bool, False, metatype="bool"),
         get_arg_dict("pgwt-ff", bool, False, metatype="bool"),
-        get_arg_dict("pgwt-num-freq-bands", int, 6), modality_features["vision"]
+        get_arg_dict("pgwt-num-freq-bands", int, 6),
         get_arg_dict("pgwt-max-freq", int, 10.),
         get_arg_dict("pgwt-use-sa", bool, False, metatype="bool"),
         ## Peceiver Modality Embedding related
@@ -715,7 +715,8 @@ def main():
         #     for ssl_task in args.ssl_tasks:
         #         # Vision based SSL tasks: reconstruction to gauge how good
         #         if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3", "rec-rgb-ae-4",
-        #                         "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4", "rec-rgb-vis-ae-mse"]:
+        #                         "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4", "rec-rgb-vis-ae-5",
+        #                         "rec-rgb-vis-ae-mse"]:
         #             rec_rgb_mean = ssl_outputs[ssl_task]
         #             tmp_img_data = th.cat([
         #                 obs_list["rgb"][:3].permute(0, 3, 1, 2).int(),
@@ -726,6 +727,7 @@ def main():
         #             # NOTE: log the RGB reconstruction under the same tag no matter the ssl_task,
         #             # works better with Wandb
         #             tblogger.log_image("rec-rgb", img_data, global_step, prefix="ssl")
+        #             tblogger.log_image("rec-rgb-vis", img_data, global_step, prefix="ssl")
 
         if args.eval and should_eval(global_step):
             eval_window_episode_stas = eval_agent(args, envs, agent,
@@ -759,6 +761,7 @@ def main():
                         # NOTE: log the RGB reconstruction under the same tag no matter the ssl_task,
                         # works better with Wandb
                         tblogger.log_image("rec-rgb", img_data, global_step, prefix="ssl")
+                        tblogger.log_image("rec-rgb-vis", img_data, global_step, prefix="ssl")
 
             if args.save_model:
                 model_save_dir = tblogger.get_models_savedir()

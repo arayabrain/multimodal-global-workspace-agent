@@ -403,7 +403,7 @@ class VisualCNN5(nn.Module):
 
         self.output_size = output_size
         self.obs_center = obs_center
-        self.mid_size = config.ssl_rec_rgb_mid_size
+        self.mid_size = mid_size = config.ssl_rec_rgb_mid_size
 
         if self.is_blind:
             self.cnn = nn.Sequential()
@@ -453,7 +453,10 @@ class VisualCNN5(nn.Module):
                 nn.Linear(1536, mid_size)
             )
 
-        self.linear = nn.Linear(mid_size, output_size)
+        self.linear = nn.Sequential(
+            nn.ELU(True),
+            nn.Linear(mid_size, output_size)
+        )
 
         layer_init(self.cnn)
         layer_init(self.linear)
@@ -722,12 +725,20 @@ class VisualCNNDecoder5(nn.Module):
             self.cnn = nn.Sequential(
                 nn.Linear(dec_input_dim, 1536),
                 nn.ELU(True),
-                ReshapeLayer([1536, 1, 1]),
+                ReshapeLayer([384, 2, 2]),
 
                 nn.ConvTranspose2d(
-                    in_channels=1536,
+                    in_channels=384,
+                    out_channels=384,
+                    kernel_size=4,
+                    stride=2
+                ),
+                nn.ELU(True),
+
+                nn.ConvTranspose2d(
+                    in_channels=384,
                     out_channels=192,
-                    kernel_size=5,
+                    kernel_size=4,
                     stride=2
                 ),
                 nn.ELU(True),
@@ -735,7 +746,7 @@ class VisualCNNDecoder5(nn.Module):
                 nn.ConvTranspose2d(
                     in_channels=192,
                     out_channels=96,
-                    kernel_size=5,
+                    kernel_size=4,
                     stride=2
                 ),
                 nn.ELU(True),
@@ -743,27 +754,19 @@ class VisualCNNDecoder5(nn.Module):
                 nn.ConvTranspose2d(
                     in_channels=96,
                     out_channels=48,
-                    kernel_size=6,
+                    kernel_size=4,
                     stride=2
                 ),
                 nn.ELU(True),
 
                 nn.ConvTranspose2d(
                     in_channels=48,
-                    out_channels=16,
-                    kernel_size=6,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.ConvTranspose2d(
-                    in_channels=16,
                     out_channels=3,
-                    kernel_size=2,
+                    kernel_size=6,
                     stride=2
                 )
             )
-    
+                
     def forward(self, x):
         return self.cnn(x)
 # endregion: Vision modules       #
@@ -1205,7 +1208,7 @@ class ActorCritic2(nn.Module):
             self.visual_encoder = VisualCNN4(observation_space, hidden_size,
                 extra_rgb=extra_rgb, obs_center=args.obs_center)
         elif args.ssl_tasks is not None and ("rec-rgb-vis-ae-5" in args.ssl_tasks or "rec-rgb-ae-5" in args.ssl_tasks):
-            self.visual_encoder = VisualCNN5(args, bservation_space, hidden_size,
+            self.visual_encoder = VisualCNN5(args, observation_space, hidden_size,
                 extra_rgb=extra_rgb, obs_center=args.obs_center)
         else:
             self.visual_encoder = VisualCNN(observation_space, hidden_size, 
@@ -1256,6 +1259,8 @@ class ActorCritic2(nn.Module):
                     self.ssl_modules[ssl_task] = VisualCNNDecoder3(self.visual_encoder)
                 elif ssl_task in ["rec-rgb-ae-4", "rec-rgb-vis-ae-4"]:
                     self.ssl_modules[ssl_task] = VisualCNNDecoder4(self.visual_encoder)
+                elif ssl_task in ["rec-rgb-ae-5", "rec-rgb-vis-ae-5"]:
+                    self.ssl_modules[ssl_task] = VisualCNNDecoder5(self.visual_encoder)
                 else:
                     raise NotImplementedError(f"Unsupported ssl-task: {ssl_task}")
 
@@ -1282,7 +1287,7 @@ class ActorCritic2(nn.Module):
             if isinstance(self.visual_encoder, VisualCNN5):
                 video_features, video_mid_features = \
                     self.visual_encoder(observations)
-                    modality_features["vision_mid_features"] = video_features
+                modality_features["vision_mid_features"] = video_mid_features
             else:
                 video_features = self.visual_encoder(observations)
             x1.append(video_features)
@@ -1323,7 +1328,7 @@ class ActorCritic2(nn.Module):
         # Estimate the policy as distribution to sample actions from
         policy_features = th.cat([
             features,
-            *[v for v in modality_features.values()]
+            *[v for k, v in modality_features.items() if k not in ["vision_mid_features"]]
         ], dim=1)
         distribution, action_logits = self.action_distribution(policy_features.detach() if actor_feat_detach else policy_features)
 
@@ -1346,8 +1351,8 @@ class ActorCritic2(nn.Module):
                 elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4", "rec-rgb-vis-ae-5", "rec-rgb-vis-ae-mse"]:
                      ssl_features = modality_features["vision"]
                      if ssl_task == "rec-rgb-vis-ae-5": # Special case, use larger intermediate features for the reconstruction
-                        if args.ssl_rec_rgb_mid_feat:
-                            ssl_features = modality_features["vision_mid_feats"]
+                        if self.config.ssl_rec_rgb_mid_feat:
+                            ssl_features = modality_features["vision_mid_features"]
                      if self.config.ssl_rec_rgb_detach:
                          ssl_features = ssl_features.detach()
                 else:
