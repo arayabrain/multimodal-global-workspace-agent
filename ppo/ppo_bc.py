@@ -25,7 +25,7 @@ from ss_baselines.common.utils import images_to_video_with_audio
 
 # Custom ActorCritic agent for PPO
 from models import ActorCritic, ActorCritic2, Perceiver_GWT_GWWM_ActorCritic
-from models2 import GWTAgent, GWTAgent_BU
+from models2 import GWTAgent, GWTAgent_BU, GWTAgent_TD
 
 # Dataset utils
 from torch.utils.data import IterableDataset, DataLoader
@@ -149,7 +149,7 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
     prev_acts = th.zeros([n_eval_envs, 4], device=device)
 
     masks = 1. - done_th[:, None]
-    if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu"]:
+    if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu", "custom-gwt-td"]:
         rnn_hidden_state = th.zeros((1, n_eval_envs, args.hidden_size), device=device)
     elif args.agent_type in ["perceiver-gwt-gwwm"]:
         rnn_hidden_state = agent.state_encoder.latents.clone().repeat(n_eval_envs, 1, 1)
@@ -306,7 +306,7 @@ def main():
         get_arg_dict("agent-type", str, "ss-default", metatype="choice",
             choices=["ss-default", "perceiver-gwt-gwwm",
                       "custom-gru",
-                      "custom-gwt", "custom-gwt-bu"]),
+                      "custom-gwt", "custom-gwt-bu", "custom-gwt-td"]),
         get_arg_dict("use-pose", bool, False, metatype="bool"), # Use "pose" field iin observations
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
         ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
@@ -465,6 +465,8 @@ def main():
         agent = GWTAgent(single_action_space, args).to(device)
     elif args.agent_type == "custom-gwt-bu":
         agent = GWTAgent_BU(single_action_space, args).to(device)
+    elif args.agent_type ==  "custom-gwt-td":
+        agent = GWTAgent_TD(single_action_space, args).to(device)
     elif args.agent_type == "perceiver-gwt-gwwm":
         agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space,
             args, extra_rgb=agent_extra_rgb).to(device)
@@ -591,7 +593,7 @@ def main():
             optimizer.zero_grad()
 
             # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
-            if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu"]:
+            if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu", "custom-gwt-td"]:
                 rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
             elif args.agent_type in ["perceiver-gwt-gwwm"]:
                 rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)

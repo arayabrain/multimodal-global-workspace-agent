@@ -213,6 +213,24 @@ echo "${LD_LIBRARY_PATH}"
       # done
       # endregion: PPO Custom GWT with GRU BU - BC with default hyparams
 
+      # region: PPO Custom GWT with GRU BU - BC with default hyparams
+      # for seed in 111 222; do
+      #   # export MASTER_PORT=8738 # Default port is 8738
+      #   export TOTAL_STEPS=10000000
+      #   (sleep 1s && python ppo_bc.py \
+      #     --exp-name "ppo_bc__savi_ss1_rgb_spectro__gwt_td" \
+      #     --agent-type "custom-gwt-td" \
+      #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      #     --save-videos False \
+      #     --ent-coef 0 \
+      #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+      #     --logdir-prefix $LOGDIR_PREFIX \
+      #     --total-steps $TOTAL_STEPS \
+      #     --seed $seed \
+      #   ) & # >& /dev/null &
+      # done
+      # endregion: PPO Custom GWT with GRU BU - BC with default hyparams
+
       # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1
       # for seed in 111 222; do
       #   # export MASTER_PORT=8748 # Default port is 8738
@@ -440,6 +458,34 @@ echo "${LD_LIBRARY_PATH}"
       #   ) & # >& /dev/null &
       # done
       # endregion: PPO GRU v2, rec-rgb-vis-ae-5 , backprop rec-rgb , use intermediate, larger vis. features
+
+      # region: PPO GRU v2, rec-rgb-vis-ae-5 , backprop rec-rgb , use intermediate, larger vis. features, no max grad norm
+      # Backprops from the rec-rgb loss through decoder -> vision features -> encoder
+      # Should contribute to learning better features ?
+      # for seed in 111; do
+      #   # export MASTER_PORT=8738 # Default port is 8738
+      #   export TOTAL_STEPS=10000000
+      #   (sleep 1s && python ppo_bc.py \
+      #     --exp-name "ppo_bc__savi_ss1_rgb_cntr_spectro__gru2__rec_rgb_vis_ae_5_sslfeat_nodetach__vis_mid_feats_gradnorm_100" \
+      #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      #     --num-envs 10 \
+      #     --num-steps 50 \
+      #     --max-grad-norm 100 \
+      #     --agent-type "custom-gru" \
+      #     --obs-center True \
+      #     --ssl-tasks "rec-rgb-vis-ae-5" \
+      #     --ssl-rec-rgb-mid-size 1536 \
+      #     --ssl-rec-rgb-mid-feat True \
+      #     --ssl-rec-rgb-detach False \
+      #     --save-videos False \
+      #     --ent-coef 0 \
+      #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+      #     --logdir-prefix $LOGDIR_PREFIX \
+      #     --total-steps $TOTAL_STEPS \
+      #     --seed $seed \
+      #   ) & # >& /dev/null &
+      # done
+      # endregion: PPO GRU v2, rec-rgb-vis-ae-5 , backprop rec-rgb , use intermediate, larger vis. features, no max grad norm
 
 
       # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1, rec-rgb

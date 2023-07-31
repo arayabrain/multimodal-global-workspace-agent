@@ -342,10 +342,13 @@ class GWTAgent_TD(GWTAgent_BU):
 
       rnn_hidden_states *= t_masks # Apply reset masks that are based on ep. termination
 
-      raise NotImplementedError(f"Forward pass for GWTAgent_TD not implemented yet.")
       # 
-      att_vision = self.visual_attention(t_vis_feats, t_vis_feats)
-      att_audio = self.audio_attention(t_aud_feats, t_aud_feats)
+      memory_vision_query = self.memory_vision_att_embedding(rnn_hidden_states).reshape_as(t_vis_feats)
+      memory_audio_query = self.memory_audio_att_embedding(rnn_hidden_states).reshape_as(t_aud_feats)
+
+      # 
+      att_vision = self.visual_attention(memory_vision_query, t_vis_feats)
+      att_audio = self.audio_attention(memory_audio_query, t_aud_feats)
 
       # 
       vision_emb = self.visual_embedding(att_vision)

@@ -104,10 +104,10 @@
                 "--total-steps", "5000",
                 "--save-videos", "False",
                 // With eval
-                "--eval", "True",
-                "--eval-every", "500",
+                // "--eval", "True",
+                // "--eval-every", "500",
                 // Without eval
-                // "--eval", "False",
+                "--eval", "False",
 
                 "--num-envs", "2",
                 "--num-steps", "15",
@@ -117,13 +117,13 @@
                 "--obs-center", "True",
                 // "--ssl-tasks", "rec-rgb",
                 // "--ssl-tasks", "rec-rgb-vis-ae-mse",
-                "--ssl-tasks", "rec-rgb-vis-ae-5",
-                "--ssl-rec-rgb-detach", "False",
-                "--ssl-rec-rgb-mid-size", "1536",
-                "--ssl-rec-rgb-mid-feat", "False",
+                // "--ssl-tasks", "rec-rgb-vis-ae-5",
+                // "--ssl-rec-rgb-detach", "False",
+                // "--ssl-rec-rgb-mid-size", "1536",
+                // "--ssl-rec-rgb-mid-feat", "False",
                 // "--agent-type", "perceiver-gwt-gwwm",
-                "--agent-type", "custom-gru",
-                // "--agent-type", "custom-gwt-bu",
+                // "--agent-type", "custom-gru",
+                "--agent-type", "custom-gwt-td",
                 // "--use-pose", "True",
                 // "--agent-type", "custom-gwt",
 
