@@ -35,7 +35,7 @@ class Attention2d(nn.Module):
     beta = F.softmax(f @ g, dim=2)  # Attention
     o = (beta @ h).permute(0, 2, 1).view(B, C, H, W)
     y = self.gamma * o + key_value_input
-    return y
+    return y, beta
 
 class VisionEncoder(nn.Module):
   def __init__(self, config):
@@ -158,8 +158,8 @@ class GWTAgent(nn.Module):
       memory_audio_query = self.memory_audio_att_embedding(rnn_hidden_states).reshape_as(t_aud_feats)
 
       # 
-      att_vision = self.visual_attention(th.cat([memory_vision_query, t_vis_feats], dim=1), t_vis_feats)
-      att_audio = self.audio_attention(th.cat([memory_audio_query, t_aud_feats], dim=1), t_aud_feats)
+      att_vision, _ = self.visual_attention(th.cat([memory_vision_query, t_vis_feats], dim=1), t_vis_feats)
+      att_audio, _ = self.audio_attention(th.cat([memory_audio_query, t_aud_feats], dim=1), t_aud_feats)
 
       # 
       vision_emb = self.visual_embedding(att_vision)
@@ -288,8 +288,8 @@ class GWTAgent_BU(GWTAgent):
       rnn_hidden_states *= t_masks # Apply reset masks that are based on ep. termination
 
       # 
-      att_vision = self.visual_attention(t_vis_feats, t_vis_feats)
-      att_audio = self.audio_attention(t_aud_feats, t_aud_feats)
+      att_vision, _ = self.visual_attention(t_vis_feats, t_vis_feats)
+      att_audio, _ = self.audio_attention(t_aud_feats, t_aud_feats)
 
       # 
       vision_emb = self.visual_embedding(att_vision)
@@ -347,8 +347,8 @@ class GWTAgent_TD(GWTAgent_BU):
       memory_audio_query = self.memory_audio_att_embedding(rnn_hidden_states).reshape_as(t_aud_feats)
 
       # 
-      att_vision = self.visual_attention(memory_vision_query, t_vis_feats)
-      att_audio = self.audio_attention(memory_audio_query, t_aud_feats)
+      att_vision, _ = self.visual_attention(memory_vision_query, t_vis_feats)
+      att_audio, _ = self.audio_attention(memory_audio_query, t_aud_feats)
 
       # 
       vision_emb = self.visual_embedding(att_vision)

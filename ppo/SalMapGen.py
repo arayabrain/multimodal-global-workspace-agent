@@ -403,8 +403,8 @@ def get_traj_data_by_scene(trajs_dicts, scene, tensorize=False, device="cpu"):
 # Loading pretrained agent
 import models
 import models2
-from models import ActorCritic, Perceiver_GWT_GWWM_ActorCritic
-from models2 import GWTAgent
+from models import ActorCritic, ActorCritic2, Perceiver_GWT_GWWM_ActorCritic
+from models2 import GWTAgent, GWTAgent_BU, GWTAgent_TD
 
 MODEL_VARIANTS_TO_STATEDICT_PATH = {
 
@@ -467,12 +467,12 @@ MODEL_VARIANTS_TO_STATEDICT_PATH = {
     # endregion: SAVi BC variants; trained using RGBD + Spectrogram ; trained up to 5M steps
 
     # region: SAVi BC variants; trained using RGB + Spectrogram to 10M steps steps
-    "ppo_bc__rgb_spectro__gru__SAVi": {
-        "pretty_name": "[SAVi BC] PPO GRU | RGB Spectro",
-        "state_dict_path": "/home/rousslan/random/rl/exp-logs/ss-hab-bc/"
-            "ppo_bc__savi_ss1_rgb_spectro__gru_seed_222__2023_06_17_21_24_12_718867.musashi"
-            "/models/ppo_agent.9990001.ckpt.pth"
-    },
+    # "ppo_bc__rgb_spectro__gru__SAVi": {
+    #     "pretty_name": "[SAVi BC] PPO GRU | RGB Spectro",
+    #     "state_dict_path": "/home/rousslan/random/rl/exp-logs/ss-hab-bc/"
+    #         "ppo_bc__savi_ss1_rgb_spectro__gru_seed_222__2023_06_17_21_24_12_718867.musashi"
+    #         "/models/ppo_agent.9990001.ckpt.pth"
+    # },
     # "ppo_bc__rgb_spectro__pgwt__SAVi": {
     #     "pretty_name": "[SAVi BC] PPO TransRNN | RGB Spectro",
     #     "state_dict_path": "/home/rousslan/random/rl/exp-logs/ss-hab-bc/"
@@ -481,18 +481,45 @@ MODEL_VARIANTS_TO_STATEDICT_PATH = {
     # },
     # endregion: SAVi BC variants; trained using RGB + Spectrogram to 10M steps steps
 
+    # region: SAVi BC variants GRU v2; trained using RGB + Spectrogram to 10M steps steps
+    # "ppo_bc__rgb_spectro__gru2__SAVi": {
+    #     "pretty_name": "[SAVi BC] PPO GRU | RGB Spectro",
+    #     "state_dict_path": "/home/rousslan/random/rl/exp-logs/ss-hab-bc/"
+    #         "ppo_bc__savi_ss1_rgb_spectro__gru2_seed_222__2023_07_24_13_54_07_163432.musashi"
+    #         "/models/ppo_agent.9990001.ckpt.pth"
+    # },
+    # endregion: SAVi BC variants GRU v2; trained using RGB + Spectrogram to 10M steps steps
+
     # region: SAVi BC variants; Custom GWT Agent based on SAGAN; trained using RGB + Spectrogram to 10M steps steps
-    "ppo_bc__savi_ss1_rgb_spectro__gwt_bu_td": {
-        "pretty_name": "[SAVi BC] PPO Cstm TransRNN BU-TD | RGB Spectro",
+    # "ppo_bc__savi_ss1_rgb_spectro__gwt_bu_td": {
+    #     "pretty_name": "[SAVi BC] PPO Cstm TransRNN BU-TD | RGB Spectro",
+    #     "state_dict_path": "/home/rousslan/random/rl/exp-logs/ss-hab-bc/"
+    #         "ppo_bc__savi_ss1_rgb_spectro__gwt_bu_td_seed_111__2023_07_21_19_27_25_674410.musashi"
+    #         "/models/ppo_agent.9990001.ckpt.pth"
+    # },
+    # endregion: SAVi BC variants; Custom GWT Agent based on SAGAN; trained using RGB + Spectrogram to 10M steps steps
+
+    # region: SAVi BC variants; Custom GWT Agent based on SAGAN, BU only; trained using RGB + Spectrogram to 10M steps steps
+    "ppo_bc__savi_ss1_rgb_spectro__gwt_bu": {
+        "pretty_name": "[SAVi BC] PPO Cstm TransRNN BU | RGB Spectro",
         "state_dict_path": "/home/rousslan/random/rl/exp-logs/ss-hab-bc/"
-            "ppo_bc__savi_ss1_rgb_spectro__gwt_bu_td_seed_111__2023_07_21_19_27_25_674410.musashi"
+            "ppo_bc__savi_ss1_rgb_spectro__gwt_bu_seed_111__2023_07_25_17_47_43_676298.musashi"
             "/models/ppo_agent.9990001.ckpt.pth"
     },
-    # endregion: SAVi BC variants; Custom GWT Agent based on SAGAN; trained using RGB + Spectrogram to 10M steps steps
+    # endregion: SAVi BC variants; Custom GWT Agent based on SAGAN, BU only; trained using RGB + Spectrogram to 10M steps steps
+
+    # region: SAVi BC variants; Custom GWT Agent based on SAGAN TD Only; trained using RGB + Spectrogram to 10M steps steps
+    # "ppo_bc__savi_ss1_rgb_spectro__gwt_td": {
+    #     "pretty_name": "[SAVi BC] PPO Cstm TransRNN TD | RGB Spectro",
+    #     "state_dict_path": "/home/rousslan/random/rl/exp-logs/ss-hab-bc/"
+    #         "ppo_bc__savi_ss1_rgb_spectro__gwt_td_seed_111__2023_07_30_11_31_48_661642.musashi"
+    #         "/models/ppo_agent.9990001.ckpt.pth"
+    # },
+    # endregion: SAVi BC variants; Custom GWT Agent based on SAGAN TD Only; trained using RGB + Spectrogram to 10M steps steps
 }
 
-dev = th.device("cpu")
-# dev = th.device("cuda") # NOTE / TODO: using GPU to be more efficient ?
+# dev = th.device("cpu")
+dev = th.device("cuda") # NOTE / TODO: using GPU to be more efficient ?
 
 # 'variant named' indexed 'torch agent'
 MODEL_VARIANTS_TO_AGENTMODEL = {}
@@ -500,14 +527,27 @@ MODEL_VARIANTS_TO_AGENTMODEL = {}
 for k, v in MODEL_VARIANTS_TO_STATEDICT_PATH.items():
     args_copy = copy.copy(args)
     # Override args depending on the model in use
-    if k.__contains__("gru"):
+    if k.__contains__("gru__SAVi"):
+        print(f"Loaded GRU v1")
         agent = ActorCritic(single_observation_space, single_action_space, args, extra_rgb=False,
             analysis_layers=models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES)
+    elif k.__contains__("gru2__SAV"):
+        print(f"Loaded GRU v2")
+        agent = ActorCritic2(single_observation_space, single_action_space, args, extra_rgb=False,
+            analysis_layers=models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES)
     elif k.__contains__("pgwt"):
+        print(f"Loaded PGWT")
         agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space, args, extra_rgb=False,
             analysis_layers=models.PGWT_GWWM_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES + ["state_encoder.ca.mha"])
     elif k.__contains__("gwt_bu_td"):
+        print(f"Loaded GWT v2")
         agent = GWTAgent(single_action_space, args,
+            analysis_layers=models2.GWTAGENT_DEFAULT_ANALYSIS_LAYER_NAMES)
+    elif k.__contains__("gwt_bu"):
+        agent = GWTAgent_BU(single_action_space, args,
+            analysis_layers=models2.GWTAGENT_DEFAULT_ANALYSIS_LAYER_NAMES)
+    elif k.__contains__("gwt_td"):
+        agent = GWTAgent_TD(single_action_space, args,
             analysis_layers=models2.GWTAGENT_DEFAULT_ANALYSIS_LAYER_NAMES)
 
     agent.eval()
@@ -675,8 +715,6 @@ OCC_TARGET_STEPS = {
 }
 
 
-
-# TODO: might want to cache that instead
 import datetime
 GEN_TIMESTAMP = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")
 
@@ -787,7 +825,10 @@ if not os.path.exists(allsall_filename):
 
                             agent_raw_features = {}
                             # NOTE: Do we really need to keep this in a dictionary ?
-                            if agent_variant.__contains__("gru") or agent_variant.__contains__("gwt_bu_td"):
+                            if agent_variant.__contains__("gru") or \
+                                agent_variant.__contains__("gwt_bu_td") or \
+                                agent_variant.__contains__("gwt_bu") or \
+                                agent_variant.__contains__("gwt_td"):
                                 agent_rnn_state = th.zeros((1, B, args.hidden_size), device=dev)
                             elif agent_variant.__contains__("pgwt"):
                                 agent_rnn_state = agent_model.state_encoder.latents.clone().repeat(B, 1, 1)
@@ -800,7 +841,9 @@ if not os.path.exists(allsall_filename):
                                         agent_model.act(obs_th, agent_rnn_state, masks)
                                     # agent_rnn_state of shape [1, 1+n_input_locs, H]
                                     # We thus need to copy the rnn_state at step 0 to steps 1:n_input_locs+1 indeed
-                                    if agent_variant.__contains__("gwt_bu_td"):
+                                    if agent_variant.__contains__("gwt_bu_td") or \
+                                        agent_variant.__contains__("gwt_bu") or \
+                                        agent_variant.__contains__("gwt_td"):
                                         agent_rnn_state[1:, :] = agent_rnn_state[0, :][None, :].repeat(B-1, 1)
                                     elif agent_variant.__contains__("gru"):
                                         agent_rnn_state[:, 1:, :] = agent_rnn_state[:, 0, :][:, None, :].repeat(1, B-1, 1)
