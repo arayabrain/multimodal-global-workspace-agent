@@ -291,9 +291,9 @@ if args.agent_type == "ss-default":
     agent = ActorCritic(single_observation_space, single_action_space, args, extra_rgb=agent_extra_rgb,
         analysis_layers=models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
 elif args.agent_type == "custom-gru":
+    tmp_args = copy.copy(args)
     analayers = models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES
     if args.pretrained_model_name.__contains__("rec_rgb_vis_ae_5"):
-        tmp_args = copy.copy(args)
         analayers = copy.copy(models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES)
         print(f"  Adding rec-rgb-vis-ae-5 arch. support")
         tmp_args.ssl_tasks = ["rec-rgb-vis-ae-5"]
