@@ -17,6 +17,59 @@ fi
 export LD_LIBRARY_PATH="/usr/local/cudnn-8.4.1_cuda_11.x:/usr/local/cuda-11.7/lib64:"
 echo "${LD_LIBRARY_PATH}"
 
+# Gen v2
+
+## RNN agents get inputs of shape T * B = 150 * 10, but the input for the probes is broken into batches of size 30. probe depth 2, probe hid size 102, bias = True
+# region: Probing ppo_bc__savi_ss1_rgb_spectro__gru2 (No depth) @10M steps, Linear probe with minibatcdh train
+for seed in 111; do
+    TOTAL_STEPS=500000; N_EPOCHS=10;
+    (sleep 1s && python ppo_bc_probe_train_mb.py \
+      --exp-name "ppo_bc__savi_ss1_rgb_spectro__gru2__9990001__n_mb_50__prb_dpth_2" \
+      --num-minibatches 50 \
+      --probe-depth 2 \
+      --agent-type "custom-gru" \
+      --obs-center False \
+      --pretrained-model-name "ppo_bc__savi_ss1_rgb_spectro__gru2" \
+      --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_spectro__gru2_seed_222__2023_07_24_13_54_07_163432.musashi/models/ppo_agent.9990001.ckpt.pth" \
+      --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      --save-videos False \
+      --ent-coef 0 \
+      --wandb --wandb-project "ss-hab-bc-probing" --wandb-entity dosssman \
+      --logdir-prefix $LOGDIR_PREFIX \
+      --total-steps $TOTAL_STEPS \
+      --n-epochs $N_EPOCHS \
+      --seed $seed \
+    ) & # >& /dev/null &
+done
+# endregion: Probing ppo_bc__savi_ss1_rgb_spectro__gru2 (No depth) @10M steps, Linear probe with minibatch train
+
+# region: Probing ppo_bc__savi_ss1_rgb_spectro__gru2 (No depth) @10M steps, Linear probe with minibatcdh train
+# for seed in 111; do
+#     TOTAL_STEPS=500000; N_EPOCHS=10;
+#     (sleep 1s && python ppo_bc_probe_train_mb.py \
+#       --exp-name "ppo_bc__savi_ss1_rgb_spectro__gru2__9990001__n_mb_50__prb_dpth_2" \
+#       --num-minibatches 50 \
+#       --probe-depth 2 \
+#       --agent-type "custom-gru" \
+#       --obs-center True \
+#       --ssl-tasks "rec-rgb-vis-ae-5" \
+#       --probing-inputs "state_encoder" "visual_encoder.linear.1" "audio_encoder.cnn.7" \
+#       --pretrained-model-name "ppo_bc__savi_ss1_rgb_cntr_spectro__gru2__rec_rgb_vis_ae_5_sslfeat_nodetach" \
+#       --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_cntr_spectro__gru2__rec_rgb_vis_ae_5_sslfeat_nodetach_seed_111__2023_07_29_12_04_57_519931.Max/models/ppo_agent.9990001.ckpt.pth" \
+#       --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+#       --save-videos False \
+#       --ent-coef 0 \
+#       --wandb --wandb-project "ss-hab-bc-probing" --wandb-entity dosssman \
+#       --logdir-prefix $LOGDIR_PREFIX \
+#       --total-steps $TOTAL_STEPS \
+#       --n-epochs $N_EPOCHS \
+#       --seed $seed \
+#     ) & # >& /dev/null &
+# done
+# endregion: Probing ppo_bc__savi_ss1_rgb_spectro__gru2 (No depth) @10M steps, Linear probe with minibatch train
+
+
+# Gen v1
 ## RNN agents get inputs of shape T * B = 150 * 10, but the input for the probes is broken into batches of size 30.
 # region: Probing ppo_bc__rgb_spectro__gru__SAVi (No depth) @10M steps, Linear probe with minibatch train
 # for seed in 111; do
@@ -105,49 +158,49 @@ echo "${LD_LIBRARY_PATH}"
 
 ## RNN agents get inputs of shape T * B = 150 * 10, but the input for the probes is broken into batches of size 30. probe depth 2, probe hid size 102, bias = True
 # region: Probing ppo_bc__rgb_spectro__gru__SAVi (No depth) @10M steps, Linear probe with minibatcdh train
-for seed in 111; do
-    TOTAL_STEPS=500000; N_EPOCHS=10;
-    (sleep 1s && python ppo_bc_probe_train_mb.py \
-      --exp-name "ppo_bc__rgb_spectro__gru__SAVi__9990001__n_mb_50__prb_dpth_2_hsize_1024_bias" \
-      --num-minibatches 50 \
-      --probe-depth 2 \
-      --probe-hid-size 1024 \
-      --probe-bias True \
-      --pretrained-model-name "ppo_bc__rgb_spectro__gru__SAVi" \
-      --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_spectro__gru_seed_222__2023_06_17_21_24_12_718867.musashi/models/ppo_agent.9990001.ckpt.pth" \
-      --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
-      --save-videos False \
-      --ent-coef 0 \
-      --wandb --wandb-project "ss-hab-bc-probing" --wandb-entity dosssman \
-      --logdir-prefix $LOGDIR_PREFIX \
-      --total-steps $TOTAL_STEPS \
-      --n-epochs $N_EPOCHS \
-      --seed $seed \
-    ) & # >& /dev/null &
-done
+# for seed in 111; do
+#     TOTAL_STEPS=500000; N_EPOCHS=10;
+#     (sleep 1s && python ppo_bc_probe_train_mb.py \
+#       --exp-name "ppo_bc__rgb_spectro__gru__SAVi__9990001__n_mb_50__prb_dpth_2_hsize_1024_bias" \
+#       --num-minibatches 50 \
+#       --probe-depth 2 \
+#       --probe-hid-size 1024 \
+#       --probe-bias True \
+#       --pretrained-model-name "ppo_bc__rgb_spectro__gru__SAVi" \
+#       --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_spectro__gru_seed_222__2023_06_17_21_24_12_718867.musashi/models/ppo_agent.9990001.ckpt.pth" \
+#       --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+#       --save-videos False \
+#       --ent-coef 0 \
+#       --wandb --wandb-project "ss-hab-bc-probing" --wandb-entity dosssman \
+#       --logdir-prefix $LOGDIR_PREFIX \
+#       --total-steps $TOTAL_STEPS \
+#       --n-epochs $N_EPOCHS \
+#       --seed $seed \
+#     ) & # >& /dev/null &
+# done
 # endregion: Probing ppo_bc__rgb_spectro__gru__SAVi (No depth) @10M steps, Linear probe with minibatch train
 
 # region: Probing ppo_bc__rgb_spectro__pgwt__SAVi (No depth) @10M steps, Linear probe with minibatch train
-for seed in 111; do
-    TOTAL_STEPS=500000; N_EPOCHS=10;
-    (sleep 1s && python ppo_bc_probe_train_mb.py \
-      --exp-name "ppo_bc__rgb_spectro__pgwt__SAVi__9990001__n_mb_50__prb_dpth_2_hsize_1024_bias" \
-      --num-minibatches 50 \
-      --probe-depth 2 \
-      --probe-hid-size 1024 \
-      --probe-bias True \
-      --pretrained-model-name "ppo_bc__rgb_spectro__pgwt__SAVi" \
-      --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb__spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats_seed_222__2023_06_17_21_24_10_884437.musashi/models/ppo_agent.9990001.ckpt.pth" \
-      --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
-      --save-videos False \
-      --ent-coef 0 \
-      --wandb --wandb-project "ss-hab-bc-probing" --wandb-entity dosssman \
-      --logdir-prefix $LOGDIR_PREFIX \
-      --total-steps $TOTAL_STEPS \
-      --n-epochs $N_EPOCHS \
-      --seed $seed \
-    ) & # >& /dev/null &
-done
+# for seed in 111; do
+#     TOTAL_STEPS=500000; N_EPOCHS=10;
+#     (sleep 1s && python ppo_bc_probe_train_mb.py \
+#       --exp-name "ppo_bc__rgb_spectro__pgwt__SAVi__9990001__n_mb_50__prb_dpth_2_hsize_1024_bias" \
+#       --num-minibatches 50 \
+#       --probe-depth 2 \
+#       --probe-hid-size 1024 \
+#       --probe-bias True \
+#       --pretrained-model-name "ppo_bc__rgb_spectro__pgwt__SAVi" \
+#       --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb__spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_1_SAnheads_4_modembed_0_CAprevlats_seed_222__2023_06_17_21_24_10_884437.musashi/models/ppo_agent.9990001.ckpt.pth" \
+#       --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+#       --save-videos False \
+#       --ent-coef 0 \
+#       --wandb --wandb-project "ss-hab-bc-probing" --wandb-entity dosssman \
+#       --logdir-prefix $LOGDIR_PREFIX \
+#       --total-steps $TOTAL_STEPS \
+#       --n-epochs $N_EPOCHS \
+#       --seed $seed \
+#     ) & # >& /dev/null &
+# done
 # endregion: Probing ppo_bc__rgb_spectro__pgwt__SAVi (No depth) @10M steps, Linear probe with minibatch train
 
 

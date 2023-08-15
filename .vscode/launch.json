@@ -129,12 +129,13 @@
                 "--agent-type", "custom-gru",
 
                 // Probing debugging
-                "--num-minibatches", "10",
+                "--num-minibatches", "2",
                 // // GRU2 Baseline
                 // "--pretrained-model-name", "ppo_bc__savi_ss1_rgb_spectro__gru2",
                 // "--pretrained-model-path", "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_spectro__gru2_seed_222__2023_07_24_13_54_07_163432.musashi/models/ppo_agent.9990001.ckpt.pth",
                 // // GRU2 Baseline + rec-rgb-vis-ae-5
                 "--ssl-tasks", "rec-rgb-vis-ae-5",
+                "--probing-inputs", "state_encoder", "visual_encoder.linear.1", "audio_encoder.cnn.7",
                 "--pretrained-model-name", "ppo_bc__savi_ss1_rgb_cntr_spectro__gru2__rec_rgb_vis_ae_5_sslfeat_nodetach",
                 "--pretrained-model-path", "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_cntr_spectro__gru2__rec_rgb_vis_ae_5_sslfeat_nodetach_seed_111__2023_07_29_12_04_57_519931.Max/models/ppo_agent.9990001.ckpt.pth",
                 // "--probe-depth", "2"

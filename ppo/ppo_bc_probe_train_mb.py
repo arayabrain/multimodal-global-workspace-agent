@@ -291,9 +291,17 @@ if args.agent_type == "ss-default":
     agent = ActorCritic(single_observation_space, single_action_space, args, extra_rgb=agent_extra_rgb,
         analysis_layers=models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
 elif args.agent_type == "custom-gru":
-    # TODO: add toggle for 'pose' usage for ablations later ?
-    agent = ActorCritic2(single_observation_space, single_action_space, args, extra_rgb=agent_extra_rgb,
-        analysis_layers=models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
+    analayers = models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES
+    if args.pretrained_model_name.__contains__("rec_rgb_vis_ae_5"):
+        tmp_args = copy.copy(args)
+        analayers = copy.copy(models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES)
+        print(f"  Adding rec-rgb-vis-ae-5 arch. support")
+        tmp_args.ssl_tasks = ["rec-rgb-vis-ae-5"]
+        tmp_args.ssl_rec_rgb_mid_size = 1536
+        tmp_args.ssl_rec_rgb_mid_feat = False
+        analayers.append("visual_encoder.linear.1")
+    agent = ActorCritic2(single_observation_space, single_action_space, tmp_args, extra_rgb=agent_extra_rgb,
+        analysis_layers=analayers).to(device)
 elif args.agent_type == "custom-gwt":
     raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
     agent = GWTAgent(single_action_space, args).to(device)
@@ -632,6 +640,22 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
             probe_losses_dict[loss_name] = probe_ce_loss
             acc_name = f"{metric_stem}__probe_acc"
             probe_losses_dict[acc_name] = probe_acc
+            # Special case for "custom-gru" and "rec-rgb-vis-ae-5"
+            # Duplicat the visual encoder loss under a different name for
+            # compatiblity with other version for analysis
+            if args.agent_type == "custom-gru" and \
+                args.pretrained_model_name.__contains__("rec_rgb_vis_ae_5") and \
+                probe_target_input_name == "visual_encoder.linear.1":
+
+                probe_target_input_name = "visual_encoder.cnn.7"
+
+                metric_stem = f"{probe_target_name}|{probe_target_input_name}"
+                loss_name = f"{metric_stem}__probe_loss"
+                probe_losses_dict[loss_name] = probe_ce_loss
+                acc_name = f"{metric_stem}__probe_acc"
+                probe_losses_dict[acc_name] = probe_acc
+
+
 
     # Tracking the number of NN updates (for all probes)
     n_updates += 1
