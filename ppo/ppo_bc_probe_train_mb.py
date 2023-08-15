@@ -36,7 +36,8 @@ import compress_pickle as cpkl
 # Loading pretrained agent
 import tools
 import models
-from models import ActorCritic, Perceiver_GWT_GWWM_ActorCritic
+from models import ActorCritic, ActorCritic2, Perceiver_GWT_GWWM_ActorCritic
+from models2 import GWTAgent, GWTAgent_BU, GWTAgent_TD
 
 # Helpers
 def dict_without_keys(d, keys_to_ignore):
@@ -85,7 +86,10 @@ CUSTOM_ARGS = [
     get_arg_dict("optim-wd", float, 0), # weight decay for adam optim
     ## Agent network params
     get_arg_dict("agent-type", str, "ss-default", metatype="choice",
-        choices=["ss-default", "perceiver-gwt-gwwm"]),
+        choices=["ss-default", "perceiver-gwt-gwwm",
+                    "custom-gru",
+                    "custom-gwt", "custom-gwt-bu", "custom-gwt-td"]),
+    get_arg_dict("use-pose", bool, False, metatype="bool"), # Use "pose" field iin observations
     get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
     ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
     get_arg_dict("pgwt-latent-type", str, "randn", metatype="choice",
@@ -114,6 +118,19 @@ CUSTOM_ARGS = [
     get_arg_dict("batch-chunk-length", int, 0), # For gradient accumulation
     get_arg_dict("dataset-ce-weights", bool, True, metatype="bool"), # If True, will read CEL weights based on action dist. from the 'dataset_statistics.bz2' file.
     get_arg_dict("ce-weights", float, None, metatype="list"), # Weights for the Cross Entropy loss
+
+    ## Custom GWT Agent with BU and TD attentions
+    get_arg_dict("gwt-hid-size", int, 512),
+    get_arg_dict("gwt-channels", int, 32),
+    
+    ## SSL Support
+    get_arg_dict("obs-center", bool, False, metatype="bool"), # Centers the rgb_observations' range to [-0.5,0.5]
+    get_arg_dict("ssl-tasks", str, None, metatype="list"), # Expects something like ["rec-rgb-vis", "rec-depth", "rec-spectr"]
+    get_arg_dict("ssl-task-coefs", float, None, metatype="list"), # For each ssl-task, specifies the loss coeff. during computation
+    ### Further parameterization of the SSL vision reconstruction task
+    get_arg_dict("ssl-rec-rgb-mid-size", int, 512), # Size of intermediate feat in the AE
+    get_arg_dict("ssl-rec-rgb-mid-feat", bool, False, metatype="bool"), # When doing rec-rgb-vis-ae based SSL, use larger, intermediate features for rec.
+    get_arg_dict("ssl-rec-rgb-detach", bool, True, metatype="bool"), # When doing SSL rec-rgb, detach the grads. from decoder to latents
 
     # Eval protocol
     get_arg_dict("eval", bool, True, metatype="bool"),
@@ -263,13 +280,36 @@ PROBING_INPUTS = args.probing_inputs
 
 # Load the model which features will be probed
 args_copy = copy.copy(args)
-if args.pretrained_model_name.__contains__("gru"):
-    agent = ActorCritic(single_observation_space, single_action_space, args.hidden_size, extra_rgb=False,
+# if args.pretrained_model_name.__contains__("gru"):
+#     agent = ActorCritic(single_observation_space, single_action_space, args.hidden_size, extra_rgb=False,
+#         analysis_layers=models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
+# elif args.pretrained_model_name.__contains__("pgwt"):
+#     agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space, args, extra_rgb=False,
+#         analysis_layers=models.PGWT_GWWM_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES + ["state_encoder.ca.mha"]).to(device)
+
+if args.agent_type == "ss-default":
+    agent = ActorCritic(single_observation_space, single_action_space, args, extra_rgb=agent_extra_rgb,
         analysis_layers=models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
-elif args.pretrained_model_name.__contains__("pgwt"):
-    agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space, args, extra_rgb=False,
-        analysis_layers=models.PGWT_GWWM_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES + ["state_encoder.ca.mha"]).to(device)
+elif args.agent_type == "custom-gru":
+    # TODO: add toggle for 'pose' usage for ablations later ?
+    agent = ActorCritic2(single_observation_space, single_action_space, args, extra_rgb=agent_extra_rgb,
+        analysis_layers=models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
+elif args.agent_type == "custom-gwt":
+    raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+    agent = GWTAgent(single_action_space, args).to(device)
+elif args.agent_type == "custom-gwt-bu":
+    raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+    agent = GWTAgent_BU(single_action_space, args).to(device)
+elif args.agent_type == "custom-gwt-td":
+    raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+    agent = GWTAgent_TD(single_action_space, args).to(device)
+elif args.agent_type == "perceiver-gwt-gwwm":
+    agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space,
+        args, extra_rgb=agent_extra_rgb).to(device)
+else:
+    raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 agent.eval()
+
 
 # TODO: add more controls on the model path ?
 if args.pretrained_model_path is not None:
