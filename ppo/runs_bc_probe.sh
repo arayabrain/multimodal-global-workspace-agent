@@ -44,6 +44,7 @@ echo "${LD_LIBRARY_PATH}"
 # endregion: Probing ppo_bc__savi_ss1_rgb_spectro__gru2 (No depth) @10M steps, Linear probe with minibatch train
 
 # region: Probing ppo_bc__savi_ss1_rgb_spectro__gru2 (No depth) @10M steps, Linear probe with minibatcdh train
+# with rec-rgb-vis-ae-5 variatn
 # for seed in 111; do
 #     TOTAL_STEPS=500000; N_EPOCHS=10;
 #     (sleep 1s && python ppo_bc_probe_train_mb.py \
@@ -67,7 +68,88 @@ echo "${LD_LIBRARY_PATH}"
 #     ) & # >& /dev/null &
 # done
 # endregion: Probing ppo_bc__savi_ss1_rgb_spectro__gru2 (No depth) @10M steps, Linear probe with minibatch train
+# with rec-rgb-vis-ae-5 variatn
 
+## RNN agents get inputs of shape T * B = 150 * 10, but the input for the probes is broken into batches of size 30. probe depth 2, probe hid size 102, bias = True
+# region: Probing ppo_bc__savi_ss1_rgb_spectro__gwt_bu_td_seed_111__2023_07_21_19_27_25_674410 (No depth) @10M steps, Linear probe with minibatcdh train
+# GWT BU TD
+for seed in 111; do
+    TOTAL_STEPS=500000; N_EPOCHS=10;
+    (sleep 1s && python ppo_bc_probe_train_mb.py \
+      --exp-name "ppo_bc__savi_ss1_rgb_spectro__gwt_bu_td__9990001__n_mb_50__prb_dpth_2" \
+      --num-minibatches 50 \
+      --probe-depth 2 \
+      --agent-type "custom-gwt" \
+      --probing-inputs "state_encoder" "visual_embedding" "audio_embedding" \
+      --obs-center False \
+      --pretrained-model-name "ppo_bc__savi_ss1_rgb_spectro__gwt_bu_td" \
+      --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_spectro__gwt_bu_td_seed_111__2023_07_21_19_27_25_674410.musashi/models/ppo_agent.9990001.ckpt.pth" \
+      --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      --save-videos False \
+      --ent-coef 0 \
+      --wandb --wandb-project "ss-hab-bc-probing" --wandb-entity dosssman \
+      --logdir-prefix $LOGDIR_PREFIX \
+      --total-steps $TOTAL_STEPS \
+      --n-epochs $N_EPOCHS \
+      --seed $seed \
+    ) & # >& /dev/null &
+done
+# endregion: Probing ppo_bc__savi_ss1_rgb_spectro__gru2 (No depth) @10M steps, Linear probe with minibatch train
+# GWT BU TD
+
+## RNN agents get inputs of shape T * B = 150 * 10, but the input for the probes is broken into batches of size 30. probe depth 2, probe hid size 102, bias = True
+# region: Probing ppo_bc__savi_ss1_rgb_spectro__gwt_bu_td_seed_111__2023_07_21_19_27_25_674410 (No depth) @10M steps, Linear probe with minibatcdh train
+# GWT BU
+# for seed in 111; do
+#     TOTAL_STEPS=500000; N_EPOCHS=10;
+#     (sleep 1s && python ppo_bc_probe_train_mb.py \
+#       --exp-name "ppo_bc__savi_ss1_rgb_spectro__gwt_bu__9990001__n_mb_50__prb_dpth_2" \
+#       --num-minibatches 50 \
+#       --probe-depth 2 \
+#       --agent-type "custom-gwt-bu" \
+#       --probing-inputs "state_encoder" "visual_embedding" "audio_embedding" \
+#       --obs-center False \
+#       --pretrained-model-name "ppo_bc__savi_ss1_rgb_spectro__gwt_bu" \
+#       --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_spectro__gwt_bu_seed_111__2023_07_25_17_47_43_676298.musashi/models/ppo_agent.9990001.ckpt.pth" \
+#       --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+#       --save-videos False \
+#       --ent-coef 0 \
+#       --wandb --wandb-project "ss-hab-bc-probing" --wandb-entity dosssman \
+#       --logdir-prefix $LOGDIR_PREFIX \
+#       --total-steps $TOTAL_STEPS \
+#       --n-epochs $N_EPOCHS \
+#       --seed $seed \
+#     ) & # >& /dev/null &
+# done
+# endregion: Probing ppo_bc__savi_ss1_rgb_spectro__gru2 (No depth) @10M steps, Linear probe with minibatch train
+# GWT BU
+
+## RNN agents get inputs of shape T * B = 150 * 10, but the input for the probes is broken into batches of size 30. probe depth 2, probe hid size 102, bias = True
+# region: Probing ppo_bc__savi_ss1_rgb_spectro__gwt_bu_td_seed_111__2023_07_21_19_27_25_674410 (No depth) @10M steps, Linear probe with minibatcdh train
+# GWT BU
+# for seed in 111; do
+#     TOTAL_STEPS=500000; N_EPOCHS=10;
+#     (sleep 1s && python ppo_bc_probe_train_mb.py \
+#       --exp-name "ppo_bc__savi_ss1_rgb_spectro__gwt_bu__9990001__n_mb_50__prb_dpth_2" \
+#       --num-minibatches 50 \
+#       --probe-depth 2 \
+#       --agent-type "custom-gwt-td" \
+#       --probing-inputs "state_encoder" "visual_embedding" "audio_embedding" \
+#       --obs-center False \
+#       --pretrained-model-name "ppo_bc__savi_ss1_rgb_spectro__gwt_bu" \
+#       --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_spectro__gwt_td_seed_111__2023_08_10_18_30_43_141945.musashi/models/ppo_agent.9990001.ckpt.pth" \
+#       --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+#       --save-videos False \
+#       --ent-coef 0 \
+#       --wandb --wandb-project "ss-hab-bc-probing" --wandb-entity dosssman \
+#       --logdir-prefix $LOGDIR_PREFIX \
+#       --total-steps $TOTAL_STEPS \
+#       --n-epochs $N_EPOCHS \
+#       --seed $seed \
+#     ) & # >& /dev/null &
+# done
+# endregion: Probing ppo_bc__savi_ss1_rgb_spectro__gru2 (No depth) @10M steps, Linear probe with minibatch train
+# GWT BU
 
 # Gen v1
 ## RNN agents get inputs of shape T * B = 150 * 10, but the input for the probes is broken into batches of size 30.

@@ -299,18 +299,20 @@ elif args.agent_type == "custom-gru":
         tmp_args.ssl_tasks = ["rec-rgb-vis-ae-5"]
         tmp_args.ssl_rec_rgb_mid_size = 1536
         tmp_args.ssl_rec_rgb_mid_feat = False
+        # NOTE: obs_center = True shoud be set from commandline !
         analayers.append("visual_encoder.linear.1")
     agent = ActorCritic2(single_observation_space, single_action_space, tmp_args, extra_rgb=agent_extra_rgb,
         analysis_layers=analayers).to(device)
 elif args.agent_type == "custom-gwt":
-    raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
-    agent = GWTAgent(single_action_space, args).to(device)
+    # raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+    agent = GWTAgent(single_action_space, args,
+        analysis_layers=["state_encoder", "visual_embedding", "audio_embedding"]).to(device)
 elif args.agent_type == "custom-gwt-bu":
-    raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
-    agent = GWTAgent_BU(single_action_space, args).to(device)
+    agent = GWTAgent_BU(single_action_space, args,
+        analysis_layers=["state_encoder", "visual_embedding", "audio_embedding"]).to(device)
 elif args.agent_type == "custom-gwt-td":
-    raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
-    agent = GWTAgent_TD(single_action_space, args).to(device)
+    agent = GWTAgent_TD(single_action_space, args,
+        analysis_layers=["state_encoder", "visual_embedding", "audio_embedding"]).to(device)
 elif args.agent_type == "perceiver-gwt-gwwm":
     agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space,
         args, extra_rgb=agent_extra_rgb).to(device)
@@ -568,12 +570,14 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
     # Forward pass with the agent model to collect the intermediate features
     # Stores in agent_features
     # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
-    if args.pretrained_model_name.__contains__("gru"):
+    if args.pretrained_model_name.__contains__("gru") or \
+       args.pretrained_model_name.__contains__("gwt_bu") or \
+       args.pretrained_model_name.__contains__("gwt_td"):
         rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
     elif args.pretrained_model_name.__contains__("pgwt"):
         rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)
     else:
-        raise NotImplementedError(f"Unsupported agent-type:{args.pretrained_agent_name}")
+        raise NotImplementedError(f"Unsupported agent-type:{args.pretrained_model_name}")
     
     with th.no_grad():
         agent_outputs = agent.act(obs_list, rnn_hidden_state, masks=mask_list) #, prev_actions=prev_actions_list)
@@ -590,9 +594,15 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
 
             # Forward pass of the probe network itself
             if probe_target_input_name == "state_encoder":
-                probe_inputs = agent._features["state_encoder"][0]
+                probe_inputs = agent._features["state_encoder"]
+                if args.pretrained_model_name.__contains__("gru"):
+                    # Because SS compatiblye state_encoder produces tuple of shape [B*T, H], [1, B*T, H]
+                    # or something along those lines
+                    probe_inputs = probe_inputs[0]
             elif probe_target_input_name.__contains__("visual_encoder") or \
-                    probe_target_input_name.__contains__("audio_encoder"):
+                    probe_target_input_name.__contains__("audio_encoder") or \
+                    probe_target_input_name.__contains__("visual_embedding") or \
+                    probe_target_input_name.__contains__("audio_embedding"):
                 probe_inputs = agent._features[probe_target_input_name]
             else:
                 raise NotImplementedError(f"Attempt to use {probe_target_input_name} as probe input.")
@@ -650,6 +660,20 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
                 probe_target_input_name = "visual_encoder.cnn.7"
 
                 metric_stem = f"{probe_target_name}|{probe_target_input_name}"
+                loss_name = f"{metric_stem}__probe_loss"
+                probe_losses_dict[loss_name] = probe_ce_loss
+                acc_name = f"{metric_stem}__probe_acc"
+                probe_losses_dict[acc_name] = probe_acc
+            
+            if args.agent_type in ["custom-gwt", "custom-gwt-bu", "custom-gwt-td"]:
+                if probe_target_input_name == "state_encoder":
+                    continue
+                if probe_target_input_name == "visual_embedding":
+                    probe_target_input_name_compat = "visual_encoder.cnn.7"
+                if probe_target_input_name == "audio_embedding":
+                    probe_target_input_name_compat = "audio_encoder.cnn.7"
+
+                metric_stem = f"{probe_target_name}|{probe_target_input_name_compat}"
                 loss_name = f"{metric_stem}__probe_loss"
                 probe_losses_dict[loss_name] = probe_ce_loss
                 acc_name = f"{metric_stem}__probe_acc"

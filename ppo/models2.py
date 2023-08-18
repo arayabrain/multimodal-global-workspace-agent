@@ -180,6 +180,15 @@ class GWTAgent(nn.Module):
     modality_features["vision"] = visual_features_final
     modality_features["audio"] = audio_features_final
 
+    # Compatibility for probing layers of GWT v2 agents
+    # Override the features of shape [B, H] to [B*T, H] instead
+    if "state_encoder" in self.analysis_layers:
+       self._features["state_encoder"] = rnn_hidden_states2.detach()
+    if "visual_embedding" in self.analysis_layers:
+       self._features["visual_embedding"] = visual_features_final.detach()
+    if "audio_embedding" in self.analysis_layers:
+       self._features["audio_embedding"] = audio_features_final.detach()
+    
     # Pass rnn_hidden_states2 twice for backward compat. with previous code
     return rnn_hidden_states2, rnn_hidden_states2, modality_features
 
@@ -310,6 +319,15 @@ class GWTAgent_BU(GWTAgent):
     modality_features["vision"] = visual_features_final
     modality_features["audio"] = audio_features_final
 
+    # Compatibility for probing layers of GWT v2 agents
+    # Override the features of shape [B, H] to [B*T, H] instead
+    if "state_encoder" in self.analysis_layers:
+       self._features["state_encoder"] = rnn_hidden_states2.detach()
+    if "visual_embedding" in self.analysis_layers:
+       self._features["visual_embedding"] = visual_features_final.detach()
+    if "audio_embedding" in self.analysis_layers:
+       self._features["audio_embedding"] = audio_features_final.detach()
+    
     # Pass rnn_hidden_states2 twice for backward compat. with previous code
     return rnn_hidden_states2, rnn_hidden_states2, modality_features
 
@@ -369,5 +387,14 @@ class GWTAgent_TD(GWTAgent_BU):
     modality_features["vision"] = visual_features_final
     modality_features["audio"] = audio_features_final
 
+    # Compatibility for probing layers of GWT v2 agents
+    # Override the features of shape [B, H] to [B*T, H] instead
+    if "state_encoder" in self.analysis_layers:
+       self._features["state_encoder"] = rnn_hidden_states2.detach()
+    if "visual_embedding" in self.analysis_layers:
+       self._features["visual_embedding"] = visual_features_final.detach()
+    if "audio_embedding" in self.analysis_layers:
+       self._features["audio_embedding"] = audio_features_final.detach()
+    
     # Pass rnn_hidden_states2 twice for backward compat. with previous code
     return rnn_hidden_states2, rnn_hidden_states2, modality_features
