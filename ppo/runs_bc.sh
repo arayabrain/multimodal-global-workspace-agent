@@ -160,6 +160,7 @@ echo "${LD_LIBRARY_PATH}"
 
       # region: PPO GRU 2 - BC with default hyparams, with pose
       # for seed in 111 222; do
+      # for seed in 111 333; do
       #   # export MASTER_PORT=8738 # Default port is 8738
       #   export TOTAL_STEPS=10000000
       #   (sleep 1s && python ppo_bc.py \
@@ -178,7 +179,8 @@ echo "${LD_LIBRARY_PATH}"
 
       # region: PPO Custom GWT with GRU - BC with default hyparams
       # for seed in 111; do
-      # # for seed in 222; do
+      # for seed in 222; do
+      # for seed in 333; do
       #   # export MASTER_PORT=8738 # Default port is 8738
       #   export TOTAL_STEPS=10000000
       #   (sleep 1s && python ppo_bc.py \
