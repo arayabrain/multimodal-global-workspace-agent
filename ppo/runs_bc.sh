@@ -235,6 +235,7 @@ echo "${LD_LIBRARY_PATH}"
 
       # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1
       # for seed in 111 222; do
+      # for seed in 111 333; do
       #   # export MASTER_PORT=8748 # Default port is 8738
       #   export TOTAL_STEPS=10000000
       #   (sleep 1s && python ppo_bc.py \
@@ -259,6 +260,31 @@ echo "${LD_LIBRARY_PATH}"
       # done
       # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1
 
+      # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 3 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1
+      # for seed in 111 222; do
+      #   # export MASTER_PORT=8748 # Default port is 8738
+      #   export TOTAL_STEPS=10000000
+      #   (sleep 1s && python ppo_bc.py \
+      #     --exp-name "ppo_bc__savi_ss1_rgb__spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_4_SAnheads_4_modembed_0_CAprevlats" \
+      #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      #     --agent-type "perceiver-gwt-gwwm" \
+      #     --ent-coef 0 \
+      #     --pgwt-depth 1 \
+      #     --pgwt-num-latents 8 \
+      #     --pgwt-latent-dim 64 \
+      #     --pgwt-cross-heads 4 \
+      #     --pgwt-latent-heads 4 \
+      #     --pgwt-use-sa False \
+      #     --pgwt-mod-embed 0 \
+      #     --pgwt-ca-prev-latents True \
+      #     --save-videos False \
+      #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+      #     --total-steps $TOTAL_STEPS \
+      #     --logdir-prefix $LOGDIR_PREFIX \
+      #     --seed $seed \
+      #   ) & # >& /dev/null &
+      # done
+      # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1
 
     ## RGB + Spectrogram based section, with RGB obs centered at [-0.5, 0.5] instead of [0, 1]
 
