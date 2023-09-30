@@ -315,7 +315,8 @@ elif args.agent_type == "custom-gwt-td":
         analysis_layers=["state_encoder", "visual_embedding", "audio_embedding"]).to(device)
 elif args.agent_type == "perceiver-gwt-gwwm":
     agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space,
-        args, extra_rgb=agent_extra_rgb).to(device)
+        args, extra_rgb=agent_extra_rgb,
+        analysis_layers=models.PGWT_GWWM_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
 else:
     raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 agent.eval()
@@ -617,13 +618,17 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
 
             probe_ce_loss = 0.
             probe_acc = 0.
-
+            
             for mb_idx in range(args.num_minibatches):
                 mb_start = mb_idx * args.minibatch_size
                 mb_end = (mb_idx + 1) * args.minibatch_size
 
                 probe_optim.zero_grad()
                 
+                # Special case if the agent if PGWT: state_encoder is tuple of shapes ([B_T, H], [B_T, X, H])
+                if isinstance(probe_inputs, tuple):
+                    probe_inputs = probe_inputs[0]
+
                 mb_probe_inputs = probe_inputs[mb_start:mb_end]
                 mb_probe_targets = probe_targets[mb_start:mb_end]
 

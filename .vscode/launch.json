@@ -155,11 +155,11 @@
                 // "--probe-depth", "2",
 
                 // // GWT TD
-                "--agent-type", "custom-gwt-td",
-                "--probing-inputs", "state_encoder", "visual_embedding", "audio_embedding",
-                "--pretrained-model-name", "ppo_bc__savi_ss1_rgb_spectro__gwt_td_seed_111__2023_08_10_18_30_43_141945.musashi",
-                "--pretrained-model-path", "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_spectro__gwt_td_seed_111__2023_08_10_18_30_43_141945.musashi/models/ppo_agent.9990001.ckpt.pth",
-                "--probe-depth", "2"
+                "--agent-type", "perceiver-gwt-gwwm",
+                // "--probing-inputs", "state_encoder", "visual_embedding", "audio_embedding",
+                "--pretrained-model-name", "ppo_bc__rgb_spectro__pgwt__SAVi",
+                "--pretrained-model-path", "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb__spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_4_SAnheads_4_modembed_0_CAprevlats_seed_111__2023_09_26_09_44_38_705854.musashi/models/ppo_agent.9990001.ckpt.pth",
+                // "--probe-depth", "2"
             ]
 
             // Custom PPO Debug with AudioCLIP audio encoder
