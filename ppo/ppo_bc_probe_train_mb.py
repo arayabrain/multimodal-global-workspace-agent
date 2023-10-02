@@ -591,7 +591,7 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
             # agent_variant_probes: dict taht holds {"agent_variant": Torch Model}
 
             probe = agent_variant_probes["probe_network"]
-            probe_optim = agent_vfariant_probes["probe_optimizer"]
+            probe_optim = agent_variant_probes["probe_optimizer"]
 
             # Forward pass of the probe network itself
             if probe_target_input_name == "state_encoder":
