@@ -121,14 +121,14 @@
                 // "--ssl-rec-rgb-detach", "False",
                 // "--ssl-rec-rgb-mid-size", "1536",
                 // "--ssl-rec-rgb-mid-feat", "False",
-                // "--agent-type", "perceiver-gwt-gwwm",
+                "--agent-type", "perceiver-gwt-gwwm",
                 // "--agent-type", "custom-gru",
+                // "--agent-type", "custom-gwt",
                 // "--agent-type", "custom-gwt-td",
                 // "--use-pose", "True",
-                // "--agent-type", "custom-gwt",
                 
                 // Probing debugging
-                "--num-minibatches", "2",
+                // "--num-minibatches", "2",
                 // // GRU2 Baseline
                 // "--agent-type", "custom-gru",
                 // "--pretrained-model-name", "ppo_bc__savi_ss1_rgb_spectro__gru2",
@@ -155,10 +155,10 @@
                 // "--probe-depth", "2",
 
                 // // GWT TD
-                "--agent-type", "perceiver-gwt-gwwm",
+                // "--agent-type", "perceiver-gwt-gwwm",
                 // "--probing-inputs", "state_encoder", "visual_embedding", "audio_embedding",
-                "--pretrained-model-name", "ppo_bc__rgb_spectro__pgwt__SAVi",
-                "--pretrained-model-path", "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb__spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_4_SAnheads_4_modembed_0_CAprevlats_seed_111__2023_09_26_09_44_38_705854.musashi/models/ppo_agent.9990001.ckpt.pth",
+                // "--pretrained-model-name", "ppo_bc__rgb_spectro__pgwt__SAVi",
+                // "--pretrained-model-path", "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb__spectro__pgwt__dpth_1_nlats_8_latdim_64_noSA_CAnheads_4_SAnheads_4_modembed_0_CAprevlats_seed_111__2023_09_26_09_44_38_705854.musashi/models/ppo_agent.9990001.ckpt.pth",
                 // "--probe-depth", "2"
             ]
 
