@@ -158,6 +158,23 @@ echo "${LD_LIBRARY_PATH}"
       # done
       # endregion: PPO GRU - BC with default hyparams
 
+      # region: PPO GRU - BC with default hyparams; fixing the rnn_hidden_state reset bug
+      # for seed in 111 222; do
+      #   # export MASTER_PORT=8738 # Default port is 8738
+      #   export TOTAL_STEPS=20000000
+      #   (sleep 1s && python ppo_bc.py \
+      #     --exp-name "ppo_bc__savi_ss1_rgb_spectro__gru__hidfix" \
+      #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      #     --save-videos False \
+      #     --ent-coef 0 \
+      #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+      #     --logdir-prefix $LOGDIR_PREFIX \
+      #     --total-steps $TOTAL_STEPS \
+      #     --seed $seed \
+      #   ) & # >& /dev/null &
+      # done
+      # endregion: PPO GRU - BC with default hyparams; fixing the rnn_hidden_state reset bug
+
       # region: PPO GRU 2 - BC with default hyparams, with pose
       # for seed in 111 222; do
       # # for seed in 111 333; do

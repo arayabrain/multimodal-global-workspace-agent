@@ -547,6 +547,15 @@ def main():
     # Ideally, both RL and BC variants should be trained with the same number of steps, with batch of data as similar as possible.
     # In some BC experiments we would use a single expisode as batch trajectory, while RL can have multiple episode cat.ed together
     # to fill up one batch trajectory.
+
+    # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
+    if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu", "custom-gwt-td"]:
+        rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
+    elif args.agent_type in ["perceiver-gwt-gwwm"]:
+        rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)
+    else:
+        raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+
     for global_step in range(1, args.total_steps + (args.num_envs * args.num_steps), args.num_envs * args.num_steps):
         # Load batch data
         obs_list, action_list, _, done_list = \
@@ -592,18 +601,9 @@ def main():
             # Reset optimizer for each chunk over the "trajectory length" axis
             optimizer.zero_grad()
 
-            # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
-            if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu", "custom-gwt-td"]:
-                rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
-            elif args.agent_type in ["perceiver-gwt-gwwm"]:
-                rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)
-            else:
-                raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
-
             # TODO: maybe detach the rnn_hidden_state between two chunks ?
-            actions, _, _, action_logits, entropies, _, _, ssl_outputs = \
-                agent.act(obs_list, rnn_hidden_state, masks=mask_list, ssl_tasks=args.ssl_tasks) #, prev_actions=prev_actions_list)
-
+            actions, _, _, action_logits, entropies, _, rnn_hidden_state, ssl_outputs = \
+                agent.act(obs_list, rnn_hidden_state.detach(), masks=mask_list, ssl_tasks=args.ssl_tasks) #, prev_actions=prev_actions_list)
 
             bc_loss = F.cross_entropy(action_logits, action_list.long(),
                                         weight=ce_weights, reduction="mean")
