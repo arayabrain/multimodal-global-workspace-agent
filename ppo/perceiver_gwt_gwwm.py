@@ -12,10 +12,11 @@ STR_TO_ACTIVATION = {
 
 # Helper classes
 class SelfAttention(nn.Module):
-    def __init__(self, h_size, n_heads=4):
+    def __init__(self, h_size, n_heads=4, skip_q=True):
         super().__init__()
         self.h_size = h_size
         self.n_heads = n_heads
+        self.skip_q = skip_q
         
         self.mha = nn.MultiheadAttention(
             h_size, n_heads, dropout=0.0, add_zero_attn=False, batch_first=True
@@ -31,7 +32,8 @@ class SelfAttention(nn.Module):
     def forward(self, x):
         x_ln = self.ln(x)
         attention_value, attn_weighting = self.mha(x_ln, x_ln, x_ln)
-        attention_value = attention_value + x
+        if not self.skip_q:
+            attention_value = attention_value + x
         attention_value = self.ff_self(attention_value) + attention_value
         return attention_value, attn_weighting
 
@@ -114,8 +116,7 @@ class Perceiver_GWT_GWWM(nn.Module):
             n_heads=cross_heads, skip_q=True) # If not skipping, usually blows
         # Self Attention
         if self.use_sa:
-            self.sa = SelfAttention(latent_dim, n_heads=latent_heads)
-        # self.decoder = CrossAttention(self.h_size, self.s_size, skip_q=True)
+            self.sa = SelfAttention(latent_dim, n_heads=latent_heads, skip_q=True)
 
         # Modality embedding
         if self.mod_embed:

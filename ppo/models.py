@@ -773,7 +773,7 @@ class VisualCNNDecoder5(nn.Module):
 ###################################
 
 ###################################
-# region: Audio modules          #
+# region: Audio modules           #
 
 # From ss_baselines/av_nav/models/audio_cnn.py
 class AudioCNN(nn.Module):
@@ -852,7 +852,7 @@ class AudioCNN(nn.Module):
 
         return self.cnn(cnn_input)
 
-# endregion: Audio modules           #
+# endregion: Audio modules        #
 ###################################
 
 

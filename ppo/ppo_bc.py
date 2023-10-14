@@ -26,6 +26,7 @@ from ss_baselines.common.utils import images_to_video_with_audio
 # Custom ActorCritic agent for PPO
 from models import ActorCritic, ActorCritic2, Perceiver_GWT_GWWM_ActorCritic
 from models2 import GWTAgent, GWTAgent_BU, GWTAgent_TD
+from models3 import GWTv3ActorCritic
 
 # Dataset utils
 from torch.utils.data import IterableDataset, DataLoader
@@ -149,7 +150,7 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
     prev_acts = th.zeros([n_eval_envs, 4], device=device)
 
     masks = 1. - done_th[:, None]
-    if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu", "custom-gwt-td"]:
+    if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu", "custom-gwt-td", "gwtv3"]:
         rnn_hidden_state = th.zeros((1, n_eval_envs, args.hidden_size), device=device)
     elif args.agent_type in ["perceiver-gwt-gwwm"]:
         rnn_hidden_state = agent.state_encoder.latents.clone().repeat(n_eval_envs, 1, 1)
@@ -306,7 +307,8 @@ def main():
         get_arg_dict("agent-type", str, "ss-default", metatype="choice",
             choices=["ss-default", "perceiver-gwt-gwwm",
                       "custom-gru",
-                      "custom-gwt", "custom-gwt-bu", "custom-gwt-td"]),
+                      "custom-gwt", "custom-gwt-bu", "custom-gwt-td",
+                      "gwtv3"]),
         get_arg_dict("use-pose", bool, False, metatype="bool"), # Use "pose" field iin observations
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
         ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
@@ -340,6 +342,11 @@ def main():
         ## Custom GWT Agent with BU and TD attentions
         get_arg_dict("gwt-hid-size", int, 512),
         get_arg_dict("gwt-channels", int, 32),
+
+        ## GWTv3 Agent with custom attention, recurrent encoder and null inputs
+        get_arg_dict("gwtv3-use-gw", bool, True, metatype="bool"), # Use GW at Recur. Enc. level
+        get_arg_dict("gwtv3-use-null", bool, True, metatype="bool"), # Use Null at CrossAtt level
+        get_arg_dict("gwtv3-cross-heads", int, 1), # num_heads of the CrossAttn
         
         ## SSL Support
         get_arg_dict("obs-center", bool, False, metatype="bool"), # Centers the rgb_observations' range to [-0.5,0.5]
@@ -470,6 +477,11 @@ def main():
     elif args.agent_type == "perceiver-gwt-gwwm":
         agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space,
             args, extra_rgb=agent_extra_rgb).to(device)
+    elif args.agent_type == "gwtv3":
+        agent = GWTv3ActorCritic(single_observation_space,
+                    single_action_space,
+                    args,
+                    extra_rgb=agent_extra_rgb)
     else:
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 
@@ -592,17 +604,26 @@ def main():
             # Reset optimizer for each chunk over the "trajectory length" axis
             optimizer.zero_grad()
 
-            # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
-            if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu", "custom-gwt-td"]:
+            raise NotImplementedError("Is this where I should init the latent vectors ?!!!")
+
+            # This will be used to recompute the rnn_hidden_strates when computiong the new action logprobs
+            if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu", "custom-gwt-td", "gwtv3"]:
                 rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
             elif args.agent_type in ["perceiver-gwt-gwwm"]:
                 rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)
+            elif args.agent_type in ["gwtv3"]:
+                rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
+                modality_features = {
+                    "audio": rnn_hidden_state.new_zeros([args.batch_chunk_length, args.hidden_size]),
+                    "visual": rnn_hidden_state.new_zeros([args.batch_chunk_length, args.hidden_size])
+                }
             else:
                 raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 
             # TODO: maybe detach the rnn_hidden_state between two chunks ?
             actions, _, _, action_logits, entropies, _, _, ssl_outputs = \
-                agent.act(obs_list, rnn_hidden_state, masks=mask_list, ssl_tasks=args.ssl_tasks) #, prev_actions=prev_actions_list)
+                agent.act(obs_list, rnn_hidden_state, masks=mask_list, 
+                    modality_features=modality_features, ssl_tasks=args.ssl_tasks) #, prev_actions=prev_actions_list)
 
 
             bc_loss = F.cross_entropy(action_logits, action_list.long(),
