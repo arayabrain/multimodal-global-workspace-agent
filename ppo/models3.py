@@ -328,17 +328,17 @@ class CrossAttention(nn.Module):
         q = th.cat([
                 modality_features["audio"], # [B, 1, H]
                 modality_features["visual"], # [B, 1, H]
-            ], dim=1)
+            ], dim=1) # [B, 2, H]
         kv = th.cat([
             modality_features["audio"], # [B, 1, H]
             modality_features["visual"], # [B, 1, H]
             prev_gw[:, None, :] # [B, 1, H]
-            ], dim=1)
+            ], dim=1) # [B, 3, H] so far
         if self.use_null:
             kv = th.cat([
                 kv, # [B, 3, H] by this point
                 kv.new_zeros([B, 1, H]) # Nulls: [B, 1, H]
-            ], dim=1)
+            ], dim=1) # [B, 4, H]
         
         q = self.ln_q(q) # [B, 2, H]
         k = self.ln_k(kv) # [B, X, H], X = 3 or 4
@@ -377,7 +377,7 @@ class GWTv3StateEncoder(nn.Module):
                 nn.init.orthogonal_(param)
             elif "bias" in name:
                 nn.init.constant_(param, 0)
-        
+    
     def forward(self, modality_features, prev_gw, masks):
         """
         - modality_features: dict of:
@@ -456,52 +456,72 @@ class GWTv3ActorCritic(nn.Module):
                 layer = dict([*self.named_modules()])[layer_id]
                 layer.register_forward_hook(self.save_outputs_hook(layer_id))
 
-    def single_forward(self, observations, prev_gw, masks, prev_modality_features):
-        pass
-
-    def seq_forward(self, observations, prev_gw, masks, prev_modality_features):
-        pass
-
     def forward(self, observations, prev_gw, masks, prev_modality_features):
         # TODO: impelemtn sequential mode
+        T_B = observations["spectrogram"].shape[0]
+        T = self.config.num_steps
+        B = T_B // T
+
+        # Undo observation and masks reshape :(
+        observations = {
+            k: v.reshape(T, B, *v.shape[1:]) 
+                for k, v in observations.items()
+                if k in ["spectrogram", "audiogoal", "depth", "rgb"]
+        }
+        masks = masks.reshape(T, B, 1)
+
         modality_features = {}
 
-        # Extracts audio featues
-        # TODO: consider having waveform data too ?
-        audio_features = self.audio_encoder(observations,
-                                prev_modality_features["audio"],
-                                masks,
-                                prev_gw=prev_gw)
-        modality_features["audio"] = audio_features
+        # List of state features for actor-critic
+        gw_list = []
+        modality_features_list = {"audio": [], "visual": []}
 
-        # Extracts vision features
-        ## TODO: consider having
-        ## - rgb and depth simulatenous input as 4 channel dim input
-        ## - deparate encoders for rgb and depth, give one more modality to PGWT
-        if not self.visual_encoder.is_blind:
-            visual_features = self.visual_encoder(observations, 
-                                    prev_modality_features["visual"], 
-                                    masks,
-                                    prev_gw=prev_gw)
-            modality_features["visual"] = visual_features
+        for t in range(T):
+            # Extracts audio featues
+            # TODO: consider having waveform data too ?
+            obs_dict_t = {
+                k: v[t] for k, v in observations.items()
+                if k in ["spectrogram", "audiogoal", "depth", "rgb"]
+            }
+            audio_features = \
+                self.audio_encoder(
+                    obs_dict_t,
+                    prev_modality_features["audio"],
+                    masks[t],
+                    prev_gw=prev_gw)
+            modality_features["audio"] = audio_features
+            modality_features_list["audio"].append(audio_features)
 
-        gw = self.state_encoder(
-            modality_features = {
-                k: v[:, None, :] for k, v in modality_features.items() # Reshape each mod feat to [B, 1, H]
-            },
-            prev_gw=prev_gw,
-            masks=masks
-        ) # [B, num_latents, latent_dim]
+            # Extracts vision features
+            ## TODO: consider having
+            ## - rgb and depth simulatenous input as 4 channel dim input
+            ## - deparate encoders for rgb and depth, give one more modality to PGWT
+            if not self.visual_encoder.is_blind:
+                visual_features = \
+                    self.visual_encoder(
+                        obs_dict_t,
+                        prev_modality_features["visual"], 
+                        masks[t],
+                        prev_gw=prev_gw)
+                modality_features["visual"] = visual_features
+                modality_features_list["visual"].append(visual_features)
 
-        # NOTE: modality_features is re-used in the next step
-        # for recurrence at the encoder level
-        return gw, modality_features # [B, H], {k: [B, H]} for k in "visual", "audio"
+            gw = self.state_encoder(
+                modality_features = {
+                    k: v[:, None, :] for k, v in modality_features.items() # Reshape each mod feat to [B, 1, H]
+                },
+                prev_gw=prev_gw,
+                masks=masks[t]
+            ) # [B, num_latents, latent_dim]
+            gw_list.append(gw)
+
+        # NOTE: returns list of features over the whole traj,
+        # the last "gw" (rnn hidden state) and modality features for the next batch
+        return th.cat(gw_list, dim=0).reshape(T_B, -1), gw, modality_features # [T, B, H], [B, H], {k: [B, H]} for k in "visual", "audio"
 
     def act(self, observations, rnn_hidden_states, masks, modality_features, deterministic=False, actions=None,
                   value_feat_detach=False, actor_feat_detach=False, ssl_tasks=None):
-        gw, modality_features = self(observations, rnn_hidden_states, masks, modality_features)
-
-        features = gw # alias for compat with previous version
+        features, gw, modality_features = self(observations, rnn_hidden_states, masks, modality_features)
 
         # Estimate the value function
         values = self.critic(features.detach() if value_feat_detach else features)
@@ -530,11 +550,14 @@ class GWTv3ActorCritic(nn.Module):
                 else:
                     raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
 
+        modality_features_detached = {
+            k: v.detach() for k,v in modality_features.items()
+        }
         return actions, distribution.probs, action_log_probs, action_logits, \
-               distribution_entropy, values, rnn_hidden_states, modality_features, ssl_outputs
+               distribution_entropy, values, gw.detach(), modality_features_detached, ssl_outputs
     
     def get_value(self, observations, rnn_hidden_states, masks, modality_features):
-        features, _ = self(observations, rnn_hidden_states, masks, modality_features)
+        features, _, _ = self(observations, rnn_hidden_states, masks, modality_features)
 
         return self.critic(features)
 
@@ -542,10 +565,10 @@ class GWTv3ActorCritic(nn.Module):
         modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution", "critic"]
         grad_norm_dict = {mod_name: compute_grad_norm(self.__getattr__(mod_name)) for mod_name in modules}
         # More specific grad norms for the Perceiver GWT GWWM
-        if self.state_encoder.mod_embed:
-            grad_norm_dict["mod_embed"] = compute_grad_norm(self.state_encoder.modality_embeddings)
-        if self.state_encoder.latent_learned:
-            grad_norm_dict["init_rnn_states"] = compute_grad_norm(self.state_encoder.latents)
+        # if exists(self.state_encoder.mod_embed) and self.state_encoder.mod_embed:
+        #     grad_norm_dict["mod_embed"] = compute_grad_norm(self.state_encoder.modality_embeddings)
+        # if self.state_encoder.latent_learned:
+        #     grad_norm_dict["init_rnn_states"] = compute_grad_norm(self.state_encoder.latents)
         
         return grad_norm_dict
     

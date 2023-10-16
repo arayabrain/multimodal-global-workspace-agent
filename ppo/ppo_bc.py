@@ -481,7 +481,7 @@ def main():
         agent = GWTv3ActorCritic(single_observation_space,
                     single_action_space,
                     args,
-                    extra_rgb=agent_extra_rgb)
+                    extra_rgb=agent_extra_rgb).to(device)
     else:
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 
@@ -555,6 +555,20 @@ def main():
     num_updates = args.total_steps // args.batch_size # Total number of updates that will take place in this experiment
     n_updates = 0 # Progressively tracks the number of network updats
 
+    # This will be used to recompute the rnn_hidden_strates when computiong the new action logprobs
+    if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu", "custom-gwt-td"]:
+        rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
+    elif args.agent_type in ["perceiver-gwt-gwwm"]:
+        rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)
+    elif args.agent_type in ["gwtv3"]:
+        rnn_hidden_state = th.zeros((args.batch_chunk_length, args.hidden_size), device=device)
+        modality_features = {
+            "audio": rnn_hidden_state.new_zeros([args.batch_chunk_length, args.hidden_size]),
+            "visual": rnn_hidden_state.new_zeros([args.batch_chunk_length, args.hidden_size])
+        }
+    else:
+        raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+
     # NOTE: 10 * 150 as step to match the training rate of an RL Agent, irrespective of which batch size / batch length is used
     # Ideally, both RL and BC variants should be trained with the same number of steps, with batch of data as similar as possible.
     # In some BC experiments we would use a single expisode as batch trajectory, while RL can have multiple episode cat.ed together
@@ -604,27 +618,11 @@ def main():
             # Reset optimizer for each chunk over the "trajectory length" axis
             optimizer.zero_grad()
 
-            raise NotImplementedError("Is this where I should init the latent vectors ?!!!")
-
-            # This will be used to recompute the rnn_hidden_strates when computiong the new action logprobs
-            if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu", "custom-gwt-td", "gwtv3"]:
-                rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
-            elif args.agent_type in ["perceiver-gwt-gwwm"]:
-                rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)
-            elif args.agent_type in ["gwtv3"]:
-                rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
-                modality_features = {
-                    "audio": rnn_hidden_state.new_zeros([args.batch_chunk_length, args.hidden_size]),
-                    "visual": rnn_hidden_state.new_zeros([args.batch_chunk_length, args.hidden_size])
-                }
-            else:
-                raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
-
             # TODO: maybe detach the rnn_hidden_state between two chunks ?
-            actions, _, _, action_logits, entropies, _, _, ssl_outputs = \
+            actions, _, _, action_logits, \
+            entropies, _, rnn_hidden_state, modality_features, ssl_outputs = \
                 agent.act(obs_list, rnn_hidden_state, masks=mask_list, 
                     modality_features=modality_features, ssl_tasks=args.ssl_tasks) #, prev_actions=prev_actions_list)
-
 
             bc_loss = F.cross_entropy(action_logits, action_list.long(),
                                         weight=ce_weights, reduction="mean")
