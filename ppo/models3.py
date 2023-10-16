@@ -149,7 +149,7 @@ class RecurrentVisualEncoder(nn.Module):
 
             rnn_input_dim = 2304 # TODO: dynamic compute of flattened output
             if self.use_gw:
-                rnn_input_dim += 512 # TODO: make this dynamic / based on config
+                rnn_input_dim += output_size
 
             self.rnn = nn.GRUCell(
                 input_size=rnn_input_dim,
@@ -261,11 +261,11 @@ class RecurrentAudioEncoder(nn.Module):
 
         rnn_input_dim = 2496 # TODO: dynamic compute of flattened output
         if self.use_gw:
-            rnn_input_dim += 512 # TODO: make this dynamic / based on config
+            rnn_input_dim += output_size
         
         self.rnn = nn.GRUCell(
             input_size=rnn_input_dim,
-            hidden_size=512, # TODO: base this on 
+            hidden_size=output_size
         )
 
         layer_init(self.cnn)
@@ -456,10 +456,15 @@ class GWTv3ActorCritic(nn.Module):
                 layer = dict([*self.named_modules()])[layer_id]
                 layer.register_forward_hook(self.save_outputs_hook(layer_id))
 
-    def forward(self, observations, prev_gw, masks, prev_modality_features):
+    def forward(self, observations, prev_gw, masks, prev_modality_features, single_step=False):
         # TODO: impelemtn sequential mode
         T_B = observations["spectrogram"].shape[0]
-        T = self.config.num_steps
+        # NOTE: single_step=True in case of eval where we do process step by step
+        # In that case, the number of parallel eval_envs is expected to be overriden
+        # as env_config.NUM_PROCESSES = 1, which is quite a dirty workaround though.
+        # I.e. this will not scale for more than 1 eval env, although compute limitation
+        # make the latter unlikely anyway.
+        T = self.config.num_steps if not single_step else 1
         B = T_B // T
 
         # Undo observation and masks reshape :(
@@ -520,8 +525,10 @@ class GWTv3ActorCritic(nn.Module):
         return th.cat(gw_list, dim=0).reshape(T_B, -1), gw, modality_features # [T, B, H], [B, H], {k: [B, H]} for k in "visual", "audio"
 
     def act(self, observations, rnn_hidden_states, masks, modality_features, deterministic=False, actions=None,
-                  value_feat_detach=False, actor_feat_detach=False, ssl_tasks=None):
-        features, gw, modality_features = self(observations, rnn_hidden_states, masks, modality_features)
+                  value_feat_detach=False, actor_feat_detach=False, ssl_tasks=None, single_step=False):
+        features, gw, modality_features = self(observations, rnn_hidden_states,
+                                            masks, modality_features, 
+                                            single_step=single_step)
 
         # Estimate the value function
         values = self.critic(features.detach() if value_feat_detach else features)

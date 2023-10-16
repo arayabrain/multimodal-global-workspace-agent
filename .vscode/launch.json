@@ -129,6 +129,10 @@
                 // "--agent-type", "custom-gwt-td",
                 // "--use-pose", "True",
                 
+                // GWT v3 Ablations debugging
+                "--gwtv3-use-gw", "False",
+                "--gwtv3-use-null", "False",
+
                 // Probing debugging
                 // "--num-minibatches", "2",
                 // // GRU2 Baseline

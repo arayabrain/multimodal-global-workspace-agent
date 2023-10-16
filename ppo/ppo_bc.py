@@ -150,10 +150,16 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
     prev_acts = th.zeros([n_eval_envs, 4], device=device)
 
     masks = 1. - done_th[:, None]
-    if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu", "custom-gwt-td", "gwtv3"]:
+    if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu", "custom-gwt-td"]:
         rnn_hidden_state = th.zeros((1, n_eval_envs, args.hidden_size), device=device)
     elif args.agent_type in ["perceiver-gwt-gwwm"]:
         rnn_hidden_state = agent.state_encoder.latents.clone().repeat(n_eval_envs, 1, 1)
+    elif args.agent_type in ["gwtv3"]:
+        rnn_hidden_state = th.zeros((n_eval_envs, args.hidden_size), device=device)
+        modality_features = {
+            "audio": rnn_hidden_state.new_zeros([n_eval_envs, args.hidden_size]),
+            "visual": rnn_hidden_state.new_zeros([n_eval_envs, args.hidden_size])
+        }
     else:
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
     
@@ -174,8 +180,11 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
         obs_th = tensorize_obs_dict(obs, device)
 
         # Sample action
-        action, _, _, _, _, _, rnn_hidden_state, _ = \
-            agent.act(obs_th, rnn_hidden_state, masks=masks, deterministic=True) #, prev_actions=prev_acts if args.prev_actions else None)
+        action, _, _, _, \
+        _, _, rnn_hidden_state, modality_features, _ = \
+            agent.act(obs_th, rnn_hidden_state, masks=masks, 
+            modality_features=modality_features,
+            deterministic=True, single_step=True) #, prev_actions=prev_acts if args.prev_actions else None)
         outputs = eval_envs.step([a[0].item() for a in action])
         obs, reward, done, info = [list(x) for x in zip(*outputs)]
         reward_th = th.Tensor(np.array(reward, dtype=np.float32)).to(device)
