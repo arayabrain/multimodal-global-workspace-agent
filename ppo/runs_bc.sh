@@ -198,6 +198,7 @@ echo "${LD_LIBRARY_PATH}"
       # done
       # endregion: PPO Custom GWT with GRU - BC with default hyparams
 
+      # GWTv2
       # region: PPO Custom GWT with GRU BU - BC with default hyparams
       # for seed in 111 222; do
       #   # export MASTER_PORT=8738 # Default port is 8738
@@ -234,6 +235,7 @@ echo "${LD_LIBRARY_PATH}"
       # done
       # endregion: PPO Custom GWT with GRU BU - BC with default hyparams
 
+      # GWTv1
       # region: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1
       # for seed in 111 222; do
       # for seed in 111 333; do
@@ -286,6 +288,24 @@ echo "${LD_LIBRARY_PATH}"
       #   ) & # >& /dev/null &
       # done
       # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1
+
+      # GWTv3
+      # region: PPO GWTv3 - BC | default setting
+      # for seed in 111 222; do
+      #   export TOTAL_STEPS=20000000
+      #   (sleep 1s && python ppo_bc.py \
+      #     --exp-name "ppo_bc__savi_ss1_rgb_spectro__gwtv3" \
+      #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      #     --agent-type "gwtv3" \
+      #     --save-videos False \
+      #     --ent-coef 0 \
+      #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+      #     --logdir-prefix $LOGDIR_PREFIX \
+      #     --total-steps $TOTAL_STEPS \
+      #     --seed $seed \
+      #   ) & # >& /dev/null &
+      # done
+      # endregion: PPO GWTv3 - BC | default setting
 
     ## RGB + Spectrogram based section, with RGB obs centered at [-0.5, 0.5] instead of [0, 1]
 
