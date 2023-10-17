@@ -142,7 +142,7 @@ def tensorize_obs_dict(obs, device, observations=None, rollout_step=None):
     
     return obs_th
 
-@th.no_grad()
+@th.inference_mode()
 def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_step, n_eval_envs=1, n_episodes=5, save_videos=True, is_SAVi=False):
     obs = eval_envs.reset()
     done = [False for _ in range(n_eval_envs)]

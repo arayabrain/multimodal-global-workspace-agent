@@ -474,7 +474,7 @@ class GWTv3ActorCritic(nn.Module):
         # as env_config.NUM_PROCESSES = 1, which is quite a dirty workaround though.
         # I.e. this will not scale for more than 1 eval env, although compute limitation
         # make the latter unlikely anyway.
-        T = self.config.num_steps if not single_step else 1
+        T = self.config.num_steps if not single_step else 1 # TODO parameterize with n_eval_envs
         B = T_B // T
 
         # Undo observation and masks reshape :(

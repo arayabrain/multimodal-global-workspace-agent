@@ -131,7 +131,7 @@
                 
                 // GWT v3 Ablations debugging
                 // "--gwtv3-use-gw", "False",
-                "--gwtv3-enc-gw-detach", "True",
+                // "--gwtv3-enc-gw-detach", "True",
                 // "--gwtv3-use-null", "False",
                 // "--gwtv3-cross-heads", "4",
 
