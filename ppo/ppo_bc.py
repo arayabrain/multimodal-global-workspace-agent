@@ -354,6 +354,7 @@ def main():
 
         ## GWTv3 Agent with custom attention, recurrent encoder and null inputs
         get_arg_dict("gwtv3-use-gw", bool, True, metatype="bool"), # Use GW at Recur. Enc. level
+        get_arg_dict("gwtv3-enc-gw-detach", bool, False, metatype="bool"), # When using GW at Recurrent Encoder level, whether to detach the grads or not
         get_arg_dict("gwtv3-use-null", bool, True, metatype="bool"), # Use Null at CrossAtt level
         get_arg_dict("gwtv3-cross-heads", int, 1), # num_heads of the CrossAttn
         

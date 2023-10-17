@@ -77,7 +77,7 @@ class RecurrentVisualEncoder(nn.Module):
         output_size: The size of the embedding vector
     """
 
-    def __init__(self, observation_space, output_size, extra_rgb, use_gw=False, obs_center=False):
+    def __init__(self, observation_space, output_size, extra_rgb, use_gw=False, gw_detach=False, obs_center=False):
         super().__init__()
         if "rgb" in observation_space.spaces and not extra_rgb:
             self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
@@ -92,6 +92,7 @@ class RecurrentVisualEncoder(nn.Module):
         self.output_size = output_size
         self.obs_center = obs_center
         self.use_gw = use_gw
+        self.gw_detach = gw_detach
 
         # kernel size for different CNN layers
         self._cnn_layers_kernel_size = [(8, 8), (4, 4), (3, 3)]
@@ -187,7 +188,10 @@ class RecurrentVisualEncoder(nn.Module):
 
         if self.use_gw:
             assert prev_gw is not None, f"RecurVisEnc requires 'gw' tensor when in GW usage mode"
-            rnn_input = th.cat([rnn_input, prev_gw], dim=1)
+            rnn_input = th.cat([
+                rnn_input, 
+                (prev_gw.detach() if self.gw_detach else prev_gw) * masks
+            ], dim=1)
 
         # TODO check prev_states and masks dimensions
         return self.rnn(rnn_input, prev_states * masks)
@@ -207,11 +211,12 @@ class RecurrentAudioEncoder(nn.Module):
         output_size: The size of the embedding vector
     """
 
-    def __init__(self, observation_space, output_size, audiogoal_sensor, use_gw=False):
+    def __init__(self, observation_space, output_size, audiogoal_sensor, use_gw=False, gw_detach=False):
         super().__init__()
         self._n_input_audio = observation_space.spaces[audiogoal_sensor].shape[2]
         self._audiogoal_sensor = audiogoal_sensor
         self.use_gw = use_gw
+        self.gw_detach = gw_detach
 
         cnn_dims = np.array(
             observation_space.spaces[audiogoal_sensor].shape[:2], dtype=np.float32
@@ -284,7 +289,10 @@ class RecurrentAudioEncoder(nn.Module):
 
         if self.use_gw:
             assert prev_gw is not None, f"RecurAudEnc requires 'gw' tensor when in GW usage mode"
-            rnn_input = th.cat([rnn_input, prev_gw], dim=1)
+            rnn_input = th.cat([
+                rnn_input, 
+                (prev_gw.detach() if self.gw_detach else prev_gw) * masks
+            ], dim=1)
 
         return self.rnn(rnn_input, prev_states * masks)
 
@@ -401,7 +409,7 @@ class GWTv3StateEncoder(nn.Module):
         )
 
         return rnn_output
-    
+
 
 # endregion: GWT v3 Custom Attention #
 ######################################
@@ -423,13 +431,15 @@ class GWTv3ActorCritic(nn.Module):
             observation_space, 
             config.hidden_size,
             extra_rgb=extra_rgb,
-            use_gw=config.gwtv3_use_gw
+            use_gw=config.gwtv3_use_gw,
+            gw_detach=config.gwtv3_enc_gw_detach
         )
         self.audio_encoder = RecurrentAudioEncoder(
             observation_space,
             config.hidden_size,
             "spectrogram",
-            use_gw=config.gwtv3_use_gw
+            use_gw=config.gwtv3_use_gw,
+            gw_detach=config.gwtv3_enc_gw_detach
         )
         
         self.state_encoder = GWTv3StateEncoder(
