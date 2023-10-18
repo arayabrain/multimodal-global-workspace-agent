@@ -307,6 +307,25 @@ echo "${LD_LIBRARY_PATH}"
       # done
       # endregion: PPO GWTv3 - BC | default setting
 
+      # region: PPO GWTv3 - BC | no gw at rec enc level, no null
+      # for seed in 111 222; do
+      #   export TOTAL_STEPS=20000000
+      #   (sleep 1s && python ppo_bc.py \
+      #     --exp-name "ppo_bc__savi_ss1_rgb_spectro__gwtv3__nogw_nonull" \
+      #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      #     --agent-type "gwtv3" \
+      #     --gwtv3-use-gw "False" \
+      #     --gwtv3-use-null "False" \
+      #     --save-videos False \
+      #     --ent-coef 0 \
+      #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+      #     --logdir-prefix $LOGDIR_PREFIX \
+      #     --total-steps $TOTAL_STEPS \
+      #     --seed $seed \
+      #   ) & # >& /dev/null &
+      # done
+      # endregion: PPO GWTv3 - BC | no gw at rec enc level, no null
+
     ## RGB + Spectrogram based section, with RGB obs centered at [-0.5, 0.5] instead of [0, 1]
 
       # region: PPO GRU - BC with default hyparams

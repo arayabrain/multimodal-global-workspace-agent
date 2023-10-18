@@ -8,6 +8,9 @@ import torch.nn.functional as F
 
 from ss_baselines.av_nav.ppo.policy import CriticHead
 
+# From ss_baselines/av_nav/models/visual_cnn.py
+from ss_baselines.common.utils import CategoricalNet, CategoricalNet2, Flatten
+
 # General helpers
 def compute_grad_norm(model):
     if isinstance(model, nn.Parameter):
@@ -28,8 +31,6 @@ def compute_grad_norm(model):
 ###################################
 # region: Vision modules          #
 
-# From ss_baselines/av_nav/models/visual_cnn.py
-from ss_baselines.common.utils import CategoricalNet, CategoricalNet2, Flatten
 
 def conv_output_dim(dimension, padding, dilation, kernel_size, stride):
     r"""Calculates the output height and width based on the input
@@ -187,13 +188,12 @@ class RecurrentVisualEncoder(nn.Module):
         rnn_input = self.cnn(cnn_input)
 
         if self.use_gw:
-            assert prev_gw is not None, f"RecurVisEnc requires 'gw' tensor when in GW usage mode"
+            assert prev_gw is not None, "RecurVisEnc requires 'gw' tensor when in GW usage mode"
             rnn_input = th.cat([
                 rnn_input, 
                 (prev_gw.detach() if self.gw_detach else prev_gw) * masks
             ], dim=1)
 
-        # TODO check prev_states and masks dimensions
         return self.rnn(rnn_input, prev_states * masks)
 
 # endregion: Vision modules       #
@@ -288,7 +288,7 @@ class RecurrentAudioEncoder(nn.Module):
         rnn_input = self.cnn(cnn_input)
 
         if self.use_gw:
-            assert prev_gw is not None, f"RecurAudEnc requires 'gw' tensor when in GW usage mode"
+            assert prev_gw is not None, "RecurAudEnc requires 'gw' tensor when in GW usage mode"
             rnn_input = th.cat([
                 rnn_input, 
                 (prev_gw.detach() if self.gw_detach else prev_gw) * masks
