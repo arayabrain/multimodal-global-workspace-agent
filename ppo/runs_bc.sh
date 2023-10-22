@@ -14,8 +14,8 @@ fi
 
 # echo $PATH
 # TODO: Fix the issue that requires this kind of hardcoding
-export LD_LIBRARY_PATH="/usr/local/cudnn-8.4.1_cuda_11.x:/usr/local/cuda-11.7/lib64:"
-echo "${LD_LIBRARY_PATH}"
+# export LD_LIBRARY_PATH="/usr/local/cudnn-8.4.1_cuda_11.x:/usr/local/cuda-11.7/lib64:"
+# echo "${LD_LIBRARY_PATH}"
 
 # region: PPO BC #
 
@@ -325,6 +325,46 @@ echo "${LD_LIBRARY_PATH}"
       #   ) & # >& /dev/null &
       # done
       # endregion: PPO GWTv3 - BC | no gw at rec enc level, no null
+
+      # region: PPO GWTv3 - BC | gw at rec enc level, detached, no null
+      # for seed in 111 222; do
+      #   export TOTAL_STEPS=20000000
+      #   (sleep 1s && python ppo_bc.py \
+      #     --exp-name "ppo_bc__savi_ss1_rgb_spectro__gwtv3__gw_detach__nonull" \
+      #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      #     --agent-type "gwtv3" \
+      #     --gwtv3-use-gw "False" \
+      #     --gwtv3-use-null "False" \
+      #     --gwtv3-enc-gw-detach True \
+      #     --save-videos False \
+      #     --ent-coef 0 \
+      #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+      #     --logdir-prefix $LOGDIR_PREFIX \
+      #     --total-steps $TOTAL_STEPS \
+      #     --seed $seed \
+      #   ) & # >& /dev/null &
+      # done
+      # endregion: PPO GWTv3 - BC | gw at rec enc level, detached, no null
+
+      # region: PPO GWTv3 - BC | gw at rec enc level, detached, use null
+      # for seed in 111 222; do
+      #   export TOTAL_STEPS=20000000
+      #   (sleep 1s && python ppo_bc.py \
+      #     --exp-name "ppo_bc__savi_ss1_rgb_spectro__gwtv3__gw_detach__usenull" \
+      #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      #     --agent-type "gwtv3" \
+      #     --gwtv3-use-gw "False" \
+      #     --gwtv3-use-null "True" \
+      #     --gwtv3-enc-gw-detach True \
+      #     --save-videos False \
+      #     --ent-coef 0 \
+      #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+      #     --logdir-prefix $LOGDIR_PREFIX \
+      #     --total-steps $TOTAL_STEPS \
+      #     --seed $seed \
+      #   ) & # >& /dev/null &
+      # done
+      # endregion: PPO GWTv3 - BC | gw at rec enc level, detached, use null
 
     ## RGB + Spectrogram based section, with RGB obs centered at [-0.5, 0.5] instead of [0, 1]
 
