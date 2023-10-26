@@ -16,7 +16,6 @@ from configurator import generate_args, get_arg_dict
 from th_logger import TBXLogger as TBLogger
 
 # Env deps: Soundspaces and Habitat
-from habitat.datasets import make_dataset
 from ss_baselines.av_nav.config import get_config
 from ss_baselines.savi.config.default import get_config as get_savi_config
 from ss_baselines.common.env_utils import construct_envs
@@ -357,6 +356,8 @@ def main():
         get_arg_dict("gwtv3-enc-gw-detach", bool, False, metatype="bool"), # When using GW at Recurrent Encoder level, whether to detach the grads or not
         get_arg_dict("gwtv3-use-null", bool, True, metatype="bool"), # Use Null at CrossAtt level
         get_arg_dict("gwtv3-cross-heads", int, 1), # num_heads of the CrossAttn
+        get_arg_dict("gwtv3-gru-type", str, "default", metatype="choice",
+                     choices=["default", "layernorm"]),
         
         ## SSL Support
         get_arg_dict("obs-center", bool, False, metatype="bool"), # Centers the rgb_observations' range to [-0.5,0.5]
@@ -562,7 +563,7 @@ def main():
 
     # Training start
     start_time = time.time()
-    num_updates = args.total_steps // args.batch_size # Total number of updates that will take place in this experiment
+    # num_updates = args.total_steps // args.batch_size # Total number of updates that will take place in this experiment
     n_updates = 0 # Progressively tracks the number of network updats
 
     # This will be used to recompute the rnn_hidden_strates when computiong the new action logprobs
@@ -644,7 +645,7 @@ def main():
                     ssl_task_coef = 1 if args.ssl_task_coefs is None else float(args.ssl_task_coefs[i])
                     if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3", "rec-rgb-ae-4"
                                     "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4", "rec-rgb-vis-ae-5"]:
-                        assert args.obs_center, f"SSL task rec-rgb expects having args.obs_center = True, which is not the case now."
+                        assert args.obs_center, "SSL task rec-rgb expects having args.obs_center = True, which is not the case now."
                         rec_rgb_mean = ssl_outputs[ssl_task]
                         rec_rgb_dist = th.distributions.Independent(
                             th.distributions.Normal(rec_rgb_mean, 1), 3)

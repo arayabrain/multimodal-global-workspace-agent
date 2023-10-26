@@ -28,6 +28,40 @@ def compute_grad_norm(model):
     else:
         raise NotImplementedError(f"Unsupported grad norm computation of {type(model)}")
 
+# region: Custom recurrent Layer
+class GRUCell(nn.Module):
+
+  def __init__(self, inp_size,
+               size, norm=False, act=th.tanh, update_bias=-1):
+    super(GRUCell, self).__init__()
+    self._inp_size = inp_size
+    self._size = size
+    self._act = act
+    self._norm = norm
+    self._update_bias = update_bias
+    self._layer = nn.Linear(inp_size+size, 3*size,
+                            bias=norm is not None)
+    if norm:
+      self._norm = nn.LayerNorm(3*size)
+
+  @property
+  def state_size(self):
+    return self._size
+
+  def forward(self, inputs, state):
+    # NOTE: Removing the line below, we get closer structure to PyTorch instead.
+    # state = state[0]  # Keras wraps the state in a list.
+    parts = self._layer(th.cat([inputs, state], -1))
+    if self._norm:
+      parts = self._norm(parts)
+    reset, cand, update = th.split(parts, [self._size]*3, -1)
+    reset = th.sigmoid(reset)
+    cand = self._act(reset * cand)
+    update = th.sigmoid(update + self._update_bias)
+    output = update * cand + (1 - update) * state
+    return output
+# endregion: Custom recurrent Layer
+
 ###################################
 # region: Vision modules          #
 
@@ -78,7 +112,7 @@ class RecurrentVisualEncoder(nn.Module):
         output_size: The size of the embedding vector
     """
 
-    def __init__(self, observation_space, output_size, extra_rgb, use_gw=False, gw_detach=False, obs_center=False):
+    def __init__(self, observation_space, output_size, extra_rgb, use_gw=False, gw_detach=False, gru_type="default", obs_center=False):
         super().__init__()
         if "rgb" in observation_space.spaces and not extra_rgb:
             self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
@@ -153,10 +187,17 @@ class RecurrentVisualEncoder(nn.Module):
             if self.use_gw:
                 rnn_input_dim += output_size
 
-            self.rnn = nn.GRUCell(
-                input_size=rnn_input_dim,
-                hidden_size=output_size,
-            )
+            if gru_type == "default":
+                self.rnn = nn.GRUCell(
+                    input_size=rnn_input_dim,
+                    hidden_size=output_size,
+                )
+            elif gru_type == "layernorm":
+                self.rnn = GRUCell(
+                    rnn_input_dim,
+                    output_size,
+                    norm=True
+                )
 
         layer_init(self.cnn)
 
@@ -211,7 +252,7 @@ class RecurrentAudioEncoder(nn.Module):
         output_size: The size of the embedding vector
     """
 
-    def __init__(self, observation_space, output_size, audiogoal_sensor, use_gw=False, gw_detach=False):
+    def __init__(self, observation_space, output_size, audiogoal_sensor, use_gw=False, gw_detach=False, gru_type="default",):
         super().__init__()
         self._n_input_audio = observation_space.spaces[audiogoal_sensor].shape[2]
         self._audiogoal_sensor = audiogoal_sensor
@@ -268,11 +309,18 @@ class RecurrentAudioEncoder(nn.Module):
         if self.use_gw:
             rnn_input_dim += output_size
         
-        self.rnn = nn.GRUCell(
-            input_size=rnn_input_dim,
-            hidden_size=output_size
-        )
-
+        if gru_type == "default":
+            self.rnn = nn.GRUCell(
+                input_size=rnn_input_dim,
+                hidden_size=output_size,
+            )
+        elif gru_type == "layernorm":
+            self.rnn = GRUCell(
+                rnn_input_dim,
+                output_size,
+                norm=True
+            )
+        
         layer_init(self.cnn)
 
     def forward(self, observations, prev_states, masks, prev_gw=None):
@@ -362,7 +410,8 @@ class GWTv3StateEncoder(nn.Module):
                  ca_q_size,
                  ca_kv_size,
                  ca_n_heads=1,
-                 ca_use_null=True):
+                 ca_use_null=True,
+                 gru_type="default"):
         super().__init__()
 
         # CrossAttention module
@@ -374,17 +423,25 @@ class GWTv3StateEncoder(nn.Module):
         )
 
         # RNN module
-        self.rnn = nn.GRUCell(
-            input_size=input_size,
-            hidden_size=hidden_size,
-        )
+        if gru_type == "default":
+            self.rnn = nn.GRUCell(
+                input_size=input_size,
+                hidden_size=hidden_size,
+            )
 
-        # Custom RNN params. init
-        for name, param in self.rnn.named_parameters():
-            if "weight" in name:
-                nn.init.orthogonal_(param)
-            elif "bias" in name:
-                nn.init.constant_(param, 0)
+            # Custom RNN params. init
+            for name, param in self.rnn.named_parameters():
+                if "weight" in name:
+                    nn.init.orthogonal_(param)
+                elif "bias" in name:
+                    nn.init.constant_(param, 0)
+
+        elif gru_type == "layernorm":
+            self.rnn = GRUCell(
+                input_size,
+                hidden_size,
+                norm=True
+            )
     
     def forward(self, modality_features, prev_gw, masks):
         """
@@ -432,14 +489,16 @@ class GWTv3ActorCritic(nn.Module):
             config.hidden_size,
             extra_rgb=extra_rgb,
             use_gw=config.gwtv3_use_gw,
-            gw_detach=config.gwtv3_enc_gw_detach
+            gw_detach=config.gwtv3_enc_gw_detach,
+            gru_type=config.gwtv3_gru_type,
         )
         self.audio_encoder = RecurrentAudioEncoder(
             observation_space,
             config.hidden_size,
             "spectrogram",
             use_gw=config.gwtv3_use_gw,
-            gw_detach=config.gwtv3_enc_gw_detach
+            gw_detach=config.gwtv3_enc_gw_detach,
+            gru_type=config.gwtv3_gru_type,
         )
         
         self.state_encoder = GWTv3StateEncoder(
@@ -448,7 +507,8 @@ class GWTv3ActorCritic(nn.Module):
             ca_q_size=config.hidden_size,
             ca_kv_size=config.hidden_size,
             ca_n_heads=config.gwtv3_cross_heads,
-            ca_use_null=config.gwtv3_use_null
+            ca_use_null=config.gwtv3_use_null,
+            gru_type=config.gwtv3_gru_type,
         )
 
         self.action_distribution = CategoricalNet(config.hidden_size, action_space.n) # Policy fn

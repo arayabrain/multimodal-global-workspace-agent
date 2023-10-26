@@ -134,6 +134,7 @@
                 // "--gwtv3-enc-gw-detach", "True",
                 // "--gwtv3-use-null", "False",
                 // "--gwtv3-cross-heads", "4",
+                // "--gwtv3-gru-type", "layernorm",
 
                 // Probing debugging
                 // "--num-minibatches", "2",
