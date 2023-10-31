@@ -606,6 +606,7 @@ class VisualCNNDecoder3(nn.Module):
         # Reference visual encoder that will be mirrored
         # self.visual_encoder = visual_encoder
         output_size = visual_encoder.output_size
+        cnn_dims = visual_encoder.cnn_dims
 
         if visual_encoder.is_blind:
             self.cnn = nn.Sequential()
