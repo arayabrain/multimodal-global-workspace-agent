@@ -83,6 +83,8 @@
                 
                 // "--prev-actions", "True",
                 // "--eval-every", "1000",
+                "--ent-coef", "0.2", 
+                "--dataset-ce-weights", "False",
                 // "--ce-weights", "1", "1", "1", "1",
                 // "--ce-weights", "3.67", "0.58", "0.92", "1.10",
                 // "--batch-chunk-length", "32",
@@ -104,10 +106,10 @@
                 "--total-steps", "5000",
                 "--save-videos", "False",
                 // With eval
-                "--eval", "True",
-                "--eval-every", "500",
+                // "--eval", "True",
+                // "--eval-every", "500",
                 // Without eval
-                // "--eval", "False",
+                "--eval", "False",
 
                 "--num-envs", "2",
                 "--num-steps", "15",
