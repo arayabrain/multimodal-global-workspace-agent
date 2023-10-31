@@ -333,7 +333,7 @@ fi
       #     --exp-name "ppo_bc__savi_ss1_rgb_spectro__gwtv3__gw_detach__nonull" \
       #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
       #     --agent-type "gwtv3" \
-      #     --gwtv3-use-gw "False" \
+      #     --gwtv3-use-gw "True" \
       #     --gwtv3-use-null "False" \
       #     --gwtv3-enc-gw-detach True \
       #     --save-videos False \
@@ -353,7 +353,7 @@ fi
       #     --exp-name "ppo_bc__savi_ss1_rgb_spectro__gwtv3__gw_detach__usenull" \
       #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
       #     --agent-type "gwtv3" \
-      #     --gwtv3-use-gw "False" \
+      #     --gwtv3-use-gw "True" \
       #     --gwtv3-use-null "True" \
       #     --gwtv3-enc-gw-detach True \
       #     --save-videos False \
@@ -367,24 +367,24 @@ fi
       # endregion: PPO GWTv3 - BC | gw at rec enc level, detached, use null
 
       # region: PPO GWTv3 - BC | gw at rec enc level, detached, use null, GRU Layer Norm
-      # for seed in 111 222; do
-      #   export TOTAL_STEPS=20000000
-      #   (sleep 1s && python ppo_bc.py \
-      #     --exp-name "ppo_bc__savi_ss1_rgb_spectro__gwtv3__gw_detach__usenull__grulynrm" \
-      #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
-      #     --agent-type "gwtv3" \
-      #     --gwtv3-use-gw "False" \
-      #     --gwtv3-use-null "True" \
-      #     --gwtv3-enc-gw-detach True \
-      #     --gwtv3-gru-type "layernorm" \
-      #     --save-videos False \
-      #     --ent-coef 0 \
-      #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
-      #     --logdir-prefix $LOGDIR_PREFIX \
-      #     --total-steps $TOTAL_STEPS \
-      #     --seed $seed \
-      #   ) & # >& /dev/null &
-      # done
+      for seed in 111 222; do
+        export TOTAL_STEPS=20000000
+        (sleep 1s && python ppo_bc.py \
+          --exp-name "ppo_bc__savi_ss1_rgb_spectro__gwtv3__gw_detach__usenull__grulynrm" \
+          --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+          --agent-type "gwtv3" \
+          --gwtv3-use-gw "True" \
+          --gwtv3-use-null "True" \
+          --gwtv3-enc-gw-detach True \
+          --gwtv3-gru-type "layernorm" \
+          --save-videos False \
+          --ent-coef 0 \
+          --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+          --logdir-prefix $LOGDIR_PREFIX \
+          --total-steps $TOTAL_STEPS \
+          --seed $seed \
+        ) & # >& /dev/null &
+      done
       # endregion: PPO GWTv3 - BC | gw at rec enc level, detached, use null, GRU Layer Norm
 
     ## RGB + Spectrogram based section, with RGB obs centered at [-0.5, 0.5] instead of [0, 1]
