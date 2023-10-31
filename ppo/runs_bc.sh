@@ -347,23 +347,23 @@ fi
       # endregion: PPO GWTv3 - BC | gw at rec enc level, detached, no null
 
       # region: PPO GWTv3 - BC | gw at rec enc level, detached, use null
-      for seed in 111 222; do
-        export TOTAL_STEPS=20000000
-        (sleep 1s && python ppo_bc.py \
-          --exp-name "ppo_bc__savi_ss1_rgb_spectro__gwtv3__gw_detach__usenull__gwfix" \
-          --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
-          --agent-type "gwtv3" \
-          --gwtv3-use-gw "True" \
-          --gwtv3-use-null "True" \
-          --gwtv3-enc-gw-detach True \
-          --save-videos False \
-          --ent-coef 0 \
-          --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
-          --logdir-prefix $LOGDIR_PREFIX \
-          --total-steps $TOTAL_STEPS \
-          --seed $seed \
-        ) & # >& /dev/null &
-      done
+      # for seed in 111 222; do
+      #   export TOTAL_STEPS=20000000
+      #   (sleep 1s && python ppo_bc.py \
+      #     --exp-name "ppo_bc__savi_ss1_rgb_spectro__gwtv3__gw_detach__usenull__gwfix" \
+      #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      #     --agent-type "gwtv3" \
+      #     --gwtv3-use-gw "True" \
+      #     --gwtv3-use-null "True" \
+      #     --gwtv3-enc-gw-detach True \
+      #     --save-videos False \
+      #     --ent-coef 0 \
+      #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+      #     --logdir-prefix $LOGDIR_PREFIX \
+      #     --total-steps $TOTAL_STEPS \
+      #     --seed $seed \
+      #   ) & # >& /dev/null &
+      # done
       # endregion: PPO GWTv3 - BC | gw at rec enc level, detached, use null
 
       # region: PPO GWTv3 - BC | gw at rec enc level, detached, use null, GRU Layer Norm
