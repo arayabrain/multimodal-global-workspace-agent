@@ -104,10 +104,10 @@
                 "--total-steps", "5000",
                 "--save-videos", "False",
                 // With eval
-                // "--eval", "True",
-                // "--eval-every", "500",
+                "--eval", "True",
+                "--eval-every", "500",
                 // Without eval
-                "--eval", "False",
+                // "--eval", "False",
 
                 "--num-envs", "2",
                 "--num-steps", "15",
@@ -130,11 +130,11 @@
                 // "--use-pose", "True",
                 
                 // GWT v3 Ablations debugging
-                // "--gwtv3-use-gw", "False",
-                // "--gwtv3-enc-gw-detach", "True",
-                // "--gwtv3-use-null", "False",
+                "--gwtv3-use-gw", "True",
+                "--gwtv3-enc-gw-detach", "True",
+                "--gwtv3-use-null", "True",
                 // "--gwtv3-cross-heads", "4",
-                // "--gwtv3-gru-type", "layernorm",
+                "--gwtv3-gru-type", "layernorm",
 
                 // Probing debugging
                 // "--num-minibatches", "2",

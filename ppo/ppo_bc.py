@@ -146,7 +146,7 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
     obs = eval_envs.reset()
     done = [False for _ in range(n_eval_envs)]
     done_th = th.Tensor(done).to(device)
-    prev_acts = th.zeros([n_eval_envs, 4], device=device)
+    # prev_acts = th.zeros([n_eval_envs, 4], device=device)
 
     masks = 1. - done_th[:, None]
     if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu", "custom-gwt-td"]:
@@ -167,6 +167,8 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
     window_episode_stats = {}
     # Variables to track episodic return, videos, and other SS relevant stats
     current_episode_return = th.zeros(n_eval_envs, 1).to(device)
+    current_episode_entropy = th.zeros(n_eval_envs, 1).to(device)
+    current_episode_length = th.zeros(n_eval_envs, 1).to(device)
 
     eval_video_data_env_0 = {
         "rgb": [], "depth": [],
@@ -180,7 +182,7 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
 
         # Sample action
         action, _, _, _, \
-        _, _, rnn_hidden_state, modality_features, _ = \
+        entropies, _, rnn_hidden_state, modality_features, _ = \
             agent.act(obs_th, rnn_hidden_state, masks=masks, 
             modality_features=modality_features,
             deterministic=True, single_step=True) #, prev_actions=prev_acts if args.prev_actions else None)
@@ -192,11 +194,13 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
         # episodic return. Anyway to make this more efficient ?
         done_th = th.Tensor(done).to(device)
         masks = 1. - done_th[:, None]
-        prev_acts = F.one_hot(action[:, 0], 4) * masks
+        # prev_acts = F.one_hot(action[:, 0], 4) * masks
         
         # Tracking episode return
         # TODO: keep this on GPU for more efficiency ? We log less than we update, so ...
         current_episode_return += reward_th[:, None]
+        current_episode_entropy += entropies[:, None]
+        current_episode_length += 1
 
         if save_videos:
             # Accumulate data for video + audio rendering
@@ -239,7 +243,8 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
                 eval_video_data_env_0 = {
                     "rgb": [], "depth": [],
                     "audiogoal": [], "spectrogram": [],
-                    "actions": [], "top_down_map": []
+                    "actions": [], "top_down_map": [],
+                    "entropies": []
                 }
 
         if True in done: # At least one env has reached terminal state
@@ -273,12 +278,17 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
                 if "last_actions" not in list(window_episode_stats.keys()):
                     window_episode_stats["last_actions"] = deque(maxlen=n_episodes)
                 window_episode_stats["last_actions"].extend([action[i].item() for i in env_done_idxs])
+                if "entropy" not in list(window_episode_stats.keys()):
+                    window_episode_stats["entropy"] = []
+                window_episode_stats["entropy"].extend([(current_episode_entropy / current_episode_length)[i].item() for i in env_done_idxs])
             
             # Track total number of episodes
             n_finished_episodes += len(env_done_idxs)
         
         # Resets the episodic return tracker
         current_episode_return *= masks
+        current_episode_entropy *= masks
+        current_episode_length *= masks
 
     return window_episode_stats
 
