@@ -11,6 +11,13 @@ from ss_baselines.av_nav.ppo.policy import CriticHead
 # From ss_baselines/av_nav/models/visual_cnn.py
 from ss_baselines.common.utils import CategoricalNet, CategoricalNet2, Flatten
 
+GWTAGENT_DEFAULT_ANALYSIS_LAYER_NAMES = [
+  "visual_encoder", "audio_encoder",
+  "state_encoder",
+  "action_distribution",
+  "critic"
+]
+
 # General helpers
 def compute_grad_norm(model):
     if isinstance(model, nn.Parameter):
