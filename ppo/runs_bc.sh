@@ -290,26 +290,6 @@ fi
       # endregion: Custom PPO + Perceiver GWT GWWM Basic Arch. NoSA Cross Heads 1 SA Heads 4 mod_emb 0 CA Prev Latents; RGB + Spectrogram SS1
 
       # GWTv3
-      # region: PPO GWTv3 - BC | gw at rec enc level, detached, use null, GRU Layer Norm
-      # for seed in 111 222; do
-      #   export TOTAL_STEPS=20000000
-      #   (sleep 1s && python ppo_bc.py \
-      #     --exp-name "ppo_bc__savi_ss1_rgb_spectro__gwtv3__gw_detach__usenull__grulynrm__gwfix" \
-      #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
-      #     --agent-type "gwtv3" \
-      #     --gwtv3-use-gw "True" \
-      #     --gwtv3-use-null "True" \
-      #     --gwtv3-enc-gw-detach True \
-      #     --gwtv3-gru-type "layernorm" \
-      #     --save-videos False \
-      #     --ent-coef 0 \
-      #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
-      #     --logdir-prefix $LOGDIR_PREFIX \
-      #     --total-steps $TOTAL_STEPS \
-      #     --seed $seed \
-      #   ) & # >& /dev/null &
-      # done
-      # endregion: PPO GWTv3 - BC | gw at rec enc level, detached, use null, GRU Layer Norm
 
       # region: PPO GWTv3 - BC | gw at rec enc level, detached, use null, GRU Layer Norm, entropy reg 0.2, no ce weights
       # for seed in 111 222; do
@@ -332,6 +312,48 @@ fi
       #   ) & # >& /dev/null &
       # done
       # endregion: PPO GWTv3 - BC | gw at rec enc level, detached, use null, GRU Layer Norm, entropy reg 0.2, no ce weights
+
+      # region: PPO GRUv3 - BC | gw at rec enc level, detached; GRU Layer Norm, entropy reg 0.2, no ce weights
+      for seed in 111 222; do
+        export TOTAL_STEPS=20000000
+        (sleep 1s && python ppo_bc.py \
+          --exp-name "ppo_bc__savi_ss1_rgb_spectro__gruv3__gw_detach__grulynrm__entcoef_0.2__no_cew" \
+          --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+          --ent-coef 0.2 \
+          --dataset-ce-weights "False" \
+          --agent-type "gruv3" \
+          --gwtv3-use-gw "True" \
+          --gwtv3-enc-gw-detach True \
+          --gwtv3-gru-type "layernorm" \
+          --save-videos False \
+          --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+          --logdir-prefix $LOGDIR_PREFIX \
+          --total-steps $TOTAL_STEPS \
+          --seed $seed \
+        ) & # >& /dev/null &
+      done
+      # endregion: PPO GRUv3 - BC | gw at rec enc level, detached; GRU Layer Norm, entropy reg 0.2, no ce weights
+
+      # region: PPO GWTv3 - BC | gw at rec enc level, detached, use null, GRU Layer Norm
+      # for seed in 111 222; do
+      #   export TOTAL_STEPS=20000000
+      #   (sleep 1s && python ppo_bc.py \
+      #     --exp-name "ppo_bc__savi_ss1_rgb_spectro__gwtv3__gw_detach__usenull__grulynrm__gwfix" \
+      #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      #     --agent-type "gwtv3" \
+      #     --gwtv3-use-gw "True" \
+      #     --gwtv3-use-null "True" \
+      #     --gwtv3-enc-gw-detach True \
+      #     --gwtv3-gru-type "layernorm" \
+      #     --save-videos False \
+      #     --ent-coef 0 \
+      #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
+      #     --logdir-prefix $LOGDIR_PREFIX \
+      #     --total-steps $TOTAL_STEPS \
+      #     --seed $seed \
+      #   ) & # >& /dev/null &
+      # done
+      # endregion: PPO GWTv3 - BC | gw at rec enc level, detached, use null, GRU Layer Norm
 
     ## RGB + Spectrogram based section, with RGB obs centered at [-0.5, 0.5] instead of [0, 1]
 

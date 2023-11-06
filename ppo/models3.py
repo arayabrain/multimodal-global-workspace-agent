@@ -355,7 +355,7 @@ class RecurrentAudioEncoder(nn.Module):
 ###################################
 
 ######################################
-# region: GWT v3 Custom Attention    #
+# region: GWT v3 GW modules          #
 
 class CrossAttention(nn.Module):
     def __init__(self, q_size, kv_size, n_heads=1, use_null=True):
@@ -474,8 +474,56 @@ class GWTv3StateEncoder(nn.Module):
 
         return rnn_output
 
+class GRUStateEncoder(nn.Module):
+    def __init__(self, 
+                input_size,
+                hidden_size,
+                gru_type="default"):
+        super().__init__()
 
-# endregion: GWT v3 Custom Attention #
+        # RNN module
+        if gru_type == "default":
+            self.rnn = nn.GRUCell(
+                input_size=input_size,
+                hidden_size=hidden_size,
+            )
+
+            # Custom RNN params. init
+            for name, param in self.rnn.named_parameters():
+                if "weight" in name:
+                    nn.init.orthogonal_(param)
+                elif "bias" in name:
+                    nn.init.constant_(param, 0)
+
+        elif gru_type == "layernorm":
+            self.rnn = GRUCell(
+                input_size,
+                hidden_size,
+                norm=True
+            )
+
+    def forward(self, modality_features, prev_gw, masks):
+        """
+        - modality_features: dict of:
+            - "visual": [B, 1, H]
+            - "audio": [B, 1, H]
+        - prev_gw: [B, H] or [1, B, H] for compat. with SS1.0
+            This is the previous global workspace
+        - masks: [B, 1], marks episode end / start
+            Used to init prev_gw when a new episode starts
+        """
+
+        x = th.cat([
+            modality_features["audio"][:, 0, :], # [B, H]
+            modality_features["visual"][:, 0, :], # [B, H]
+            ], dim=1)
+        rnn_output = self.rnn(
+            x,
+            prev_gw * masks, # [B, H]
+        )
+
+        return rnn_output
+# endregion: GWT v3 GW modules       #
 ######################################
 
 ###################################
@@ -662,4 +710,186 @@ class GWTv3ActorCritic(nn.Module):
         return fn
 
 # endregion: GWT v3 Agent         #
+###################################
+
+###################################
+# region: GRU v1 Baseline         #
+
+class ActorCritic_GRUBaseline(nn.Module):
+    def __init__(self,
+                    observation_space,
+                    action_space,
+                    config,
+                    extra_rgb=False,
+                    analysis_layers=[]):
+        super().__init__()
+        self.config = config
+
+        self.visual_encoder = RecurrentVisualEncoder(
+            observation_space, 
+            config.hidden_size,
+            extra_rgb=extra_rgb,
+            use_gw=config.gwtv3_use_gw,
+            gw_detach=config.gwtv3_enc_gw_detach,
+            gru_type=config.gwtv3_gru_type,
+        )
+        self.audio_encoder = RecurrentAudioEncoder(
+            observation_space,
+            config.hidden_size,
+            "spectrogram",
+            use_gw=config.gwtv3_use_gw,
+            gw_detach=config.gwtv3_enc_gw_detach,
+            gru_type=config.gwtv3_gru_type,
+        )
+        
+        self.state_encoder = GRUStateEncoder(
+            input_size=config.hidden_size * 2,
+            hidden_size=config.hidden_size,
+            gru_type=config.gwtv3_gru_type,
+        )
+
+        self.action_distribution = CategoricalNet(config.hidden_size, action_space.n) # Policy fn
+        self.critic = CriticHead(config.hidden_size) # Value fn
+
+        self.train()
+        
+        # Layers to record for neuroscience based analysis
+        self.analysis_layers = analysis_layers
+
+        # Hooks for intermediate features storage
+        if len(analysis_layers):
+            self._features = {layer: th.empty(0) for layer in self.analysis_layers}
+            for layer_id in analysis_layers:
+                layer = dict([*self.named_modules()])[layer_id]
+                layer.register_forward_hook(self.save_outputs_hook(layer_id))
+
+    def forward(self, observations, prev_gw, masks, prev_modality_features, single_step=False):
+        # TODO: impelemtn sequential mode
+        T_B = observations["spectrogram"].shape[0]
+        # NOTE: single_step=True in case of eval where we do process step by step
+        # In that case, the number of parallel eval_envs is expected to be overriden
+        # as env_config.NUM_PROCESSES = 1, which is quite a dirty workaround though.
+        # I.e. this will not scale for more than 1 eval env, although compute limitation
+        # make the latter unlikely anyway.
+        T = self.config.num_steps if not single_step else 1 # TODO parameterize with n_eval_envs
+        B = T_B // T
+
+        # Undo observation and masks reshape :(
+        observations = {
+            k: v.reshape(T, B, *v.shape[1:]) 
+                for k, v in observations.items()
+                if k in ["spectrogram", "audiogoal", "depth", "rgb"]
+        }
+        masks = masks.reshape(T, B, 1)
+
+        modality_features = {}
+
+        # List of state features for actor-critic
+        gw_list = []
+        modality_features_list = {"audio": [], "visual": []}
+
+        for t in range(T):
+            # Extracts audio featues
+            # TODO: consider having waveform data too ?
+            obs_dict_t = {
+                k: v[t] for k, v in observations.items()
+                if k in ["spectrogram", "audiogoal", "depth", "rgb"]
+            }
+            audio_features = \
+                self.audio_encoder(
+                    obs_dict_t,
+                    prev_modality_features["audio"],
+                    masks[t],
+                    prev_gw=prev_gw)
+            modality_features["audio"] = audio_features
+            modality_features_list["audio"].append(audio_features)
+
+            # Extracts vision features
+            ## TODO: consider having
+            ## - rgb and depth simulatenous input as 4 channel dim input
+            ## - deparate encoders for rgb and depth, give one more modality to PGWT
+            if not self.visual_encoder.is_blind:
+                visual_features = \
+                    self.visual_encoder(
+                        obs_dict_t,
+                        prev_modality_features["visual"], 
+                        masks[t],
+                        prev_gw=prev_gw)
+                modality_features["visual"] = visual_features
+                modality_features_list["visual"].append(visual_features)
+
+            gw = self.state_encoder(
+                modality_features = {
+                    k: v[:, None, :] for k, v in modality_features.items() # Reshape each mod feat to [B, 1, H]
+                },
+                prev_gw=prev_gw,
+                masks=masks[t]
+            ) # [B, num_latents, latent_dim]
+            gw_list.append(gw)
+
+        # NOTE: returns list of features over the whole traj,
+        # the last "gw" (rnn hidden state) and modality features for the next batch
+        return th.cat(gw_list, dim=0).reshape(T_B, -1), gw, modality_features # [T, B, H], [B, H], {k: [B, H]} for k in "visual", "audio"
+
+    def act(self, observations, rnn_hidden_states, masks, modality_features, deterministic=False, actions=None,
+                  value_feat_detach=False, actor_feat_detach=False, ssl_tasks=None, single_step=False):
+        features, gw, modality_features = self(observations, rnn_hidden_states,
+                                            masks, modality_features, 
+                                            single_step=single_step)
+
+        # Estimate the value function
+        values = self.critic(features.detach() if value_feat_detach else features)
+
+        # Estimate the policy as distribution to sample actions from
+        distribution, action_logits = self.action_distribution(features.detach() if actor_feat_detach else features)
+
+        if actions is None:
+            if deterministic:
+                actions = distribution.mode()
+            else:
+                actions = distribution.sample()
+        # TODO: maybe some assert on the 
+        action_log_probs = distribution.log_probs(actions)
+
+        distribution_entropy = distribution.entropy()
+
+        # Additonal SSL tasks outputs
+        ssl_outputs = {}
+        if ssl_tasks is not None:
+            for ssl_task in ssl_tasks:
+                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3"]:
+                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](features)
+                elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-mse"]:
+                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](modality_features["vision"])
+                else:
+                    raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
+
+        modality_features_detached = {
+            k: v.detach() for k,v in modality_features.items()
+        }
+        return actions, distribution.probs, action_log_probs, action_logits, \
+               distribution_entropy, values, gw.detach(), modality_features_detached, ssl_outputs
+    
+    def get_value(self, observations, rnn_hidden_states, masks, modality_features):
+        features, _, _ = self(observations, rnn_hidden_states, masks, modality_features)
+
+        return self.critic(features)
+
+    def get_grad_norms(self):
+        modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution", "critic"]
+        grad_norm_dict = {mod_name: compute_grad_norm(self.__getattr__(mod_name)) for mod_name in modules}
+        # More specific grad norms for the Perceiver GWT GWWM
+        # if exists(self.state_encoder.mod_embed) and self.state_encoder.mod_embed:
+        #     grad_norm_dict["mod_embed"] = compute_grad_norm(self.state_encoder.modality_embeddings)
+        # if self.state_encoder.latent_learned:
+        #     grad_norm_dict["init_rnn_states"] = compute_grad_norm(self.state_encoder.latents)
+        
+        return grad_norm_dict
+    
+    def save_outputs_hook(self, layer_id: str) -> Callable:
+        def fn(_, __, output):
+            self._features[layer_id] = output
+        return fn
+
+# endregion: GRU v1 Baseline      #
 ###################################

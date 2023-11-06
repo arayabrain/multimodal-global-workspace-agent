@@ -106,10 +106,10 @@
                 "--total-steps", "5000",
                 "--save-videos", "False",
                 // With eval
-                // "--eval", "True",
-                // "--eval-every", "500",
+                "--eval", "True",
+                "--eval-every", "500",
                 // Without eval
-                "--eval", "False",
+                // "--eval", "False",
 
                 "--num-envs", "2",
                 "--num-steps", "15",
@@ -124,7 +124,7 @@
                 // "--ssl-rec-rgb-mid-size", "1536",
                 // "--ssl-rec-rgb-mid-feat", "False",
                 // "--agent-type", "perceiver-gwt-gwwm",
-                "--agent-type", "gwtv3",
+                "--agent-type", "gruv3",
                 // "--agent-type", "ss-default",
                 // "--agent-type", "custom-gru",
                 // "--agent-type", "custom-gwt",
