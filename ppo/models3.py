@@ -391,6 +391,7 @@ class CrossAttention(nn.Module):
         q = th.cat([
                 modality_features["audio"], # [B, 1, H]
                 modality_features["visual"], # [B, 1, H]
+                prev_gw[:, None, :] # [B, 1, H]
             ], dim=1) # [B, 2, H]
         kv = th.cat([
             modality_features["audio"], # [B, 1, H]
@@ -403,12 +404,12 @@ class CrossAttention(nn.Module):
                 kv.new_zeros([B, 1, H]) # Nulls: [B, 1, H]
             ], dim=1) # [B, 4, H]
         
-        q = self.ln_q(q) # [B, 2, H]
+        q = self.ln_q(q) # [B, 3, H]
         k = self.ln_k(kv) # [B, X, H], X = 3 or 4
         v = self.ln_v(kv) # [B, X, H], X = 3 or 4
         attn_values, attn_weights = self.mha(q, k, v)
 
-        return attn_values, attn_weights # [B, 2, H], [B, 2, X], X = 3 or 4
+        return attn_values, attn_weights # [B, 3, H], [B, 3, X], X = 3 or 4
 
 class GWTv3StateEncoder(nn.Module):
     def __init__(self, 
@@ -467,9 +468,12 @@ class GWTv3StateEncoder(nn.Module):
             prev_gw=prev_gw * masks # # [B, H]
         )
 
+        aud_vis_modulated = attn_values[:, :2, :].reshape(B, -1) # [B, 2 * H]
+        prev_gw_modulated = attn_values[:, 2, :].reshape(B, -1) # [B, H]
+
         rnn_output = self.rnn(
-            attn_values.reshape(B, -1), # [B, 2 * H]
-            prev_gw * masks, # [B, H]
+            aud_vis_modulated,
+            prev_gw_modulated
         )
 
         return rnn_output
