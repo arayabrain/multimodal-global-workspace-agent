@@ -649,6 +649,13 @@ class GWTv3ActorCritic(nn.Module):
             ) # [B, num_latents, latent_dim]
             gw_list.append(gw)
 
+
+        # TODO: probably need to be reshaped for the probe ?
+        if "visual_encoder" in self.analysis_layers:
+            self._features["visual_encoder.cnn.7"] = th.cat(modality_features_list["visual"], dim=0)
+        if "audio_encoder" in self.analysis_layers:
+            self._features["audio_encoder.cnn.7"] = th.cat(modality_features_list["audio"], dim=0)
+
         # NOTE: returns list of features over the whole traj,
         # the last "gw" (rnn hidden state) and modality features for the next batch
         return th.cat(gw_list, dim=0).reshape(T_B, -1), gw, modality_features # [T, B, H], [B, H], {k: [B, H]} for k in "visual", "audio"
@@ -689,6 +696,12 @@ class GWTv3ActorCritic(nn.Module):
         modality_features_detached = {
             k: v.detach() for k,v in modality_features.items()
         }
+
+        # Compatibility for probing layers of GWT v2 agents
+        # Override the features of shape [B, H] to [B*T, H] instead
+        if "state_encoder" in self.analysis_layers:
+            self._features["state_encoder"] = features
+
         return actions, distribution.probs, action_log_probs, action_logits, \
                distribution_entropy, values, gw.detach(), modality_features_detached, ssl_outputs
     

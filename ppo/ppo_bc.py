@@ -324,9 +324,9 @@ def main():
         ## Agent network params
         get_arg_dict("agent-type", str, "ss-default", metatype="choice",
             choices=["ss-default", "perceiver-gwt-gwwm",
-                      "custom-gru",
-                      "custom-gwt", "custom-gwt-bu", "custom-gwt-td",
-                      "gwtv3", "gruv3"]),
+                        "custom-gru",
+                        "custom-gwt", "custom-gwt-bu", "custom-gwt-td",
+                        "gwtv3", "gruv3"]),
         get_arg_dict("use-pose", bool, False, metatype="bool"), # Use "pose" field iin observations
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
         ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
@@ -367,7 +367,7 @@ def main():
         get_arg_dict("gwtv3-use-null", bool, True, metatype="bool"), # Use Null at CrossAtt level
         get_arg_dict("gwtv3-cross-heads", int, 1), # num_heads of the CrossAttn
         get_arg_dict("gwtv3-gru-type", str, "default", metatype="choice",
-                     choices=["default", "layernorm"]),
+                        choices=["default", "layernorm"]),
         
         ## SSL Support
         get_arg_dict("obs-center", bool, False, metatype="bool"), # Centers the rgb_observations' range to [-0.5,0.5]

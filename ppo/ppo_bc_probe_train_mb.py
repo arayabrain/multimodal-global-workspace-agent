@@ -35,9 +35,10 @@ import compress_pickle as cpkl
 
 # Loading pretrained agent
 import tools
-import models
+import models, models3
 from models import ActorCritic, ActorCritic2, Perceiver_GWT_GWWM_ActorCritic
 from models2 import GWTAgent, GWTAgent_BU, GWTAgent_TD
+from models3 import GWTv3ActorCritic, ActorCritic_GRUBaseline
 
 # Helpers
 def dict_without_keys(d, keys_to_ignore):
@@ -88,7 +89,8 @@ CUSTOM_ARGS = [
     get_arg_dict("agent-type", str, "ss-default", metatype="choice",
         choices=["ss-default", "perceiver-gwt-gwwm",
                     "custom-gru",
-                    "custom-gwt", "custom-gwt-bu", "custom-gwt-td"]),
+                    "custom-gwt", "custom-gwt-bu", "custom-gwt-td",
+                    "gwtv3", "gruv3"]),
     get_arg_dict("use-pose", bool, False, metatype="bool"), # Use "pose" field iin observations
     get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
     ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
@@ -122,7 +124,15 @@ CUSTOM_ARGS = [
     ## Custom GWT Agent with BU and TD attentions
     get_arg_dict("gwt-hid-size", int, 512),
     get_arg_dict("gwt-channels", int, 32),
-    
+
+    ## GWTv3 Agent with custom attention, recurrent encoder and null inputs
+    get_arg_dict("gwtv3-use-gw", bool, True, metatype="bool"), # Use GW at Recur. Enc. level
+    get_arg_dict("gwtv3-enc-gw-detach", bool, False, metatype="bool"), # When using GW at Recurrent Encoder level, whether to detach the grads or not
+    get_arg_dict("gwtv3-use-null", bool, True, metatype="bool"), # Use Null at CrossAtt level
+    get_arg_dict("gwtv3-cross-heads", int, 1), # num_heads of the CrossAttn
+    get_arg_dict("gwtv3-gru-type", str, "default", metatype="choice",
+                    choices=["default", "layernorm"]),
+
     ## SSL Support
     get_arg_dict("obs-center", bool, False, metatype="bool"), # Centers the rgb_observations' range to [-0.5,0.5]
     get_arg_dict("ssl-tasks", str, None, metatype="list"), # Expects something like ["rec-rgb-vis", "rec-depth", "rec-spectr"]
@@ -295,7 +305,7 @@ elif args.agent_type == "custom-gru":
     analayers = models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES
     if args.pretrained_model_name.__contains__("rec_rgb_vis_ae_5"):
         analayers = copy.copy(models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES)
-        print(f"  Adding rec-rgb-vis-ae-5 arch. support")
+        print("  Adding rec-rgb-vis-ae-5 arch. support")
         tmp_args.ssl_tasks = ["rec-rgb-vis-ae-5"]
         tmp_args.ssl_rec_rgb_mid_size = 1536
         tmp_args.ssl_rec_rgb_mid_feat = False
@@ -317,6 +327,18 @@ elif args.agent_type == "perceiver-gwt-gwwm":
     agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space,
         args, extra_rgb=agent_extra_rgb,
         analysis_layers=models.PGWT_GWWM_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
+elif args.agent_type == "gwtv3":
+    agent = GWTv3ActorCritic(single_observation_space,
+                single_action_space,
+                args,
+                extra_rgb=agent_extra_rgb,
+                analysis_layers=models3.GWTAGENT_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
+elif args.agent_type == "gruv3":
+    agent = ActorCritic_GRUBaseline(single_observation_space,
+                single_action_space,
+                args,
+                extra_rgb=agent_extra_rgb,
+                analysis_layers=models3.GWTAGENT_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
 else:
     raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 agent.eval()
@@ -357,7 +379,7 @@ for probe_target_name, probe_target_info in PROBING_TARGETS.items():
             PROBES_METADATA[probe_target_name][probe_input] = {}
 
         # TODO: make the probe's input dim adapt to what will actually be probed.
-        PROBES_METADATA[probe_target_name][probe_input]["probe_input_dim"] = 512
+        PROBES_METADATA[probe_target_name][probe_input]["probe_input_dim"] = args.hidden_size
         PROBES_METADATA[probe_target_name][probe_input]["probe_output_dim"] = probe_target_info["n_classes"]
 
 # Dictionary that will holds the probe networks and their optimizers
@@ -522,6 +544,20 @@ steps_per_update = args.num_envs * args.num_steps
 total_updates = int((args.total_steps * args.n_epochs) / args.num_envs / args.num_steps) + 1# How many updates expected in total for one epoch ?
 print(f"Expected number of updates: {total_updates}")
 
+# This will be used to recompute the rnn_hidden_strates when computiong the new action logprobs
+if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu", "custom-gwt-td"]:
+    rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
+elif args.agent_type in ["perceiver-gwt-gwwm"]:
+    rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)
+elif args.agent_type in ["gwtv3", "gruv3"]:
+    rnn_hidden_state = th.zeros((args.batch_chunk_length, args.hidden_size), device=device)
+    modality_features = {
+        "audio": rnn_hidden_state.new_zeros([args.batch_chunk_length, args.hidden_size]),
+        "visual": rnn_hidden_state.new_zeros([args.batch_chunk_length, args.hidden_size])
+    }
+else:
+    raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+
 for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update, steps_per_update):
     # Load batch data
     obs_list, action_list, _, done_list = \
@@ -567,22 +603,14 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
     # For each "agent_variant", iterate
     # TODO: once we have more than "category", it is more efficient to iterate over the agent first,
     # Do the forward pass, then iterate over the probe target (category, scene, etc...) then
-
-    # Forward pass with the agent model to collect the intermediate features
-    # Stores in agent_features
-    # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
-    if args.pretrained_model_name.__contains__("gru") or \
-       args.pretrained_model_name.__contains__("gwt_bu") or \
-       args.pretrained_model_name.__contains__("gwt_td"):
-        rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
-    elif args.pretrained_model_name.__contains__("pgwt"):
-        rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)
-    else:
-        raise NotImplementedError(f"Unsupported agent-type:{args.pretrained_model_name}")
     
     with th.no_grad():
-        agent_outputs = agent.act(obs_list, rnn_hidden_state, masks=mask_list) #, prev_actions=prev_actions_list)
-        
+        agent_outputs = agent.act(obs_list, rnn_hidden_state, masks=mask_list,
+                    modality_features=modality_features, ssl_tasks=args.ssl_tasks) #, prev_actions=prev_actions_list)
+        # Update rnn_hidden_state and modality_features dicts for the next batch
+        rnn_hidden_state = agent_outputs[6]
+        modality_features = agent_outputs[7]
+
     for probe_target_name, probe_target_dict in PROBES.items():
         # probe_target_name: "category", "scene", more generally the targeted concept of the probing
         # probe_target_dict: { "state_encoder": {"agent_variant": Torch Model} }
@@ -596,10 +624,10 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
             # Forward pass of the probe network itself
             if probe_target_input_name == "state_encoder":
                 probe_inputs = agent._features["state_encoder"]
-                if args.pretrained_model_name.__contains__("gru"):
-                    # Because SS compatiblye state_encoder produces tuple of shape [B*T, H], [1, B*T, H]
-                    # or something along those lines
-                    probe_inputs = probe_inputs[0]
+                # if args.pretrained_model_name.__contains__("gru"):
+                #     # Because SS compatiblye state_encoder produces tuple of shape [B*T, H], [1, B*T, H]
+                #     # or something along those lines
+                #     probe_inputs = probe_inputs[0]
             elif probe_target_input_name.__contains__("visual_encoder") or \
                     probe_target_input_name.__contains__("audio_encoder") or \
                     probe_target_input_name.__contains__("visual_embedding") or \
@@ -626,8 +654,8 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
                 probe_optim.zero_grad()
                 
                 # Special case if the agent if PGWT: state_encoder is tuple of shapes ([B_T, H], [B_T, X, H])
-                if isinstance(probe_inputs, tuple):
-                    probe_inputs = probe_inputs[0]
+                # if isinstance(probe_inputs, tuple):
+                #     probe_inputs = probe_inputs[0]
 
                 mb_probe_inputs = probe_inputs[mb_start:mb_end]
                 mb_probe_targets = probe_targets[mb_start:mb_end]
@@ -683,8 +711,6 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
                 probe_losses_dict[loss_name] = probe_ce_loss
                 acc_name = f"{metric_stem}__probe_acc"
                 probe_losses_dict[acc_name] = probe_acc
-
-
 
     # Tracking the number of NN updates (for all probes)
     n_updates += 1
