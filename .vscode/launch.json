@@ -106,13 +106,13 @@
                 "--total-steps", "5000",
                 "--save-videos", "False",
                 // With eval
-                // "--eval", "True",
-                // "--eval-every", "500",
+                "--eval", "True",
+                "--eval-every", "500",
                 // Without eval
-                "--eval", "False",
+                // "--eval", "False",
 
-                // "--num-envs", "2",
-                // "--num-steps", "15",
+                "--num-envs", "2",
+                "--num-steps", "15",
                 "--log-training-stats-every", "1",
                 
                 // SSL Debugging
@@ -125,6 +125,7 @@
                 // "--ssl-rec-rgb-mid-feat", "False",
                 // "--agent-type", "perceiver-gwt-gwwm",
                 // "--agent-type", "gwtv3",
+                "--agent-type", "gwtv3.1",
                 // "--agent-type", "ss-default",
                 // "--agent-type", "custom-gru",
                 // "--agent-type", "custom-gwt",
@@ -140,13 +141,13 @@
                 // "--hidden-size", "64",
 
                 // Probing debugging
-                "--num-minibatches", "2",
+                // "--num-minibatches", "2",
                 // GWT v3
-                "--agent-type", "gwtv3",
-                "--pretrained-model-name", "ppo_bc__savi_ss1_rgb_spectro__gwtv3__gw_detach__usenull__grulynrm__entcoef_0.2__no_cew",
-                "--pretrained-model-path", "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_spectro__gwtv3__gw_detach__usenull__grulynrm__entcoef_0.2__no_cew_seed_111__2023_11_08_13_34_19_183492.musashi/models/ppo_agent.19995001.ckpt.pth",
+                // "--agent-type", "gwtv3",
+                // "--pretrained-model-name", "ppo_bc__savi_ss1_rgb_spectro__gwtv3__gw_detach__usenull__grulynrm__entcoef_0.2__no_cew",
+                // "--pretrained-model-path", "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_spectro__gwtv3__gw_detach__usenull__grulynrm__entcoef_0.2__no_cew_seed_111__2023_11_08_13_34_19_183492.musashi/models/ppo_agent.19995001.ckpt.pth",
                 // "--pretrained-model-path", "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_spectro__gwtv3__gw_detach__usenull__grulynrm__entcoef_0.2__no_cew__h_64_seed_111__2023_11_08_13_34_18_744539.musashi/models/ppo_agent.19995001.ckpt.pth",
-                "--probe-depth", "2"
+                // "--probe-depth", "2"
 
                 // GRUv3
                 // TODO

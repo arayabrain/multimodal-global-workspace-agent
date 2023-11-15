@@ -411,6 +411,59 @@ class CrossAttention(nn.Module):
 
         return attn_values, attn_weights # [B, 3, H], [B, 3, X], X = 3 or 4
 
+# Cross Attnetion v3.1
+## - Use only the GW for query
+## - GWTv3.1 does not use GRU
+class CrossAttention_v3_1(nn.Module):
+    def __init__(self, q_size, kv_size, n_heads=1, use_null=True):
+        super().__init__()
+        self.h_size = q_size
+        self.kv_size = kv_size
+        self.n_heads = n_heads
+        self.use_null = use_null
+
+        self.ln_q = nn.LayerNorm([q_size])
+        self.ln_k = nn.LayerNorm([kv_size])
+        self.ln_v = nn.LayerNorm([kv_size])
+
+        self.mha = nn.MultiheadAttention(
+            q_size,
+            n_heads,
+            dropout=0.0,
+            add_zero_attn=False,
+            batch_first=True,
+            kdim=kv_size,
+            vdim=kv_size,
+        )
+
+    def forward(self, modality_features, prev_gw):
+        """
+            Modality features: dict of:
+                - "visual": [B, 1, H]
+                - "audio": [B, 1, H]
+        """
+        B = modality_features["audio"].shape[0]
+        H = modality_features["audio"].shape[-1] # TODO: recover from the cfg instead ?
+
+        q = prev_gw[:, None, :] # [B, 1, H]
+        kv = th.cat([
+            modality_features["audio"], # [B, 1, H]
+            modality_features["visual"], # [B, 1, H]
+            prev_gw[:, None, :] # [B, 1, H]
+            ], dim=1) # [B, 3, H] so far
+        if self.use_null:
+            kv = th.cat([
+                kv, # [B, 3, H] by this point
+                kv.new_zeros([B, 1, H]) # Nulls: [B, 1, H]
+            ], dim=1) # [B, 4, H]
+        
+        q = self.ln_q(q) # [B, 1, H]
+        k = self.ln_k(kv) # [B, X, H], X = 3 or 4
+        v = self.ln_v(kv) # [B, X, H], X = 3 or 4
+        attn_values, attn_weights = self.mha(q, k, v)
+
+        return attn_values, attn_weights # [B, 3, H], [B, 3, X], X = 3 or 4
+
 class GWTv3StateEncoder(nn.Module):
     def __init__(self, 
                  input_size,
@@ -477,6 +530,43 @@ class GWTv3StateEncoder(nn.Module):
         )
 
         return rnn_output
+
+class GWTv3_1StateEncoder(nn.Module):
+    def __init__(self, 
+                 input_size,
+                 hidden_size,
+                 ca_q_size,
+                 ca_kv_size,
+                 ca_n_heads=1,
+                 ca_use_null=True,
+                 gru_type="default"):
+        super().__init__()
+
+        # CrossAttention module
+        self.ca = CrossAttention_v3_1(
+            q_size=ca_q_size,
+            kv_size=ca_kv_size,
+            n_heads=ca_n_heads,
+            use_null=ca_use_null
+        )
+    
+    def forward(self, modality_features, prev_gw, masks):
+        """
+        - modality_features: dict of:
+            - "visual": [B, 1, H]
+            - "audio": [B, 1, H]
+        - hidden_states: [B, H] or [1, B, H] for compat. with SS1.0
+            This is the previous global workspace
+        - masks: [B, 1], marks episode end / start
+            Used to init prev_gw when a new episode starts
+        """
+
+        attn_values, _ = self.ca(
+            modality_features, # {"visual": Tnsr, "audio": Tnsr}
+            prev_gw=prev_gw * masks # # [B, H]
+        )
+
+        return attn_values[:, 0, :]
 
 class GRUStateEncoder(nn.Module):
     def __init__(self, 
@@ -725,6 +815,31 @@ class GWTv3ActorCritic(nn.Module):
         def fn(_, __, output):
             self._features[layer_id] = output
         return fn
+
+class GWTv3_1ActorCritic(GWTv3ActorCritic):
+    def __init__(self,
+                observation_space,
+                action_space,
+                config,
+                extra_rgb=False,
+                analysis_layers=[]):
+        super().__init__(observation_space,
+                         action_space,
+                         config,
+                         extra_rgb,
+                         analysis_layers)
+
+        # Override the StateEncoder with the variant
+        # that does not have a central GRU cell
+        self.state_encoder = GWTv3_1StateEncoder(
+            input_size=config.hidden_size * 2,
+            hidden_size=config.hidden_size,
+            ca_q_size=config.hidden_size,
+            ca_kv_size=config.hidden_size,
+            ca_n_heads=config.gwtv3_cross_heads,
+            ca_use_null=config.gwtv3_use_null,
+            gru_type=config.gwtv3_gru_type,
+        )
 
 # endregion: GWT v3 Agent         #
 ###################################

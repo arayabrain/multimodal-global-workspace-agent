@@ -25,7 +25,7 @@ from ss_baselines.common.utils import images_to_video_with_audio
 # Custom ActorCritic agent for PPO
 from models import ActorCritic, ActorCritic2, Perceiver_GWT_GWWM_ActorCritic
 from models2 import GWTAgent, GWTAgent_BU, GWTAgent_TD
-from models3 import GWTv3ActorCritic, ActorCritic_GRUBaseline
+from models3 import GWTv3ActorCritic, GWTv3_1ActorCritic, ActorCritic_GRUBaseline
 
 # Dataset utils
 from torch.utils.data import IterableDataset, DataLoader
@@ -153,7 +153,7 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
         rnn_hidden_state = th.zeros((1, n_eval_envs, args.hidden_size), device=device)
     elif args.agent_type in ["perceiver-gwt-gwwm"]:
         rnn_hidden_state = agent.state_encoder.latents.clone().repeat(n_eval_envs, 1, 1)
-    elif args.agent_type in ["gwtv3", "gruv3"]:
+    elif args.agent_type in ["gwtv3", "gwtv3.1", "gruv3"]:
         rnn_hidden_state = th.zeros((n_eval_envs, args.hidden_size), device=device)
         modality_features = {
             "audio": rnn_hidden_state.new_zeros([n_eval_envs, args.hidden_size]),
@@ -326,7 +326,8 @@ def main():
             choices=["ss-default", "perceiver-gwt-gwwm",
                         "custom-gru",
                         "custom-gwt", "custom-gwt-bu", "custom-gwt-td",
-                        "gwtv3", "gruv3"]),
+                        "gwtv3", "gruv3",
+                        "gwtv3.1"]),
         get_arg_dict("use-pose", bool, False, metatype="bool"), # Use "pose" field iin observations
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
         ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
@@ -503,6 +504,11 @@ def main():
                     single_action_space,
                     args,
                     extra_rgb=agent_extra_rgb).to(device)
+    elif args.agent_type == "gwtv3.1":
+        agent = GWTv3_1ActorCritic(single_observation_space,
+                    single_action_space,
+                    args,
+                    extra_rgb=agent_extra_rgb).to(device)
     elif args.agent_type == "gruv3":
         agent = ActorCritic_GRUBaseline(single_observation_space,
                     single_action_space,
@@ -586,7 +592,7 @@ def main():
         rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
     elif args.agent_type in ["perceiver-gwt-gwwm"]:
         rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)
-    elif args.agent_type in ["gwtv3", "gruv3"]:
+    elif args.agent_type in ["gwtv3", "gwtv3.1", "gruv3"]:
         rnn_hidden_state = th.zeros((args.batch_chunk_length, args.hidden_size), device=device)
         modality_features = {
             "audio": rnn_hidden_state.new_zeros([args.batch_chunk_length, args.hidden_size]),
