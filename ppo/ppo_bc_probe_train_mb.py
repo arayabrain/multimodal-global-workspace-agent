@@ -38,7 +38,7 @@ import tools
 import models, models3
 from models import ActorCritic, ActorCritic2, Perceiver_GWT_GWWM_ActorCritic
 from models2 import GWTAgent, GWTAgent_BU, GWTAgent_TD
-from models3 import GWTv3ActorCritic, ActorCritic_GRUBaseline
+from models3 import GWTv3ActorCritic, GWTv3_1ActorCritic, ActorCritic_GRUBaseline
 
 # Helpers
 def dict_without_keys(d, keys_to_ignore):

@@ -106,10 +106,10 @@
                 "--total-steps", "5000",
                 "--save-videos", "False",
                 // With eval
-                "--eval", "True",
-                "--eval-every", "500",
+                // "--eval", "True",
+                // "--eval-every", "500",
                 // Without eval
-                // "--eval", "False",
+                "--eval", "False",
 
                 "--num-envs", "2",
                 "--num-steps", "15",
@@ -125,7 +125,7 @@
                 // "--ssl-rec-rgb-mid-feat", "False",
                 // "--agent-type", "perceiver-gwt-gwwm",
                 // "--agent-type", "gwtv3",
-                "--agent-type", "gwtv3.1",
+                // "--agent-type", "gwtv3.1",
                 // "--agent-type", "ss-default",
                 // "--agent-type", "custom-gru",
                 // "--agent-type", "custom-gwt",
@@ -150,7 +150,10 @@
                 // "--probe-depth", "2"
 
                 // GRUv3
-                // TODO
+                "--agent-type", "gruv3",
+                "--pretrained-model-name", "ppo_bc__savi_ss1_rgb_spectro__gruv3__gw_detach__usenull__grulynrm__entcoef_0.2__no_cew",
+                "--pretrained-model-path", "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_spectro__gruv3__gw_detach__grulynrm__entcoef_0.2__no_cew_seed_111__2023_11_06_11_56_54_073258.conan/models/ppo_agent.19170001.ckpt.pth",
+                "--probe-depth", "2"
 
                 // // GRU2 Baseline
                 // "--agent-type", "custom-gru",
