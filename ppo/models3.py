@@ -561,7 +561,7 @@ class GWTv3_1StateEncoder(nn.Module):
             Used to init prev_gw when a new episode starts
         """
 
-        attn_values, _ = self.ca(
+        attn_values, attn_weights = self.ca(
             modality_features, # {"visual": Tnsr, "audio": Tnsr}
             prev_gw=prev_gw * masks # # [B, H]
         )
@@ -840,6 +840,21 @@ class GWTv3_1ActorCritic(GWTv3ActorCritic):
             ca_use_null=config.gwtv3_use_null,
             gru_type=config.gwtv3_gru_type,
         )
+        
+        self.action_distribution = CategoricalNet(config.hidden_size, action_space.n) # Policy fn
+        self.critic = CriticHead(config.hidden_size) # Value fn
+
+        self.train()
+        
+        # Layers to record for neuroscience based analysis
+        self.analysis_layers = analysis_layers
+
+        # Hooks for intermediate features storage
+        if len(analysis_layers):
+            self._features = {layer: th.empty(0) for layer in self.analysis_layers}
+            for layer_id in analysis_layers:
+                layer = dict([*self.named_modules()])[layer_id]
+                layer.register_forward_hook(self.save_outputs_hook(layer_id))
 
 # endregion: GWT v3 Agent         #
 ###################################
