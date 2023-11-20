@@ -568,6 +568,68 @@ class GWTv3_1StateEncoder(nn.Module):
 
         return attn_values[:, 0, :]
 
+class GWTv3_2StateEncoder(nn.Module):
+    def __init__(self, 
+                 input_size,
+                 hidden_size,
+                 ca_q_size,
+                 ca_kv_size,
+                 ca_n_heads=1,
+                 ca_use_null=True,
+                 gru_type="default"):
+        super().__init__()
+
+        # CrossAttention module
+        self.ca_0 = CrossAttention_v3_1(
+            q_size=ca_q_size,
+            kv_size=ca_kv_size,
+            n_heads=ca_n_heads,
+            use_null=ca_use_null
+        )
+        
+        self.ca_1 = CrossAttention_v3_1(
+            q_size=ca_q_size,
+            kv_size=ca_kv_size,
+            n_heads=ca_n_heads,
+            use_null=ca_use_null
+        )
+
+        self.ca = CrossAttention_v3_1(
+            q_size=ca_q_size,
+            kv_size=ca_kv_size,
+            n_heads=ca_n_heads,
+            use_null=ca_use_null
+        )
+    
+    def forward(self, modality_features, prev_gw, masks):
+        """
+        - modality_features: dict of:
+            - "visual": [B, 1, H]
+            - "audio": [B, 1, H]
+        - hidden_states: [B, H] or [1, B, H] for compat. with SS1.0
+            This is the previous global workspace
+        - masks: [B, 1], marks episode end / start
+            Used to init prev_gw when a new episode starts
+        """
+
+        attn_values, attn_weights = self.ca_0(
+            modality_features, # {"visual": Tnsr, "audio": Tnsr}
+            prev_gw=prev_gw * masks # # [B, H]
+        )
+
+        attn_values, attn_weights = self.ca_1(
+            modality_features, # {"visual": Tnsr, "audio": Tnsr}
+            prev_gw=attn_values[:, 0, :] # # [B, H]
+        )
+
+        attn_values, attn_weights = self.ca(
+            modality_features, # {"visual": Tnsr, "audio": Tnsr}
+            prev_gw=attn_values[:, 0, :] # # [B, H]
+        )
+
+        return attn_values[:, 0, :]
+
+
 class GRUStateEncoder(nn.Module):
     def __init__(self, 
                 input_size,
@@ -856,6 +918,45 @@ class GWTv3_1ActorCritic(GWTv3ActorCritic):
                 layer = dict([*self.named_modules()])[layer_id]
                 layer.register_forward_hook(self.save_outputs_hook(layer_id))
 
+class GWTv3_2ActorCritic(GWTv3ActorCritic):
+    def __init__(self,
+                observation_space,
+                action_space,
+                config,
+                extra_rgb=False,
+                analysis_layers=[]):
+        super().__init__(observation_space,
+                         action_space,
+                         config,
+                         extra_rgb,
+                         analysis_layers)
+
+        # Override the StateEncoder with the variant
+        # that does not have a central GRU cell
+        self.state_encoder = GWTv3_2StateEncoder(
+            input_size=config.hidden_size * 2,
+            hidden_size=config.hidden_size,
+            ca_q_size=config.hidden_size,
+            ca_kv_size=config.hidden_size,
+            ca_n_heads=config.gwtv3_cross_heads,
+            ca_use_null=config.gwtv3_use_null,
+            gru_type=config.gwtv3_gru_type,
+        )
+        
+        self.action_distribution = CategoricalNet(config.hidden_size, action_space.n) # Policy fn
+        self.critic = CriticHead(config.hidden_size) # Value fn
+
+        self.train()
+        
+        # Layers to record for neuroscience based analysis
+        self.analysis_layers = analysis_layers
+
+        # Hooks for intermediate features storage
+        if len(analysis_layers):
+            self._features = {layer: th.empty(0) for layer in self.analysis_layers}
+            for layer_id in analysis_layers:
+                layer = dict([*self.named_modules()])[layer_id]
+                layer.register_forward_hook(self.save_outputs_hook(layer_id))
 # endregion: GWT v3 Agent         #
 ###################################
 
