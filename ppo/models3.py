@@ -612,17 +612,17 @@ class GWTv3_2StateEncoder(nn.Module):
             Used to init prev_gw when a new episode starts
         """
 
-        attn_values, attn_weights = self.ca_0(
+        attn_values, _ = self.ca_0(
             modality_features, # {"visual": Tnsr, "audio": Tnsr}
             prev_gw=prev_gw * masks # # [B, H]
         )
 
-        attn_values, attn_weights = self.ca_1(
+        attn_values, _ = self.ca_1(
             modality_features, # {"visual": Tnsr, "audio": Tnsr}
             prev_gw=attn_values[:, 0, :] # # [B, H]
         )
 
-        attn_values, attn_weights = self.ca(
+        attn_values, _ = self.ca(
             modality_features, # {"visual": Tnsr, "audio": Tnsr}
             prev_gw=attn_values[:, 0, :] # # [B, H]
         )
