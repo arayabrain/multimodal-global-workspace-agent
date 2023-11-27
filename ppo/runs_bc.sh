@@ -37,7 +37,7 @@ fi
       #     --gwtv3-use-gw "True" \
       #     --gwtv3-enc-gw-detach True \
       #     --gwtv3-gru-type "layernorm" \
-      #     --save-videos False \
+      #     --save-videos False \h
       #     --wandb --wandb-project "ss-hab-bc" --wandb-entity dosssman \
       #     --logdir-prefix $LOGDIR_PREFIX \
       #     --total-steps $TOTAL_STEPS \
