@@ -729,12 +729,13 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
             "global_step": global_step,
         }, global_step)
 
-# Saving models after the training
-for probe_target_name, probe_target_dict in PROBES.items():
-    for probe_target_input_name, agent_variant_probes in probe_target_dict.items():
-        probe = agent_variant_probes["probe_network"]
-        probe_statedict_filename = f"{probe_target_name}__{probe_target_input_name}__probe.pth"
-        
-        tblogger.save_model_dict(probe.state_dict(), probe_statedict_filename)
+    # Periodic model save queued to the "eval-every"=1.5e4 hyparam by default
+    if should_eval(global_step):
+        for probe_target_name, probe_target_dict in PROBES.items():
+            for probe_target_input_name, agent_variant_probes in probe_target_dict.items():
+                probe = agent_variant_probes["probe_network"]
+                probe_statedict_filename = f"{probe_target_name}__{probe_target_input_name}__probe.pth"
+                
+                tblogger.save_model_dict(probe.state_dict(), probe_statedict_filename)
 
 tblogger.close()
