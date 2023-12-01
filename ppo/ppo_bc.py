@@ -701,7 +701,7 @@ def main():
                 nn.utils.clip_grad_norm_(agent.parameters(), args.max_grad_norm)
             optimizer.step()
 
-            n_updates += args.update_epochs
+        n_updates += args.update_epochs
 
         if n_updates > 0 and should_log_training_stats(n_updates):
             print(f"Step {global_step} / {args.total_steps}")
