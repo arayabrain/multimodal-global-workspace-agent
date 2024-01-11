@@ -303,7 +303,7 @@ def main():
         get_arg_dict("dataset-path", str, "SAVI_Oracle_Dataset_v0"),
 
         # SS env config
-        get_arg_dict("config-path", str, "env_configs/savi/savi_ss1.yaml"),
+        get_arg_dict("config-path", str, "env_configs/savi/savi_ss1_rgb_spectro.yaml"),
 
         # PPO Hyper parameters
         get_arg_dict("num-envs", int, 10), # Number of parallel envs. 10 by default
@@ -315,14 +315,14 @@ def main():
         get_arg_dict("norm-adv", bool, True, metatype="bool"),
         get_arg_dict("clip-coef", float, 0.1), # Surrogate loss clipping coefficient
         get_arg_dict("clip-vloss", bool, True, metatype="bool"),
-        get_arg_dict("ent-coef", float, 0.0), # Entropy loss coef; 0.2 in SS baselines
+        get_arg_dict("ent-coef", float, 0.2), # Entropy loss coef; 0.2 in SS baselines
         get_arg_dict("vf-coef", float, 0.5), # Value loss coefficient
         get_arg_dict("max-grad-norm", float, 0.5),
         get_arg_dict("target-kl", float, None),
         get_arg_dict("lr", float, 2.5e-4), # Learning rate
         get_arg_dict("optim-wd", float, 0), # weight decay for adam optim
         ## Agent network params
-        get_arg_dict("agent-type", str, "ss-default", metatype="choice",
+        get_arg_dict("agent-type", str, "gwtv3", metatype="choice",
             choices=["ss-default", "perceiver-gwt-gwwm",
                         "custom-gru",
                         "custom-gwt", "custom-gwt-bu", "custom-gwt-td",
@@ -355,7 +355,7 @@ def main():
         get_arg_dict("prev-actions", bool, False, metatype="bool"),
         get_arg_dict("burn-in", int, 0), # Steps used to init the latent state for RNN component
         get_arg_dict("batch-chunk-length", int, 0), # For gradient accumulation
-        get_arg_dict("dataset-ce-weights", bool, True, metatype="bool"), # If True, will read CEL weights based on action dist. from the 'dataset_statistics.bz2' file.
+        get_arg_dict("dataset-ce-weights", bool, False, metatype="bool"), # If True, will read CEL weights based on action dist. from the 'dataset_statistics.bz2' file.
         get_arg_dict("ce-weights", float, None, metatype="list"), # Weights for the Cross Entropy loss
 
         ## Custom GWT Agent with BU and TD attentions
@@ -364,10 +364,10 @@ def main():
 
         ## GWTv3 Agent with custom attention, recurrent encoder and null inputs
         get_arg_dict("gwtv3-use-gw", bool, True, metatype="bool"), # Use GW at Recur. Enc. level
-        get_arg_dict("gwtv3-enc-gw-detach", bool, False, metatype="bool"), # When using GW at Recurrent Encoder level, whether to detach the grads or not
+        get_arg_dict("gwtv3-enc-gw-detach", bool, True, metatype="bool"), # When using GW at Recurrent Encoder level, whether to detach the grads or not
         get_arg_dict("gwtv3-use-null", bool, True, metatype="bool"), # Use Null at CrossAtt level
         get_arg_dict("gwtv3-cross-heads", int, 1), # num_heads of the CrossAttn
-        get_arg_dict("gwtv3-gru-type", str, "default", metatype="choice",
+        get_arg_dict("gwtv3-gru-type", str, "layernorm", metatype="choice",
                         choices=["default", "layernorm"]),
         
         ## SSL Support
