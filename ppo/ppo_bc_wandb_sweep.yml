@@ -8,8 +8,14 @@ parameters:
   hidden-size:
     values: [32, 64, 128, 256]
   seed:
-    values: [1, 2, 3]
+    values: [1, 2, 3, 4, 5]
   total-steps:
     value: 500000
   logdir-prefix:
     value: "/home/rousslan/random/rl/exp-logs/ss-hab-sweep-test"
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - ${args}
+  - "--wandb"''

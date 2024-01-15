@@ -11,9 +11,13 @@ fi
 # Init sweep
 # wandb sweep --project ss-hab-sweep-test ppo_bc_wandb_sweep.yml
 
+# 2024-01-15: Bayes sweep 5 seeds, 4 hid size: 
+## wandb agent dosssman/ss-hab-sweep-test/2hma5226
+
 # Execute sweep runs
 # NOTE: set a specific WANDB_DIR folder for the logging
-# WANDB_DIR="/home/rousslan/random/rl/exp-logs/ss-hab-sweep-test-2_wandb" wandb agent dosssman/ss-hab-sweep-test/gwzoasps
+# Even better, just set is as env variable before starting the run.
+# WANDB_DIR="/home/rousslan/random/rl/exp-logs/ss-hab-sweep-test-2_wandb" wandb agent dosssman/ss-hab-sweep-test/2hma5226
 
 # Clean up env vars
 # export CUDA_VISIBLE_DEVICES=
