@@ -10,18 +10,18 @@ sound-spaces
 # Tebsting, debugs, and logging
 logs
 *.mp3
+ppo/wandb
 rsatoolbox
 perceiver-pytorch
-ppo/wandb
 
 # Datasets and related
-ppo/AvNav_Oracle_Dataset_v0
+ppo/data
+ppo/cached_data
 SAVI_Oracle_Dataset_*
+ppo/AvNav_Oracle_Dataset_v0
 ppo_gru_dset_2022_09_21__750000_STEPS
 ppo_gru_savi_dset_2022_10_27__750000_STEPS
-ppo/cached_data
-ppo/data
 ppo/cats_scenes_trajs_C_6_M_5_N_5__2023_06_01_10_41.bz2
 
 # Plots and paper data
-2023-12-submission-data/
+2023-12-submission-data
