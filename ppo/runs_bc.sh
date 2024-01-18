@@ -22,21 +22,21 @@ fi
 # region: GRU
 
   # region: PPO GRU - BC | gw-size: 64
-  for seed in 111 222; do
-    export TOTAL_STEPS=20000000
-    (sleep 1s && python ppo_bc.py \
-      --exp-name "ppo_bc__gru__h_64" \
-      --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
-      --ent-coef 0.2  \
-      --gw-size 64 \
-      --agent-type "gru" \
-      --save-videos False \
-      --wandb --wandb-project $WANDB_PROJECT --wandb-entity dosssman \
-      --logdir-prefix $LOGDIR_PREFIX \
-      --total-steps $TOTAL_STEPS \
-      --seed $seed \
-    ) & # >& /dev/null &
-  done
+  # for seed in 111 222; do
+  #   export TOTAL_STEPS=20000000
+  #   (sleep 1s && python ppo_bc.py \
+  #     --exp-name "ppo_bc__gru__h_64" \
+  #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+  #     --ent-coef 0.2  \
+  #     --gw-size 64 \
+  #     --agent-type "gru" \
+  #     --save-videos False \
+  #     --wandb --wandb-project $WANDB_PROJECT --wandb-entity dosssman \
+  #     --logdir-prefix $LOGDIR_PREFIX \
+  #     --total-steps $TOTAL_STEPS \
+  #     --seed $seed \
+  #   ) & # >& /dev/null &
+  # done
   # endregion: PPO GRU - BC | gw-size: 512
 
 # endregion: GRU
@@ -44,21 +44,21 @@ fi
 # region: GW
 
   # region: PPO GW - BC | gw-size: 64
-  for seed in 111 222; do
-    export TOTAL_STEPS=20000000
-    (sleep 1s && python ppo_bc.py \
-      --exp-name "ppo_bc__gw__h_64" \
-      --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
-      --ent-coef 0.2  \
-      --gw-size 64 \
-      --agent-type "gw" \
-      --save-videos False \
-      --wandb --wandb-project $WANDB_PROJECT --wandb-entity dosssman \
-      --logdir-prefix $LOGDIR_PREFIX \
-      --total-steps $TOTAL_STEPS \
-      --seed $seed \
-    ) & # >& /dev/null &
-  done
+  # for seed in 111 222; do
+  #   export TOTAL_STEPS=20000000
+  #   (sleep 1s && python ppo_bc.py \
+  #     --exp-name "ppo_bc__gw__h_64" \
+  #     --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+  #     --ent-coef 0.2  \
+  #     --gw-size 64 \
+  #     --agent-type "gw" \
+  #     --save-videos False \
+  #     --wandb --wandb-project $WANDB_PROJECT --wandb-entity dosssman \
+  #     --logdir-prefix $LOGDIR_PREFIX \
+  #     --total-steps $TOTAL_STEPS \
+  #     --seed $seed \
+  #   ) & # >& /dev/null &
+  # done
   # endregion: PPO GW - BC | gw-size: 64
 
 # endregion: GW
