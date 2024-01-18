@@ -11,53 +11,9 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "justMyCode": true,
-            
-            // SoundSpaces Fiddling
-            // "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/sound-spaces",
-            // "args": [
-            //     "--exp-config", "ss_baselines/av_nav/config/audionav/mp3d/train_telephone/audiogoal_depth.yaml",
-            //     "--model-dir", "data/models/ss2/mp3d/dav_nav", "CONTINUOUS", "False", "NUM_PROCESSES", "2"
-            // ],
-            // "env": {}
-
-            // Custom PPO Debug + Perceiver
-            // "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/ppo",
-            // "args": [
-            //     // Environment config
-            //     // "USE_VECENV", "False",
-            //     // "USE_SYNC_VECENV", "False",
-            //     // PPO Agent cofnig
-            //     "--num-envs", "2",
-            //     "--num-minibatches", "10",
-            //     // Logging config
-            //     "--logdir-prefix", "/tmp/ppo-av-nav-perceiver-dbg",
-            //     // "--wandb", "--wandb-entity", "dosssman", "--wandb-project", "ss-hab"
-            // ],
-            // "env": {
-            //     // "MASTER_PORT": ""
-            // }
-            
-            // Custom PPO Debug
-            // "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/ppo",
-            // "args": [
-            //     // Environment config
-            //     // "USE_VECENV", "False",
-            //     // "USE_SYNC_VECENV", "False",
-
-            //     // PPO Agent cofnig
-            //     "--config-path", "env_configs/audiogoal_depth_nocont.yaml",
-            //     "--num-envs", "2",
-            //     "--agent-type", "ss-default",
-            //     // "--env-continuous", "False",
-
-            //     // Logging config
-            //     "--logdir-prefix", "/tmp/ppo-av-nav-dbg",
-            //     // "--wandb", "--wandb-entity", "dosssman", "--wandb-project", "ss-hab"
-            // ]
 
             // Custom PPO + Perceiver GWT Modules Debugs
             "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/ppo", // # PPO focused debugging
-            // "cwd": "/home/rousslan/random/rl/ss-hab-headless-py39/sound-spaces", // Soundspaces focused debugging
             "args": [
                 // Environment config
                 // "USE_VECENV", "False",
@@ -93,7 +49,7 @@
                 // "--eval", "True",
                 // "--eval-every", "300",
                 // "--log-training-stats-every", "1",
-                // "--agent-type", "perceiver-gwt-gwwm",
+                "--agent-type", "gru",
 
                 // Logging config
                 // "--logdir-prefix", "/tmp/ppo-av-nav-dbg",
@@ -106,39 +62,24 @@
                 "--total-steps", "5000",
                 "--save-videos", "False",
                 // With eval
-                // "--eval", "True",
-                // "--eval-every", "500",
+                "--eval", "True",
+                "--eval-every", "500",
+                // With model saving
+                "--save-model", "True",
+                "--save-model-every", "1000",
                 // Without eval
-                "--eval", "False",
+                // "--eval", "False",
 
-                "--num-envs", "2",
-                "--num-steps", "15",
+                "--num-envs", "5",
+                "--num-steps", "10",
                 "--log-training-stats-every", "1",
                 
-                // SSL Debugging
-                "--obs-center", "False",
-                // "--ssl-tasks", "rec-rgb",
-                // "--ssl-tasks", "rec-rgb-vis-ae-mse",
-                // "--ssl-tasks", "rec-rgb-vis-ae-5",
-                // "--ssl-rec-rgb-detach", "False",
-                // "--ssl-rec-rgb-mid-size", "1536",
-                // "--ssl-rec-rgb-mid-feat", "False",
-                // "--agent-type", "perceiver-gwt-gwwm",
-                // "--agent-type", "gwtv3",
-                // "--agent-type", "gwtv3.1",
-                // "--agent-type", "ss-default",
-                // "--agent-type", "custom-gru",
-                // "--agent-type", "custom-gwt",
-                // "--agent-type", "custom-gwt-td",
-                // "--use-pose", "True",
-                
-                // GWT v3 Ablations debugging
-                "--gwtv3-use-gw", "True",
-                "--gwtv3-enc-gw-detach", "True",
-                "--gwtv3-use-null", "True",
-                // "--gwtv3-cross-heads", "4",
-                "--gwtv3-gru-type", "layernorm",
-                // "--hidden-size", "64",
+                // GW Agnet config
+                "--recenc-use-gw", "True",
+                "--recenc-gw-detach", "True",
+                "--gw-use-null", "True",
+                "--hidden-size", "512",
+                "--gw-size", "64",
 
                 // Probing debugging
                 // "--num-minibatches", "2",
@@ -150,10 +91,10 @@
                 // "--probe-depth", "2"
 
                 // GRUv3
-                "--agent-type", "gruv3",
-                "--pretrained-model-name", "ppo_bc__savi_ss1_rgb_spectro__gruv3__gw_detach__usenull__grulynrm__entcoef_0.2__no_cew",
-                "--pretrained-model-path", "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_spectro__gruv3__gw_detach__grulynrm__entcoef_0.2__no_cew_seed_111__2023_11_06_11_56_54_073258.conan/models/ppo_agent.19170001.ckpt.pth",
-                "--probe-depth", "2"
+                // "--agent-type", "gruv3",
+                // "--pretrained-model-name", "ppo_bc__savi_ss1_rgb_spectro__gruv3__gw_detach__usenull__grulynrm__entcoef_0.2__no_cew",
+                // "--pretrained-model-path", "/home/rousslan/random/rl/exp-logs/ss-hab-bc/ppo_bc__savi_ss1_rgb_spectro__gruv3__gw_detach__grulynrm__entcoef_0.2__no_cew_seed_111__2023_11_06_11_56_54_073258.conan/models/ppo_agent.19170001.ckpt.pth",
+                // "--probe-depth", "2"
 
                 // // GRU2 Baseline
                 // "--agent-type", "custom-gru",

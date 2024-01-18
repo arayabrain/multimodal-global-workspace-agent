@@ -4,12 +4,11 @@ import numpy as np
 
 import torch as th
 import torch.nn as nn
-import torch.nn.functional as F
 
 from ss_baselines.av_nav.ppo.policy import CriticHead
 
 # From ss_baselines/av_nav/models/visual_cnn.py
-from ss_baselines.common.utils import CategoricalNet, CategoricalNet2, Flatten
+from ss_baselines.common.utils import CategoricalNet, Flatten
 
 GWTAGENT_DEFAULT_ANALYSIS_LAYER_NAMES = [
   "visual_encoder", "audio_encoder",
@@ -72,7 +71,6 @@ class GRUCell(nn.Module):
 ###################################
 # region: Vision modules          #
 
-
 def conv_output_dim(dimension, padding, dilation, kernel_size, stride):
     r"""Calculates the output height and width based on the input
     height and width to the convolution layer.
@@ -119,7 +117,7 @@ class RecurrentVisualEncoder(nn.Module):
         output_size: The size of the embedding vector
     """
 
-    def __init__(self, observation_space, output_size, extra_rgb, use_gw=False, gw_detach=False, gru_type="default", obs_center=False):
+    def __init__(self, observation_space, gw_size, output_size, extra_rgb, use_gw=False, gw_detach=False, gru_type="default", obs_center=False):
         super().__init__()
         if "rgb" in observation_space.spaces and not extra_rgb:
             self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
@@ -192,7 +190,7 @@ class RecurrentVisualEncoder(nn.Module):
 
             rnn_input_dim = 2304 # TODO: dynamic compute of flattened output
             if self.use_gw:
-                rnn_input_dim += output_size
+                rnn_input_dim += gw_size
 
             if gru_type == "default":
                 self.rnn = nn.GRUCell(
@@ -259,7 +257,7 @@ class RecurrentAudioEncoder(nn.Module):
         output_size: The size of the embedding vector
     """
 
-    def __init__(self, observation_space, output_size, audiogoal_sensor, use_gw=False, gw_detach=False, gru_type="default",):
+    def __init__(self, observation_space, gw_size, output_size, audiogoal_sensor, use_gw=False, gw_detach=False, gru_type="default",):
         super().__init__()
         self._n_input_audio = observation_space.spaces[audiogoal_sensor].shape[2]
         self._audiogoal_sensor = audiogoal_sensor
@@ -314,7 +312,7 @@ class RecurrentAudioEncoder(nn.Module):
 
         rnn_input_dim = 2496 # TODO: dynamic compute of flattened output
         if self.use_gw:
-            rnn_input_dim += output_size
+            rnn_input_dim += gw_size
         
         if gru_type == "default":
             self.rnn = nn.GRUCell(
@@ -355,28 +353,32 @@ class RecurrentAudioEncoder(nn.Module):
 ###################################
 
 ######################################
-# region: GWT v3 GW modules          #
+# region: GWT GW modules          #
 
 class CrossAttention(nn.Module):
-    def __init__(self, q_size, kv_size, n_heads=1, use_null=True):
+    def __init__(self, gw_size, feat_size, n_heads=1, use_null=True):
         super().__init__()
-        self.h_size = q_size
-        self.kv_size = kv_size
         self.n_heads = n_heads
         self.use_null = use_null
+        self.gw_size = gw_size
+        self.feat_size = feat_size
 
-        self.ln_q = nn.LayerNorm([q_size])
-        self.ln_k = nn.LayerNorm([kv_size])
-        self.ln_v = nn.LayerNorm([kv_size])
+        # Linear projection to downscale input modalities
+        self.proj_vis = nn.Linear(feat_size, gw_size, bias=False)
+        self.proj_aud = nn.Linear(feat_size, gw_size, bias=False)
+
+        self.ln_q = nn.LayerNorm([gw_size])
+        self.ln_k = nn.LayerNorm([gw_size])
+        self.ln_v = nn.LayerNorm([gw_size])
 
         self.mha = nn.MultiheadAttention(
-            q_size,
+            gw_size,
             n_heads,
             dropout=0.0,
             add_zero_attn=False,
             batch_first=True,
-            kdim=kv_size,
-            vdim=kv_size,
+            kdim=gw_size,
+            vdim=gw_size,
         )
 
     def forward(self, modality_features, prev_gw):
@@ -386,99 +388,47 @@ class CrossAttention(nn.Module):
                 - "audio": [B, 1, H]
         """
         B = modality_features["audio"].shape[0]
-        H = modality_features["audio"].shape[-1] # TODO: recover from the cfg instead ?
+
+        aud_feats = self.proj_vis(modality_features["audio"]) # From H -> GW_H
+        vis_feats = self.proj_vis(modality_features["visual"])
 
         q = th.cat([
-                modality_features["audio"], # [B, 1, H]
-                modality_features["visual"], # [B, 1, H]
-                prev_gw[:, None, :] # [B, 1, H]
-            ], dim=1) # [B, 2, H]
+                aud_feats, # [B, 1, GW_H]
+                vis_feats, # [B, 1, GW_H]
+                prev_gw[:, None, :] # [B, 1, GW_H]
+            ], dim=1) # [B, 3, GW_H]
         kv = th.cat([
-            modality_features["audio"], # [B, 1, H]
-            modality_features["visual"], # [B, 1, H]
-            prev_gw[:, None, :] # [B, 1, H]
-            ], dim=1) # [B, 3, H] so far
+            aud_feats, # [B, 1, GW_H]
+            vis_feats, # [B, 1, GW_H]
+            prev_gw[:, None, :] # [B, 1, GW_H]
+            ], dim=1) # [B, 3, GW_H] so far
         if self.use_null:
             kv = th.cat([
-                kv, # [B, 3, H] by this point
-                kv.new_zeros([B, 1, H]) # Nulls: [B, 1, H]
-            ], dim=1) # [B, 4, H]
+                kv, # [B, 3, GW_H] by this point
+                kv.new_zeros([B, 1, self.gw_size]) # Nulls: [B, 1, GW_H]
+            ], dim=1) # [B, 4, GW_H]
         
         q = self.ln_q(q) # [B, 3, H]
         k = self.ln_k(kv) # [B, X, H], X = 3 or 4
         v = self.ln_v(kv) # [B, X, H], X = 3 or 4
+
         attn_values, attn_weights = self.mha(q, k, v)
 
         return attn_values, attn_weights # [B, 3, H], [B, 3, X], X = 3 or 4
 
-# Cross Attnetion v3.1
-## - Use only the GW for query
-## - GWTv3.1 does not use GRU
-class CrossAttention_v3_1(nn.Module):
-    def __init__(self, q_size, kv_size, n_heads=1, use_null=True):
-        super().__init__()
-        self.h_size = q_size
-        self.kv_size = kv_size
-        self.n_heads = n_heads
-        self.use_null = use_null
-
-        self.ln_q = nn.LayerNorm([q_size])
-        self.ln_k = nn.LayerNorm([kv_size])
-        self.ln_v = nn.LayerNorm([kv_size])
-
-        self.mha = nn.MultiheadAttention(
-            q_size,
-            n_heads,
-            dropout=0.0,
-            add_zero_attn=False,
-            batch_first=True,
-            kdim=kv_size,
-            vdim=kv_size,
-        )
-
-    def forward(self, modality_features, prev_gw):
-        """
-            Modality features: dict of:
-                - "visual": [B, 1, H]
-                - "audio": [B, 1, H]
-        """
-        B = modality_features["audio"].shape[0]
-        H = modality_features["audio"].shape[-1] # TODO: recover from the cfg instead ?
-
-        q = prev_gw[:, None, :] # [B, 1, H]
-        kv = th.cat([
-            modality_features["audio"], # [B, 1, H]
-            modality_features["visual"], # [B, 1, H]
-            prev_gw[:, None, :] # [B, 1, H]
-            ], dim=1) # [B, 3, H] so far
-        if self.use_null:
-            kv = th.cat([
-                kv, # [B, 3, H] by this point
-                kv.new_zeros([B, 1, H]) # Nulls: [B, 1, H]
-            ], dim=1) # [B, 4, H]
-        
-        q = self.ln_q(q) # [B, 1, H]
-        k = self.ln_k(kv) # [B, X, H], X = 3 or 4
-        v = self.ln_v(kv) # [B, X, H], X = 3 or 4
-        attn_values, attn_weights = self.mha(q, k, v)
-
-        return attn_values, attn_weights # [B, 3, H], [B, 3, X], X = 3 or 4
-
-class GWTv3StateEncoder(nn.Module):
-    def __init__(self, 
-                 input_size,
-                 hidden_size,
-                 ca_q_size,
-                 ca_kv_size,
+class GWStateEncoder(nn.Module):
+    def __init__(self,
+                 gw_size,
+                 feat_size,
                  ca_n_heads=1,
                  ca_use_null=True,
-                 gru_type="default"):
+                 gru_type="layernorm"):
         super().__init__()
 
         # CrossAttention module
         self.ca = CrossAttention(
-            q_size=ca_q_size,
-            kv_size=ca_kv_size,
+            gw_size=gw_size,
+            feat_size=feat_size,
             n_heads=ca_n_heads,
             use_null=ca_use_null
         )
@@ -486,8 +436,8 @@ class GWTv3StateEncoder(nn.Module):
         # RNN module
         if gru_type == "default":
             self.rnn = nn.GRUCell(
-                input_size=input_size,
-                hidden_size=hidden_size,
+                input_size=gw_size * 2,
+                hidden_size=gw_size,
             )
 
             # Custom RNN params. init
@@ -499,8 +449,8 @@ class GWTv3StateEncoder(nn.Module):
 
         elif gru_type == "layernorm":
             self.rnn = GRUCell(
-                input_size,
-                hidden_size,
+                gw_size * 2,
+                gw_size,
                 norm=True
             )
     
@@ -531,117 +481,18 @@ class GWTv3StateEncoder(nn.Module):
 
         return rnn_output
 
-class GWTv3_1StateEncoder(nn.Module):
-    def __init__(self, 
-                 input_size,
-                 hidden_size,
-                 ca_q_size,
-                 ca_kv_size,
-                 ca_n_heads=1,
-                 ca_use_null=True,
-                 gru_type="default"):
-        super().__init__()
-
-        # CrossAttention module
-        self.ca = CrossAttention_v3_1(
-            q_size=ca_q_size,
-            kv_size=ca_kv_size,
-            n_heads=ca_n_heads,
-            use_null=ca_use_null
-        )
-    
-    def forward(self, modality_features, prev_gw, masks):
-        """
-        - modality_features: dict of:
-            - "visual": [B, 1, H]
-            - "audio": [B, 1, H]
-        - hidden_states: [B, H] or [1, B, H] for compat. with SS1.0
-            This is the previous global workspace
-        - masks: [B, 1], marks episode end / start
-            Used to init prev_gw when a new episode starts
-        """
-
-        attn_values, attn_weights = self.ca(
-            modality_features, # {"visual": Tnsr, "audio": Tnsr}
-            prev_gw=prev_gw * masks # # [B, H]
-        )
-
-        return attn_values[:, 0, :]
-
-class GWTv3_2StateEncoder(nn.Module):
-    def __init__(self, 
-                 input_size,
-                 hidden_size,
-                 ca_q_size,
-                 ca_kv_size,
-                 ca_n_heads=1,
-                 ca_use_null=True,
-                 gru_type="default"):
-        super().__init__()
-
-        # CrossAttention module
-        self.ca_0 = CrossAttention_v3_1(
-            q_size=ca_q_size,
-            kv_size=ca_kv_size,
-            n_heads=ca_n_heads,
-            use_null=ca_use_null
-        )
-        
-        self.ca_1 = CrossAttention_v3_1(
-            q_size=ca_q_size,
-            kv_size=ca_kv_size,
-            n_heads=ca_n_heads,
-            use_null=ca_use_null
-        )
-
-        self.ca = CrossAttention_v3_1(
-            q_size=ca_q_size,
-            kv_size=ca_kv_size,
-            n_heads=ca_n_heads,
-            use_null=ca_use_null
-        )
-    
-    def forward(self, modality_features, prev_gw, masks):
-        """
-        - modality_features: dict of:
-            - "visual": [B, 1, H]
-            - "audio": [B, 1, H]
-        - hidden_states: [B, H] or [1, B, H] for compat. with SS1.0
-            This is the previous global workspace
-        - masks: [B, 1], marks episode end / start
-            Used to init prev_gw when a new episode starts
-        """
-
-        attn_values, _ = self.ca_0(
-            modality_features, # {"visual": Tnsr, "audio": Tnsr}
-            prev_gw=prev_gw * masks # # [B, H]
-        )
-
-        attn_values, _ = self.ca_1(
-            modality_features, # {"visual": Tnsr, "audio": Tnsr}
-            prev_gw=attn_values[:, 0, :] # # [B, H]
-        )
-
-        attn_values, _ = self.ca(
-            modality_features, # {"visual": Tnsr, "audio": Tnsr}
-            prev_gw=attn_values[:, 0, :] # # [B, H]
-        )
-
-        return attn_values[:, 0, :]
-
-
 class GRUStateEncoder(nn.Module):
     def __init__(self, 
-                input_size,
-                hidden_size,
+                gw_size,
+                feat_size,
                 gru_type="default"):
         super().__init__()
 
         # RNN module
         if gru_type == "default":
             self.rnn = nn.GRUCell(
-                input_size=input_size,
-                hidden_size=hidden_size,
+                input_size=gw_size * 2,
+                hidden_size=gw_size,
             )
 
             # Custom RNN params. init
@@ -653,10 +504,14 @@ class GRUStateEncoder(nn.Module):
 
         elif gru_type == "layernorm":
             self.rnn = GRUCell(
-                input_size,
-                hidden_size,
+                gw_size * 2,
+                gw_size,
                 norm=True
             )
+
+        # Linear projection to downscale input modalities
+        self.proj_vis = nn.Linear(feat_size, gw_size, bias=False)
+        self.proj_aud = nn.Linear(feat_size, gw_size, bias=False)
 
     def forward(self, modality_features, prev_gw, masks):
         """
@@ -669,9 +524,12 @@ class GRUStateEncoder(nn.Module):
             Used to init prev_gw when a new episode starts
         """
 
+        aud_feats = self.proj_vis(modality_features["audio"]) # From H -> GW_H
+        vis_feats = self.proj_vis(modality_features["visual"])
+        
         x = th.cat([
-            modality_features["audio"][:, 0, :], # [B, H]
-            modality_features["visual"][:, 0, :], # [B, H]
+            aud_feats[:, 0, :],    # [B, GW_H]
+            vis_feats[:, 0, :],   # [B, GW_H]
             ], dim=1)
         rnn_output = self.rnn(
             x,
@@ -679,13 +537,14 @@ class GRUStateEncoder(nn.Module):
         )
 
         return rnn_output
-# endregion: GWT v3 GW modules       #
+
+# endregion: GWT GW modules       #
 ######################################
 
 ###################################
-# region: GWT v3 Agent            #
+# region: GWT Agent            #
 
-class GWTv3ActorCritic(nn.Module):
+class GW_ActorCritic(nn.Module):
     def __init__(self,
                     observation_space,
                     action_space,
@@ -696,34 +555,34 @@ class GWTv3ActorCritic(nn.Module):
         self.config = config
 
         self.visual_encoder = RecurrentVisualEncoder(
-            observation_space, 
+            observation_space,
+            config.gw_size,
             config.hidden_size,
             extra_rgb=extra_rgb,
-            use_gw=config.gwtv3_use_gw,
-            gw_detach=config.gwtv3_enc_gw_detach,
-            gru_type=config.gwtv3_gru_type,
+            use_gw=config.recenc_use_gw,
+            gw_detach=config.recenc_gw_detach,
+            gru_type=config.gru_type,
         )
         self.audio_encoder = RecurrentAudioEncoder(
             observation_space,
+            config.gw_size,
             config.hidden_size,
             "spectrogram",
-            use_gw=config.gwtv3_use_gw,
-            gw_detach=config.gwtv3_enc_gw_detach,
-            gru_type=config.gwtv3_gru_type,
+            use_gw=config.recenc_use_gw,
+            gw_detach=config.recenc_gw_detach,
+            gru_type=config.gru_type,
         )
         
-        self.state_encoder = GWTv3StateEncoder(
-            input_size=config.hidden_size * 2,
-            hidden_size=config.hidden_size,
-            ca_q_size=config.hidden_size,
-            ca_kv_size=config.hidden_size,
-            ca_n_heads=config.gwtv3_cross_heads,
-            ca_use_null=config.gwtv3_use_null,
-            gru_type=config.gwtv3_gru_type,
+        self.state_encoder = GWStateEncoder(
+            gw_size=config.gw_size,
+            feat_size=config.hidden_size,
+            ca_n_heads=config.gw_cross_heads,
+            ca_use_null=config.gw_use_null,
+            gru_type=config.gru_type,
         )
 
-        self.action_distribution = CategoricalNet(config.hidden_size, action_space.n) # Policy fn
-        self.critic = CriticHead(config.hidden_size) # Value fn
+        self.action_distribution = CategoricalNet(config.gw_size, action_space.n) # Policy fn
+        self.critic = CriticHead(config.gw_size) # Value fn
 
         self.train()
         
@@ -813,7 +672,7 @@ class GWTv3ActorCritic(nn.Module):
         return th.cat(gw_list, dim=0).reshape(T_B, -1), gw, modality_features # [T, B, H], [B, H], {k: [B, H]} for k in "visual", "audio"
 
     def act(self, observations, rnn_hidden_states, masks, modality_features, deterministic=False, actions=None,
-                  value_feat_detach=False, actor_feat_detach=False, ssl_tasks=None, single_step=False):
+                  value_feat_detach=False, actor_feat_detach=False, single_step=False):
         features, gw, modality_features = self(observations, rnn_hidden_states,
                                             masks, modality_features, 
                                             single_step=single_step)
@@ -834,17 +693,6 @@ class GWTv3ActorCritic(nn.Module):
 
         distribution_entropy = distribution.entropy()
 
-        # Additonal SSL tasks outputs
-        ssl_outputs = {}
-        if ssl_tasks is not None:
-            for ssl_task in ssl_tasks:
-                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3"]:
-                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](features)
-                elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-mse"]:
-                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](modality_features["vision"])
-                else:
-                    raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
-
         modality_features_detached = {
             k: v.detach() for k,v in modality_features.items()
         }
@@ -855,7 +703,7 @@ class GWTv3ActorCritic(nn.Module):
             self._features["state_encoder"] = features
 
         return actions, distribution.probs, action_log_probs, action_logits, \
-               distribution_entropy, values, gw.detach(), modality_features_detached, ssl_outputs
+               distribution_entropy, values, gw.detach(), modality_features_detached
     
     def get_value(self, observations, rnn_hidden_states, masks, modality_features):
         features, _, _ = self(observations, rnn_hidden_states, masks, modality_features)
@@ -878,92 +726,13 @@ class GWTv3ActorCritic(nn.Module):
             self._features[layer_id] = output
         return fn
 
-class GWTv3_1ActorCritic(GWTv3ActorCritic):
-    def __init__(self,
-                observation_space,
-                action_space,
-                config,
-                extra_rgb=False,
-                analysis_layers=[]):
-        super().__init__(observation_space,
-                         action_space,
-                         config,
-                         extra_rgb,
-                         analysis_layers)
-
-        # Override the StateEncoder with the variant
-        # that does not have a central GRU cell
-        self.state_encoder = GWTv3_1StateEncoder(
-            input_size=config.hidden_size * 2,
-            hidden_size=config.hidden_size,
-            ca_q_size=config.hidden_size,
-            ca_kv_size=config.hidden_size,
-            ca_n_heads=config.gwtv3_cross_heads,
-            ca_use_null=config.gwtv3_use_null,
-            gru_type=config.gwtv3_gru_type,
-        )
-        
-        self.action_distribution = CategoricalNet(config.hidden_size, action_space.n) # Policy fn
-        self.critic = CriticHead(config.hidden_size) # Value fn
-
-        self.train()
-        
-        # Layers to record for neuroscience based analysis
-        self.analysis_layers = analysis_layers
-
-        # Hooks for intermediate features storage
-        if len(analysis_layers):
-            self._features = {layer: th.empty(0) for layer in self.analysis_layers}
-            for layer_id in analysis_layers:
-                layer = dict([*self.named_modules()])[layer_id]
-                layer.register_forward_hook(self.save_outputs_hook(layer_id))
-
-class GWTv3_2ActorCritic(GWTv3ActorCritic):
-    def __init__(self,
-                observation_space,
-                action_space,
-                config,
-                extra_rgb=False,
-                analysis_layers=[]):
-        super().__init__(observation_space,
-                         action_space,
-                         config,
-                         extra_rgb,
-                         analysis_layers)
-
-        # Override the StateEncoder with the variant
-        # that does not have a central GRU cell
-        self.state_encoder = GWTv3_2StateEncoder(
-            input_size=config.hidden_size * 2,
-            hidden_size=config.hidden_size,
-            ca_q_size=config.hidden_size,
-            ca_kv_size=config.hidden_size,
-            ca_n_heads=config.gwtv3_cross_heads,
-            ca_use_null=config.gwtv3_use_null,
-            gru_type=config.gwtv3_gru_type,
-        )
-        
-        self.action_distribution = CategoricalNet(config.hidden_size, action_space.n) # Policy fn
-        self.critic = CriticHead(config.hidden_size) # Value fn
-
-        self.train()
-        
-        # Layers to record for neuroscience based analysis
-        self.analysis_layers = analysis_layers
-
-        # Hooks for intermediate features storage
-        if len(analysis_layers):
-            self._features = {layer: th.empty(0) for layer in self.analysis_layers}
-            for layer_id in analysis_layers:
-                layer = dict([*self.named_modules()])[layer_id]
-                layer.register_forward_hook(self.save_outputs_hook(layer_id))
-# endregion: GWT v3 Agent         #
+# endregion: GWT Agent         #
 ###################################
 
 ###################################
 # region: GRU v3 Baseline         #
 
-class ActorCritic_GRUBaseline(nn.Module):
+class GRU_ActorCritic(nn.Module):
     def __init__(self,
                     observation_space,
                     action_space,
@@ -975,29 +744,31 @@ class ActorCritic_GRUBaseline(nn.Module):
 
         self.visual_encoder = RecurrentVisualEncoder(
             observation_space, 
+            config.gw_size,
             config.hidden_size,
             extra_rgb=extra_rgb,
-            use_gw=config.gwtv3_use_gw,
-            gw_detach=config.gwtv3_enc_gw_detach,
-            gru_type=config.gwtv3_gru_type,
+            use_gw=config.recenc_use_gw,
+            gw_detach=config.recenc_gw_detach,
+            gru_type=config.gru_type,
         )
         self.audio_encoder = RecurrentAudioEncoder(
             observation_space,
+            config.gw_size,
             config.hidden_size,
             "spectrogram",
-            use_gw=config.gwtv3_use_gw,
-            gw_detach=config.gwtv3_enc_gw_detach,
-            gru_type=config.gwtv3_gru_type,
+            use_gw=config.recenc_use_gw,
+            gw_detach=config.recenc_gw_detach,
+            gru_type=config.gru_type,
         )
         
         self.state_encoder = GRUStateEncoder(
-            input_size=config.hidden_size * 2,
-            hidden_size=config.hidden_size,
-            gru_type=config.gwtv3_gru_type,
+            gw_size=config.gw_size,
+            feat_size=config.hidden_size,
+            gru_type=config.gru_type
         )
 
-        self.action_distribution = CategoricalNet(config.hidden_size, action_space.n) # Policy fn
-        self.critic = CriticHead(config.hidden_size) # Value fn
+        self.action_distribution = CategoricalNet(config.gw_size, action_space.n) # Policy fn
+        self.critic = CriticHead(config.gw_size) # Value fn
 
         self.train()
         
@@ -1086,7 +857,7 @@ class ActorCritic_GRUBaseline(nn.Module):
         return th.cat(gw_list, dim=0).reshape(T_B, -1), gw, modality_features # [T, B, H], [B, H], {k: [B, H]} for k in "visual", "audio"
 
     def act(self, observations, rnn_hidden_states, masks, modality_features, deterministic=False, actions=None,
-                  value_feat_detach=False, actor_feat_detach=False, ssl_tasks=None, single_step=False):
+                  value_feat_detach=False, actor_feat_detach=False, single_step=False):
         features, gw, modality_features = self(observations, rnn_hidden_states,
                                             masks, modality_features, 
                                             single_step=single_step)
@@ -1107,17 +878,6 @@ class ActorCritic_GRUBaseline(nn.Module):
 
         distribution_entropy = distribution.entropy()
 
-        # Additonal SSL tasks outputs
-        ssl_outputs = {}
-        if ssl_tasks is not None:
-            for ssl_task in ssl_tasks:
-                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3"]:
-                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](features)
-                elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-mse"]:
-                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](modality_features["vision"])
-                else:
-                    raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
-
         modality_features_detached = {
             k: v.detach() for k,v in modality_features.items()
         }
@@ -1128,7 +888,7 @@ class ActorCritic_GRUBaseline(nn.Module):
             self._features["state_encoder"] = features
         
         return actions, distribution.probs, action_log_probs, action_logits, \
-               distribution_entropy, values, gw.detach(), modality_features_detached, ssl_outputs
+               distribution_entropy, values, gw.detach(), modality_features_detached
     
     def get_value(self, observations, rnn_hidden_states, masks, modality_features):
         features, _, _ = self(observations, rnn_hidden_states, masks, modality_features)

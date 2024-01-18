@@ -23,9 +23,7 @@ from ss_baselines.common.environments import get_env_class
 from ss_baselines.common.utils import images_to_video_with_audio
 
 # Custom ActorCritic agent for PPO
-from models import ActorCritic, ActorCritic2, Perceiver_GWT_GWWM_ActorCritic
-from models2 import GWTAgent, GWTAgent_BU, GWTAgent_TD
-from models3 import GWTv3ActorCritic, GWTv3_1ActorCritic, GWTv3_2ActorCritic, ActorCritic_GRUBaseline
+from models import GW_ActorCritic, GRU_ActorCritic
 
 # Dataset utils
 from torch.utils.data import IterableDataset, DataLoader
@@ -149,18 +147,11 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
     # prev_acts = th.zeros([n_eval_envs, 4], device=device)
 
     masks = 1. - done_th[:, None]
-    if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu", "custom-gwt-td"]:
-        rnn_hidden_state = th.zeros((1, n_eval_envs, args.hidden_size), device=device)
-    elif args.agent_type in ["perceiver-gwt-gwwm"]:
-        rnn_hidden_state = agent.state_encoder.latents.clone().repeat(n_eval_envs, 1, 1)
-    elif args.agent_type in ["gwtv3", "gwtv3.1", "gwtv3.2", "gruv3"]:
-        rnn_hidden_state = th.zeros((n_eval_envs, args.hidden_size), device=device)
-        modality_features = {
-            "audio": rnn_hidden_state.new_zeros([n_eval_envs, args.hidden_size]),
-            "visual": rnn_hidden_state.new_zeros([n_eval_envs, args.hidden_size])
-        }
-    else:
-        raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+    rnn_hidden_state = th.zeros((n_eval_envs, args.gw_size), device=device)
+    modality_features = {
+        "audio": rnn_hidden_state.new_zeros([n_eval_envs, args.hidden_size]),
+        "visual": rnn_hidden_state.new_zeros([n_eval_envs, args.hidden_size])
+    }
     
     n_finished_episodes = 0
 
@@ -182,7 +173,7 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
 
         # Sample action
         action, _, _, _, \
-        entropies, _, rnn_hidden_state, modality_features, _ = \
+        entropies, _, rnn_hidden_state, modality_features = \
             agent.act(obs_th, rnn_hidden_state, masks=masks, 
             modality_features=modality_features,
             deterministic=True, single_step=True) #, prev_actions=prev_acts if args.prev_actions else None)
@@ -322,73 +313,36 @@ def main():
         get_arg_dict("lr", float, 2.5e-4), # Learning rate
         get_arg_dict("optim-wd", float, 0), # weight decay for adam optim
         ## Agent network params
-        get_arg_dict("agent-type", str, "gwtv3", metatype="choice",
-            choices=["ss-default", "perceiver-gwt-gwwm",
-                        "custom-gru",
-                        "custom-gwt", "custom-gwt-bu", "custom-gwt-td",
-                        "gwtv3", "gruv3",
-                        "gwtv3.1", "gwtv3.2"]),
+        get_arg_dict("agent-type", str, "gw", metatype="choice",
+            choices=["gw", "gru"]),
+        get_arg_dict("gru-type", str, "layernorm", metatype="choice",
+                        choices=["default", "layernorm"]),
         get_arg_dict("use-pose", bool, False, metatype="bool"), # Use "pose" field iin observations
-        get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
-        ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
-        get_arg_dict("pgwt-latent-type", str, "randn", metatype="choice",
-            choices=["randn", "zeros"]), # Depth of the Perceiver
-        get_arg_dict("pgwt-latent-learned", bool, True, metatype="bool"),
-        get_arg_dict("pgwt-depth", int, 1), # Depth of the Perceiver
-        get_arg_dict("pgwt-num-latents", int, 8),
-        get_arg_dict("pgwt-latent-dim", int, 64),
-        get_arg_dict("pgwt-cross-heads", int, 1),
-        get_arg_dict("pgwt-latent-heads", int, 4),
-        get_arg_dict("pgwt-cross-dim-head", int, 64),
-        get_arg_dict("pgwt-latent-dim-head", int, 64),
-        get_arg_dict("pgwt-weight-tie-layers", bool, False, metatype="bool"),
-        get_arg_dict("pgwt-ff", bool, False, metatype="bool"),
-        get_arg_dict("pgwt-num-freq-bands", int, 6),
-        get_arg_dict("pgwt-max-freq", int, 10.),
-        get_arg_dict("pgwt-use-sa", bool, False, metatype="bool"),
-        ## Peceiver Modality Embedding related
-        get_arg_dict("pgwt-mod-embed", int, 0), # Learnable modality embeddings
-        ## Additional modalities
-        get_arg_dict("pgwt-ca-prev-latents", bool, False, metatype="bool"), # if True, passes the prev latent to CA as KV input data
+        get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features
 
-        ## Special BC
-        get_arg_dict("prev-actions", bool, False, metatype="bool"),
-        get_arg_dict("burn-in", int, 0), # Steps used to init the latent state for RNN component
+        ## BC related hyper parameters
         get_arg_dict("batch-chunk-length", int, 0), # For gradient accumulation
         get_arg_dict("dataset-ce-weights", bool, False, metatype="bool"), # If True, will read CEL weights based on action dist. from the 'dataset_statistics.bz2' file.
         get_arg_dict("ce-weights", float, None, metatype="list"), # Weights for the Cross Entropy loss
 
-        ## Custom GWT Agent with BU and TD attentions
-        get_arg_dict("gwt-hid-size", int, 512),
-        get_arg_dict("gwt-channels", int, 32),
-
-        ## GWTv3 Agent with custom attention, recurrent encoder and null inputs
-        get_arg_dict("gwtv3-use-gw", bool, True, metatype="bool"), # Use GW at Recur. Enc. level
-        get_arg_dict("gwtv3-enc-gw-detach", bool, True, metatype="bool"), # When using GW at Recurrent Encoder level, whether to detach the grads or not
-        get_arg_dict("gwtv3-use-null", bool, True, metatype="bool"), # Use Null at CrossAtt level
-        get_arg_dict("gwtv3-cross-heads", int, 1), # num_heads of the CrossAttn
-        get_arg_dict("gwtv3-gru-type", str, "layernorm", metatype="choice",
-                        choices=["default", "layernorm"]),
-        
-        ## SSL Support
-        get_arg_dict("obs-center", bool, False, metatype="bool"), # Centers the rgb_observations' range to [-0.5,0.5]
-        get_arg_dict("ssl-tasks", str, None, metatype="list"), # Expects something like ["rec-rgb-vis", "rec-depth", "rec-spectr"]
-        get_arg_dict("ssl-task-coefs", float, None, metatype="list"), # For each ssl-task, specifies the loss coeff. during computation
-        ### Further parameterization of the SSL vision reconstruction task
-        get_arg_dict("ssl-rec-rgb-mid-size", int, 512), # Size of intermediate feat in the AE
-        get_arg_dict("ssl-rec-rgb-mid-feat", bool, False, metatype="bool"), # When doing rec-rgb-vis-ae based SSL, use larger, intermediate features for rec.
-        get_arg_dict("ssl-rec-rgb-detach", bool, True, metatype="bool"), # When doing SSL rec-rgb, detach the grads. from decoder to latents
+        ## GW Agent with custom attention, recurrent encoder and null inputs
+        get_arg_dict("gw-size", int, 512), # TODO: support this at the code level
+        get_arg_dict("recenc-use-gw", bool, True, metatype="bool"), # Use GW at Recur. Enc. level
+        get_arg_dict("recenc-gw-detach", bool, True, metatype="bool"), # When using GW at Recurrent Encoder level, whether to detach the grads or not
+        get_arg_dict("gw-use-null", bool, True, metatype="bool"), # Use Null at CrossAtt level
+        get_arg_dict("gw-cross-heads", int, 1), # num_heads of the CrossAttn
 
         # Eval protocol
         get_arg_dict("eval", bool, True, metatype="bool"),
         get_arg_dict("eval-every", int, int(1.5e4)), # Every X frames || steps sampled
         get_arg_dict("eval-n-episodes", int, 5),
+        # TODO: make model saving sparser than eval itself.
 
         # Logging params
-        # NOTE: While supported, video logging is expensive because the RGB generation in the
-        # envs hogs a lot of GPU, especially with multiple envs 
+        # NOTE: Video logging expensive
         get_arg_dict("save-videos", bool, False, metatype="bool"),
         get_arg_dict("save-model", bool, True, metatype="bool"),
+        get_arg_dict("save-model-every", int, int(5e5)), # Every X frames || steps sampled
         get_arg_dict("log-sampling-stats-every", int, int(1.5e3)), # Every X frames || steps sampled
         get_arg_dict("log-training-stats-every", int, int(10)), # Every X model update
         get_arg_dict("logdir-prefix", str, "./logs/") # Overrides the default one
@@ -439,7 +393,7 @@ def main():
     # NOTE: using less environments for eval to save up system memory -> run more experiment at the same time
     env_config.NUM_PROCESSES = 1 # Corresponds to number of envs, makes script startup faster for debugs
     # env_config.CONTINUOUS = args.env_continuous
-    ## In caes video saving is enabled, make sure there is also the rgb videos
+    ## In case video saving is enabled, make sure there is also the rgb videos
     agent_extra_rgb = False
     if args.save_videos:
         # For RGB video sensors
@@ -482,40 +436,13 @@ def main():
     if "DEPTH_SENSOR" in env_config.SENSORS:
         single_observation_space["rgb"] = spaces.Box(shape=[128,128,1], low=0, high=255, dtype=np.uint8)
 
-    # TODO: delete the envrionemtsn / find a more efficient method to do this
-
-    # TODO: make the ActorCritic components parameterizable through comand line ?
-    if args.agent_type == "ss-default":
-        agent = ActorCritic(single_observation_space, single_action_space, args, extra_rgb=agent_extra_rgb).to(device)
-    elif args.agent_type == "custom-gru":
-        # TODO: add toggle for 'pose' usage for ablations later ?
-        agent = ActorCritic2(single_observation_space, single_action_space, args, extra_rgb=agent_extra_rgb).to(device)
-    elif args.agent_type == "custom-gwt":
-        agent = GWTAgent(single_action_space, args).to(device)
-    elif args.agent_type == "custom-gwt-bu":
-        agent = GWTAgent_BU(single_action_space, args).to(device)
-    elif args.agent_type ==  "custom-gwt-td":
-        agent = GWTAgent_TD(single_action_space, args).to(device)
-    elif args.agent_type == "perceiver-gwt-gwwm":
-        agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space,
-            args, extra_rgb=agent_extra_rgb).to(device)
-    elif args.agent_type == "gwtv3":
-        agent = GWTv3ActorCritic(single_observation_space,
+    if args.agent_type == "gw":
+        agent = GW_ActorCritic(single_observation_space,
                     single_action_space,
                     args,
                     extra_rgb=agent_extra_rgb).to(device)
-    elif args.agent_type == "gwtv3.1":
-        agent = GWTv3_1ActorCritic(single_observation_space,
-                    single_action_space,
-                    args,
-                    extra_rgb=agent_extra_rgb).to(device)
-    elif args.agent_type == "gwtv3.2":
-        agent = GWTv3_2ActorCritic(single_observation_space,
-                    single_action_space,
-                    args,
-                    extra_rgb=agent_extra_rgb).to(device)
-    elif args.agent_type == "gruv3":
-        agent = ActorCritic_GRUBaseline(single_observation_space,
+    elif args.agent_type == "gru":
+        agent = GRU_ActorCritic(single_observation_space,
                     single_action_space,
                     args,
                     extra_rgb=agent_extra_rgb).to(device)
@@ -570,6 +497,7 @@ def main():
     print(f"# Logdir: {tblogger.logdir}")
     should_log_training_stats = tools.Every(args.log_training_stats_every)
     should_eval = tools.Every(args.eval_every)
+    should_save_model = tools.Every(args.save_model_every)
 
     # Info logging
     print(" ### INFO: Agent summary and structure ###")
@@ -593,24 +521,20 @@ def main():
     n_updates = 0 # Progressively tracks the number of network updats
 
     # This will be used to recompute the rnn_hidden_strates when computiong the new action logprobs
-    if args.agent_type in ["ss-default", "custom-gru", "custom-gwt", "custom-gwt-bu", "custom-gwt-td"]:
-        rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
-    elif args.agent_type in ["perceiver-gwt-gwwm"]:
-        rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)
-    elif args.agent_type in ["gwtv3", "gwtv3.1", "gwtv3.2", "gruv3"]:
-        rnn_hidden_state = th.zeros((args.batch_chunk_length, args.hidden_size), device=device)
-        modality_features = {
-            "audio": rnn_hidden_state.new_zeros([args.batch_chunk_length, args.hidden_size]),
-            "visual": rnn_hidden_state.new_zeros([args.batch_chunk_length, args.hidden_size])
-        }
-    else:
-        raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
+    rnn_hidden_state = th.zeros((args.batch_chunk_length, args.gw_size), device=device)
+    modality_features = {
+        "audio": rnn_hidden_state.new_zeros([args.batch_chunk_length, args.hidden_size]),
+        "visual": rnn_hidden_state.new_zeros([args.batch_chunk_length, args.hidden_size])
+    }
 
-    # NOTE: 10 * 150 as step to match the training rate of an RL Agent, irrespective of which batch size / batch length is used
-    # Ideally, both RL and BC variants should be trained with the same number of steps, with batch of data as similar as possible.
-    # In some BC experiments we would use a single expisode as batch trajectory, while RL can have multiple episode cat.ed together
-    # to fill up one batch trajectory.
-    for global_step in range(1, args.total_steps + (args.num_envs * args.num_steps), args.num_envs * args.num_steps):
+    # NOTE: 10 * 150 as step to match the training rate of an RL Agent, 
+    # irrespective of which batch size / batch length is used
+    # Ideally, both RL and BC variants should be trained with the same number of steps,
+    # with batch of data as similar as possible.
+    # In some BC experiments we would use a single expisode as batch trajectory,
+    # while RL can have multiple episode concated together to fill up one batch trajectory.
+    for global_step in range(0, args.total_steps + (args.num_envs * args.num_steps), args.num_envs * args.num_steps):
+        print(f"### DBG: global_step: {global_step}")
         # Load batch data
         obs_list, action_list, _, done_list = \
             [ {k: th.Tensor(v).float().to(device) for k,v in b.items()} if isinstance(b, dict) else 
@@ -619,6 +543,10 @@ def main():
         # NOTE: RGB are normalized in the VisualCNN module
         # PPO networks expect input of shape T,B, ... so doing the permutation first
         # then flatten over T x B dimensions. The RNN will reshape it as necessary
+        # TODO
+        # TODO: now that we are not using the SAVI implemetnation, we can rever to B * T ?
+        # also reflect that within the StateEncoder code itself.
+        # TODO
         for k, v in obs_list.items():
             if k in ["rgb", "spectrogram", "depth"]:
                 obs_list[k] = v.permute(1, 0, 2, 3, 4) # BTCHW -> TBCHW
@@ -647,8 +575,6 @@ def main():
 
         # PPO Update Phase: actor and critic network updates
         for _ in range(args.update_epochs):
-            # np.random.shuffle(envinds)
-            # TODO / MISSING: mini-batch updates support like in ppo_av_nav.py
             assert args.num_envs % args.batch_chunk_length == 0, \
                 f"num-envs (batch-size) of {args.num_envs} should be integer divisible by {args.batch_chunk_length}"
             
@@ -657,44 +583,18 @@ def main():
 
             # TODO: maybe detach the rnn_hidden_state between two chunks ?
             actions, _, _, action_logits, \
-            entropies, _, rnn_hidden_state, modality_features, ssl_outputs = \
+            entropies, _, rnn_hidden_state, modality_features = \
                 agent.act(obs_list, rnn_hidden_state, masks=mask_list, 
-                    modality_features=modality_features, ssl_tasks=args.ssl_tasks) #, prev_actions=prev_actions_list)
+                    modality_features=modality_features) #, prev_actions=prev_actions_list)
 
             bc_loss = F.cross_entropy(action_logits, action_list.long(),
                                         weight=ce_weights, reduction="mean")
 
-            ssl_losses = {}
-            full_ssl_loss = 0
-            if args.ssl_tasks is not None:
-                for i, ssl_task in enumerate(args.ssl_tasks):
-                    ssl_task_coef = 1 if args.ssl_task_coefs is None else float(args.ssl_task_coefs[i])
-                    if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3", "rec-rgb-ae-4"
-                                    "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4", "rec-rgb-vis-ae-5"]:
-                        assert args.obs_center, "SSL task rec-rgb expects having args.obs_center = True, which is not the case now."
-                        rec_rgb_mean = ssl_outputs[ssl_task]
-                        rec_rgb_dist = th.distributions.Independent(
-                            th.distributions.Normal(rec_rgb_mean, 1), 3)
-                        rec_rgb_loss = rec_rgb_dist.log_prob(obs_list["rgb"].permute(0, 3, 1, 2) / 255.0 - 0.5).neg().mean()
-                        full_ssl_loss += ssl_task_coef * rec_rgb_loss
-                        ssl_losses[ssl_task] = rec_rgb_loss
-                    elif ssl_task in ["rec-rgb-vis-ae-mse"]:
-                        rec_rgb_mean = ssl_outputs[ssl_task]
-                        rec_rgb_loss = F.mse_loss(rec_rgb_mean, 
-                                        obs_list["rgb"].permute(0, 3, 1, 2) / 255.0 - 0.5, reduction="none"
-                                       ).mean(dim=0).sum()
-                        full_ssl_loss += ssl_task_coef * rec_rgb_loss
-                        ssl_losses[ssl_task] = rec_rgb_loss
-                    else:
-                        raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
-                ssl_losses["full_ssl_loss"] = full_ssl_loss
-
             # Entropy loss
-            # TODO: consider making this decaying as training progresses
             entropy = entropies.mean()
 
             # Backpropagate and accumulate gradients over the batch size axis
-            (bc_loss - args.ent_coef * entropy + full_ssl_loss).backward()
+            (bc_loss - args.ent_coef * entropy).backward()
 
             grad_norms_preclip = agent.get_grad_norms()
             if args.max_grad_norm > 0:
@@ -713,17 +613,6 @@ def main():
             } # * n_bchunks undoes the scaling applied during grad accum
             
             tblogger.log_stats(train_stats, global_step, prefix="train")
-            tblogger.log_stats({k: v.item() for k, v in ssl_losses.items()},
-                                global_step, prefix="train/ssl")
-
-            # TODO: Additional dbg stats; add if needed
-            # debug_stats = {
-            #     # Additional debug stats
-            #     "b_state_feats_avg": b_state_feats.flatten(start_dim=1).mean().item(),
-            #     "init_rnn_states_avg": init_rnn_state.flatten(start_dim=1).mean().item(),
-            # }
-            # if args.pgwt_mod_embed:
-            #     debug_stats["mod_embed_avg"] = agent.state_encoder.modality_embeddings.mean().item()
 
             # TODO: Tracking stats about the actions distribution in the batches # TODO: fix typo
             T, B = args.num_steps, args.num_envs
@@ -762,31 +651,6 @@ def main():
             }
             tblogger.log_stats(info_stats, global_step, "info")
 
-        # TODO: remove / comment out after debugs
-        # Same as in the args.eval if condition, but allows us
-        # to check that plotting works without having to wait
-        # for eval_envs instantiation when debugging
-        # if args.ssl_tasks is not None and \
-        #     isinstance(args.ssl_tasks, list) and \
-        #     len(args.ssl_tasks):
-
-        #     for ssl_task in args.ssl_tasks:
-        #         # Vision based SSL tasks: reconstruction to gauge how good
-        #         if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3", "rec-rgb-ae-4",
-        #                         "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4", "rec-rgb-vis-ae-5",
-        #                         "rec-rgb-vis-ae-mse"]:
-        #             rec_rgb_mean = ssl_outputs[ssl_task]
-        #             tmp_img_data = th.cat([
-        #                 obs_list["rgb"][:3].permute(0, 3, 1, 2).int(),
-        #                 ((rec_rgb_mean[:3].detach() + 0.5).clamp(0, 1) * 255).int()],
-        #             dim=2)
-        #             img_data = th.cat([i for i in tmp_img_data], dim=2).cpu().numpy().astype(np.uint8)
-        #             # tblogger.log_image(ssl_task, img_data, global_step, prefix="ssl")
-        #             # NOTE: log the RGB reconstruction under the same tag no matter the ssl_task,
-        #             # works better with Wandb
-        #             tblogger.log_image("rec-rgb", img_data, global_step, prefix="ssl")
-        #             tblogger.log_image("rec-rgb-vis", img_data, global_step, prefix="ssl")
-
         if args.eval and should_eval(global_step):
             eval_window_episode_stas = eval_agent(args, envs, agent,
                 device=device, tblogger=tblogger,
@@ -797,36 +661,13 @@ def main():
             episode_stats = {k: np.mean(v) for k, v in eval_window_episode_stas.items()}
             episode_stats["last_actions_min"] = np.min(eval_window_episode_stas["last_actions"])
             tblogger.log_stats(episode_stats, global_step, "metrics")
-        
-            # SSL qualitative eval
-            if args.ssl_tasks is not None and \
-                isinstance(args.ssl_tasks, list) and \
-                len(args.ssl_tasks):
-                
-                for ssl_task in args.ssl_tasks:
-                    # Vision based SSL tasks: reconstruction to gauge how good
-                    if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3", "rec-rgb-ae-4",
-                                    "rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4", "rec-rgb-vis-ae-5",
-                                    "rec-rgb-vis-ae-mse"]:
-                        rec_rgb_mean = ssl_outputs[ssl_task]
-                        tmp_img_data = th.cat([
-                            obs_list["rgb"][:3].permute(0, 3, 1, 2).int(),
-                            ((rec_rgb_mean[:3].detach() + 0.5).clamp(0, 1) * 255).int()],
-                            dim=2
-                        )
-                        img_data = th.cat([i for i in tmp_img_data], dim=2).cpu().numpy().astype(np.uint8)
-                        # tblogger.log_image(ssl_task, img_data, global_step, prefix="ssl")
-                        # NOTE: log the RGB reconstruction under the same tag no matter the ssl_task,
-                        # works better with Wandb
-                        tblogger.log_image("rec-rgb", img_data, global_step, prefix="ssl")
-                        tblogger.log_image("rec-rgb-vis", img_data, global_step, prefix="ssl")
 
-            if args.save_model:
-                model_save_dir = tblogger.get_models_savedir()
-                model_save_name = f"ppo_agent.{global_step}.ckpt.pth"
-                model_save_fullpath = os.path.join(model_save_dir, model_save_name)
+        if args.save_model and should_save_model(global_step):
+            model_save_dir = tblogger.get_models_savedir()
+            model_save_name = f"ppo_agent.{global_step}.ckpt.pth"
+            model_save_fullpath = os.path.join(model_save_dir, model_save_name)
 
-                th.save(agent.state_dict(), model_save_fullpath)
+            th.save(agent.state_dict(), model_save_fullpath)
 
     # Clean up
     tblogger.close()
