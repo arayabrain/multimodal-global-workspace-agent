@@ -23,7 +23,7 @@ from ss_baselines.common.environments import get_env_class
 from ss_baselines.common.utils import images_to_video_with_audio
 
 # Custom ActorCritic agent for PPO
-from models import GW_ActorCritic, GRU_ActorCritic
+from models import GW_Actor, GRU_Actor
 
 # Dataset utils
 from torch.utils.data import IterableDataset, DataLoader
@@ -94,7 +94,7 @@ class BCIterableDataset3(IterableDataset):
             
             yield obs_list, action_list, reward_list, done_list
             # endregion: Sample episode data until there is enough to fill the hole batch traj
-    
+
 def make_dataloader3(dataset_path, batch_size, batch_length, seed=111, num_workers=2):
     def worker_init_fn(worker_id):
         # worker_seed = th.initial_seed() % (2 ** 32)
@@ -144,13 +144,12 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
     obs = eval_envs.reset()
     done = [False for _ in range(n_eval_envs)]
     done_th = th.Tensor(done).to(device)
-    # prev_acts = th.zeros([n_eval_envs, 4], device=device)
 
     masks = 1. - done_th[:, None]
-    rnn_hidden_state = th.zeros((n_eval_envs, args.gw_size), device=device)
+    gw = th.zeros((n_eval_envs, args.gw_size), device=device)
     modality_features = {
-        "audio": rnn_hidden_state.new_zeros([n_eval_envs, args.hidden_size]),
-        "visual": rnn_hidden_state.new_zeros([n_eval_envs, args.hidden_size])
+        "audio": gw.new_zeros([n_eval_envs, args.hidden_size]),
+        "visual": gw.new_zeros([n_eval_envs, args.hidden_size])
     }
     
     n_finished_episodes = 0
@@ -173,10 +172,9 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
 
         # Sample action
         action, _, _, _, \
-        entropies, _, rnn_hidden_state, modality_features = \
-            agent.act(obs_th, rnn_hidden_state, masks=masks, 
-            modality_features=modality_features,
-            deterministic=True, single_step=True) #, prev_actions=prev_acts if args.prev_actions else None)
+        entropies, gw, modality_features = \
+            agent.act(obs_th, gw, masks=masks, 
+            modality_features=modality_features, deterministic=True)
         outputs = eval_envs.step([a[0].item() for a in action])
         obs, reward, done, info = [list(x) for x in zip(*outputs)]
         reward_th = th.Tensor(np.array(reward, dtype=np.float32)).to(device)
@@ -437,12 +435,12 @@ def main():
         single_observation_space["rgb"] = spaces.Box(shape=[128,128,1], low=0, high=255, dtype=np.uint8)
 
     if args.agent_type == "gw":
-        agent = GW_ActorCritic(single_observation_space,
+        agent = GW_Actor(single_observation_space,
                     single_action_space,
                     args,
                     extra_rgb=agent_extra_rgb).to(device)
     elif args.agent_type == "gru":
-        agent = GRU_ActorCritic(single_observation_space,
+        agent = GRU_Actor(single_observation_space,
                     single_action_space,
                     args,
                     extra_rgb=agent_extra_rgb).to(device)
@@ -519,12 +517,16 @@ def main():
     start_time = time.time()
     # num_updates = args.total_steps // args.batch_size # Total number of updates that will take place in this experiment
     n_updates = 0 # Progressively tracks the number of network updats
-
+    # Log the number of parameters of the model
+    tblogger.log_stats({
+        "n_params": agent.get_n_params()
+    }, 0, "info")
+    
     # This will be used to recompute the rnn_hidden_strates when computiong the new action logprobs
-    rnn_hidden_state = th.zeros((args.batch_chunk_length, args.gw_size), device=device)
+    gw = th.zeros((args.batch_chunk_length, args.gw_size), device=device)
     modality_features = {
-        "audio": rnn_hidden_state.new_zeros([args.batch_chunk_length, args.hidden_size]),
-        "visual": rnn_hidden_state.new_zeros([args.batch_chunk_length, args.hidden_size])
+        "audio": gw.new_zeros([args.batch_chunk_length, args.hidden_size]),
+        "visual": gw.new_zeros([args.batch_chunk_length, args.hidden_size])
     }
 
     # NOTE: 10 * 150 as step to match the training rate of an RL Agent, 
@@ -534,44 +536,16 @@ def main():
     # In some BC experiments we would use a single expisode as batch trajectory,
     # while RL can have multiple episode concated together to fill up one batch trajectory.
     for global_step in range(0, args.total_steps + (args.num_envs * args.num_steps), args.num_envs * args.num_steps):
-        print(f"### DBG: global_step: {global_step}")
         # Load batch data
         obs_list, action_list, _, done_list = \
             [ {k: th.Tensor(v).float().to(device) for k,v in b.items()} if isinstance(b, dict) else 
                 b.float().to(device) for b in next(dloader)]
         
         # NOTE: RGB are normalized in the VisualCNN module
-        # PPO networks expect input of shape T,B, ... so doing the permutation first
-        # then flatten over T x B dimensions. The RNN will reshape it as necessary
-        # TODO
-        # TODO: now that we are not using the SAVI implemetnation, we can rever to B * T ?
-        # also reflect that within the StateEncoder code itself.
-        # TODO
-        for k, v in obs_list.items():
-            if k in ["rgb", "spectrogram", "depth"]:
-                obs_list[k] = v.permute(1, 0, 2, 3, 4) # BTCHW -> TBCHW
-                obs_list[k] = obs_list[k].reshape(-1, *obs_list[k].shape[-3:])
-            elif k in ["audiogoal"]:
-                obs_list[k] = v.permute(1, 0, 2, 3) # BTCL -> TBCL
-                obs_list[k] = obs_list[k].reshape(-1, *obs_list[k].shape[-2:])
-            else:
-                # TODO: handle other fields like "category", etc...
-                pass
-        
-        action_list = action_list.permute(1, 0, 2)
-        done_list = done_list.permute(1, 0, 2)
         mask_list = 1. - done_list
-        
-        prev_actions_list = th.zeros_like(action_list)
-        prev_actions_list[1:] = action_list[:-1]
-        prev_actions_list = F.one_hot(prev_actions_list.long()[:, :, 0], num_classes=4).float()
-        prev_actions_list[0] = prev_actions_list[0] * 0.0
 
-        # Finally, also flatten across T x B, let the RNN do the unflattening if needs be
-        action_list = action_list.reshape(-1) # Because it is used for the target later
-        done_list = done_list.reshape(-1, 1)
-        mask_list = mask_list.reshape(-1, 1)
-        prev_actions_list = prev_actions_list.reshape(-1, 1)
+        # Finally, also flatten across B * T, let the RNN do the unflattening if needs be
+        action_list = action_list.reshape(-1)
 
         # PPO Update Phase: actor and critic network updates
         for _ in range(args.update_epochs):
@@ -581,10 +555,9 @@ def main():
             # Reset optimizer for each chunk over the "trajectory length" axis
             optimizer.zero_grad()
 
-            # TODO: maybe detach the rnn_hidden_state between two chunks ?
             actions, _, _, action_logits, \
-            entropies, _, rnn_hidden_state, modality_features = \
-                agent.act(obs_list, rnn_hidden_state, masks=mask_list, 
+            entropies, gw, modality_features = \
+                agent.act(obs_list, gw, masks=mask_list, 
                     modality_features=modality_features) #, prev_actions=prev_actions_list)
 
             bc_loss = F.cross_entropy(action_logits, action_list.long(),
@@ -606,7 +579,6 @@ def main():
         if n_updates > 0 and should_log_training_stats(n_updates):
             print(f"Step {global_step} / {args.total_steps}")
 
-            # TODO: add entropy logging
             train_stats = {
                 "bc_loss": bc_loss.item(),
                 "entropy": entropy.item()
@@ -614,7 +586,7 @@ def main():
             
             tblogger.log_stats(train_stats, global_step, prefix="train")
 
-            # TODO: Tracking stats about the actions distribution in the batches # TODO: fix typo
+            # Tracking stats about the actions distribution in the batches
             T, B = args.num_steps, args.num_envs
             # How many '0' actions sampled by the agent given the observations ?
             n_zero_agent_final_actions = len(th.where(actions == 0)[0])
