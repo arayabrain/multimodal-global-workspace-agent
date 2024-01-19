@@ -6,7 +6,7 @@ metric:
   goal: maximize
 parameters:
   gw-size:
-    value: 128
+    value: 256
   seed:
     value: 42
   lr:
