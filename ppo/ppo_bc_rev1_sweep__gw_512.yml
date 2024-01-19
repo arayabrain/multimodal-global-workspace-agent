@@ -18,11 +18,13 @@ parameters:
   max-grad-norm:
     min: 0.25
     max: 10.0
+  total-steps:
+    value: 10000000
+  logdir-prefix:
+    value: "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-sweep"
 command:
   - ${env}
   - ${interpreter}
   - ${program}
   - ${args}
-  - "--logdir-prefix /home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-sweep"
-  - "--total-steps 10000000"
   - "--wandb"

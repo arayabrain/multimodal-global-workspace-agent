@@ -14,15 +14,15 @@ fi
 # 2024-01-19
 ## Init sweeps
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_32.yml
-# Sweep cmd: wandb agent dosssman/ss-hab-bc-revised-sweep/cjhntmrk --count 10
+# Sweep cmd: wandb agent dosssman/ss-hab-bc-revised-sweep/7d73e9pg --count 10
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_64.yml
-# Sweep cmd: wandb agent dosssman/ss-hab-bc-revised-sweep/99x0h7ks --count 10
+# Sweep cmd: 
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_128.yml
-# Sweep cmd: wandb agent dosssman/ss-hab-bc-revised-sweep/waf4pib6 --count 10
+# Sweep cmd: 
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_256.yml
-# Sweep cmd: wandb agent dosssman/ss-hab-bc-revised-sweep/luv98iik --count 10
+# Sweep cmd: 
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_512.yml
-# Sweep cmd: wandb agent dosssman/ss-hab-bc-revised-sweep/65m7ssf7 --count 10
+# Sweep cmd: 
 
 ## Running agents
 # Init sweep
