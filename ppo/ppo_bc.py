@@ -183,10 +183,8 @@ def eval_agent(args, eval_envs, agent, device, tblogger, env_config, current_ste
         # episodic return. Anyway to make this more efficient ?
         done_th = th.Tensor(done).to(device)
         masks = 1. - done_th[:, None]
-        # prev_acts = F.one_hot(action[:, 0], 4) * masks
         
         # Tracking episode return
-        # TODO: keep this on GPU for more efficiency ? We log less than we update, so ...
         current_episode_return += reward_th[:, None]
         current_episode_entropy += entropies[:, None]
         current_episode_length += 1
@@ -315,7 +313,6 @@ def main():
             choices=["gw", "gru"]),
         get_arg_dict("gru-type", str, "layernorm", metatype="choice",
                         choices=["default", "layernorm"]),
-        get_arg_dict("use-pose", bool, False, metatype="bool"), # Use "pose" field iin observations
         get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features
 
         ## BC related hyper parameters
@@ -324,7 +321,7 @@ def main():
         get_arg_dict("ce-weights", float, None, metatype="list"), # Weights for the Cross Entropy loss
 
         ## GW Agent with custom attention, recurrent encoder and null inputs
-        get_arg_dict("gw-size", int, 512), # TODO: support this at the code level
+        get_arg_dict("gw-size", int, 512), # Dim of the GW vector
         get_arg_dict("recenc-use-gw", bool, True, metatype="bool"), # Use GW at Recur. Enc. level
         get_arg_dict("recenc-gw-detach", bool, True, metatype="bool"), # When using GW at Recurrent Encoder level, whether to detach the grads or not
         get_arg_dict("gw-use-null", bool, True, metatype="bool"), # Use Null at CrossAtt level
@@ -447,7 +444,6 @@ def main():
         raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 
     if not args.cpu and th.cuda.is_available():
-        # TODO: GPU only. But what if we still want to use the default pytorch one ?
         optimizer = apex.optimizers.FusedAdam(agent.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
     else:
         optimizer = th.optim.Adam(agent.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
@@ -471,11 +467,8 @@ def main():
     # In case args.dataset_ce_weights is True,
     # override the args.ce_weigths manual setting
     if args.dataset_ce_weights:
-        # TODO: make some assert on 1) the existence of the "dataset_statistics.bz2" file
-        # and 2) that it contains the "action_cel_coefs" of proper dimension
         ce_weights = [dataset_statistics["action_cel_coefs"][a] for a in range(4)]
         print("### INFO: Loading CEL weights from dataset: ", ce_weights)
-    
         # Override the CE weights in the args, more readable
         args.ce_weights = [round(cew, 2) for cew in ce_weights]
 
@@ -537,10 +530,10 @@ def main():
     for global_step in range(0, args.total_steps + (args.num_envs * args.num_steps), args.num_envs * args.num_steps):
         # Load batch data
         obs_list, action_list, _, done_list = \
-            [ {k: th.Tensor(v).float().to(device) for k,v in b.items()} if isinstance(b, dict) else 
+            [{k: th.Tensor(v).float().to(device) for k,v in b.items()} if isinstance(b, dict) else 
                 b.float().to(device) for b in next(dloader)]
         
-        # NOTE: RGB are normalized in the VisualCNN module
+        # NOTE: RGB are normalized in the Visual Encoder module
         mask_list = 1. - done_list
 
         # Finally, also flatten across B * T, let the RNN do the unflattening if needs be

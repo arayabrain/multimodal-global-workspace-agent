@@ -1,0 +1,28 @@
+program:
+  ppo_bc.py
+method: bayes
+metric:
+  name: "metrics/success"
+  goal: maximize
+parameters:
+  gw-size:
+    value: 64
+  seed:
+    value: 69420
+  lr:
+    min: 0.0001
+    max: 0.005
+  ent-coef:
+    min: 0.0
+    max: 0.5
+  max-grad-norm:
+    min: 0.25
+    max: 10.0
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - ${args}
+  - "--logdir-prefix /home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-sweep"
+  - "--total-steps 10000000"
+  - "--wandb"

@@ -1,4 +1,6 @@
-export LOGDIR_PREFIX=~/random/rl/exp-logs/ss-hab-sweep-test
+export WANDB_PROJECT="ss-hab-bc-revised-sweep"
+
+export LOGDIR_PREFIX=~/random/rl/exp-logs/$WANDB_PROJECT
 if [ ! -d $LOGDIR_PREFIX ]; then
   mkdir -p $LOGDIR_PREFIX
 fi
@@ -8,6 +10,20 @@ if [ ! -d $WANDB_DIR ]; then
   mkdir -p $WANDB_DIR
 fi
 
+
+# 2024-01-19
+## Init sweeps
+wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_32.yml
+# Sweep id:
+wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_64.yml
+# Sweep id:
+wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_128.yml
+# Sweep id:
+wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_512.yml
+# Sweep id:
+
+## Running agents
+wandb agent 
 # Init sweep
 # wandb sweep --project ss-hab-sweep-test ppo_bc_wandb_sweep.yml
 
