@@ -334,7 +334,6 @@ def main():
         get_arg_dict("eval", bool, True, metatype="bool"),
         get_arg_dict("eval-every", int, int(1.5e4)), # Every X frames || steps sampled
         get_arg_dict("eval-n-episodes", int, 5),
-        # TODO: make model saving sparser than eval itself.
 
         # Logging params
         # NOTE: Video logging expensive

@@ -47,9 +47,9 @@
                 "--log-training-stats-every", "1",
                 
                 // GW Agnet config
-                "--recenc-use-gw", "False",
+                "--recenc-use-gw", "True",
                 "--recenc-gw-detach", "True",
-                "--gw-use-null", "False",
+                "--gw-use-null", "True",
                 "--hidden-size", "512",
                 "--gw-size", "64",
 

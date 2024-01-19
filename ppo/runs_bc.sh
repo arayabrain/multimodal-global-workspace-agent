@@ -4,7 +4,7 @@ export MKL_NUM_THREADS=$NUM_CORES OMP_NUM_THREADS=$NUM_CORES
 
 export WANDB_PROJECT="ss-hab-bc-revised"
 
-export LOGDIR_PREFIX="~/random/rl/exp-logs/$WANDB_PROJECT"
+export LOGDIR_PREFIX=~/random/rl/exp-logs/$WANDB_PROJECT
 if [ ! -d $LOGDIR_PREFIX ]; then
   mkdir -p $LOGDIR_PREFIX
 fi
@@ -13,6 +13,10 @@ export WANDB_DIR="$LOGDIR_PREFIX""_wandb"
 if [ ! -d $WANDB_DIR ]; then
   mkdir -p $WANDB_DIR
 fi
+
+echo $WANDB_PROJECT
+echo $LOGDIR_PREFIX
+echo $WANDB_DIR
 
 # echo $PATH
 # TODO: Fix the issue that requires this kind of hardcoding
