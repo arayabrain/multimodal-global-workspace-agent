@@ -16,9 +16,9 @@ fi
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_32.yml
 # Sweep cmd: wandb agent dosssman/ss-hab-bc-revised-sweep/7d73e9pg --count 10
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_64.yml
-# Sweep cmd: 
+# Sweep cmd: wandb agent dosssman/ss-hab-bc-revised-sweep/jk68e46c --count 10
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_128.yml
-# Sweep cmd: 
+# Sweep cmd: wandb agent dosssman/ss-hab-bc-revised-sweep/altdwxen --count 10
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_256.yml
 # Sweep cmd: 
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_512.yml
