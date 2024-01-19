@@ -20,9 +20,9 @@ wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_64.yml
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_128.yml
 # Sweep cmd: wandb agent dosssman/ss-hab-bc-revised-sweep/altdwxen --count 10
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_256.yml
-# Sweep cmd: 
+# Sweep cmd: wandb agent dosssman/ss-hab-bc-revised-sweep/874isgkh --count 10
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_512.yml
-# Sweep cmd: 
+# Sweep cmd: wandb agent dosssman/ss-hab-bc-revised-sweep/s5eec2x4 --count 5
 
 ## Running agents
 # Init sweep
