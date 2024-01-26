@@ -1,3 +1,5 @@
+exit 1 # Not supposed to be ran
+
 export WANDB_PROJECT="ss-hab-bc-revised-sweep"
 
 export LOGDIR_PREFIX=~/random/rl/exp-logs/$WANDB_PROJECT
@@ -12,7 +14,7 @@ fi
 
 
 # 2024-01-19
-## Init sweeps
+## Init sweeps for GW agent
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_32.yml
 # Sweep cmd: wandb agent dosssman/ss-hab-bc-revised-sweep/7d73e9pg --count 10
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_64.yml
@@ -23,6 +25,28 @@ wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_256.yml
 # Sweep cmd: wandb agent dosssman/ss-hab-bc-revised-sweep/874isgkh --count 10
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_512.yml
 # Sweep cmd: wandb agent dosssman/ss-hab-bc-revised-sweep/s5eec2x4 --count 5
+
+# 2024-01-26
+## Init sweeps for GRU
+wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gru_32.yml
+# Sweep cmd: 
+wandb agent dosssman/ss-hab-bc-revised-sweep/06vgm81a --count 10
+
+wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gru_64.yml
+# Sweep cmd: 
+wandb agent dosssman/ss-hab-bc-revised-sweep/36x1e4mn --count 10
+
+wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gru_128.yml
+# Sweep cmd:
+wandb agent dosssman/ss-hab-bc-revised-sweep/4xcj7wvk --count 10
+
+wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gru_256.yml
+# Sweep cmd:
+wandb agent dosssman/ss-hab-bc-revised-sweep/p6do3c7l --count 10
+
+wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gru_512.yml
+# Sweep cmd:  
+wandb agent dosssman/ss-hab-bc-revised-sweep/lyt9qfa1 --count 5 # run twice on same workstation
 
 ## Running agents
 # Init sweep
