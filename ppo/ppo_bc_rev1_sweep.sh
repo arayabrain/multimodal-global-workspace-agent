@@ -1,5 +1,7 @@
 exit 1 # Not supposed to be ran
 
+conda activate ss-hab-headless-py39
+
 export WANDB_PROJECT="ss-hab-bc-revised-sweep"
 
 export LOGDIR_PREFIX=~/random/rl/exp-logs/$WANDB_PROJECT
@@ -12,6 +14,8 @@ if [ ! -d $WANDB_DIR ]; then
   mkdir -p $WANDB_DIR
 fi
 
+echo $WANDB_DIR
+echo $LOGDIR_PREFIX
 
 # 2024-01-19
 ## Init sweeps for GW agent
@@ -38,7 +42,7 @@ wandb agent dosssman/ss-hab-bc-revised-sweep/36x1e4mn --count 10
 
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gru_128.yml
 # Sweep cmd:
-wandb agent dosssman/ss-hab-bc-revised-sweep/4xcj7wvk --count 10
+wandb agent dosssman/ss-hab-bc-revised-sweep/4xcj7wvk --count 5 # run twice over diff. workstations
 
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gru_256.yml
 # Sweep cmd:
@@ -46,7 +50,7 @@ wandb agent dosssman/ss-hab-bc-revised-sweep/p6do3c7l --count 10
 
 wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gru_512.yml
 # Sweep cmd:  
-wandb agent dosssman/ss-hab-bc-revised-sweep/lyt9qfa1 --count 5 # run twice on same workstation
+wandb agent dosssman/ss-hab-bc-revised-sweep/lyt9qfa1 --count 10
 
 ## Running agents
 # Init sweep
