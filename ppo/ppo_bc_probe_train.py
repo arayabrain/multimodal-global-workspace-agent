@@ -35,10 +35,8 @@ import compress_pickle as cpkl
 
 # Loading pretrained agent
 import tools
-import models, models3
-from models import ActorCritic, ActorCritic2, Perceiver_GWT_GWWM_ActorCritic
-from models2 import GWTAgent, GWTAgent_BU, GWTAgent_TD
-from models3 import GWTv3ActorCritic, GWTv3_1ActorCritic, ActorCritic_GRUBaseline
+import models
+from models import GW_Actor, GRU_Actor
 
 # Helpers
 def dict_without_keys(d, keys_to_ignore):
@@ -55,10 +53,11 @@ CUSTOM_ARGS = [
 
     
     # SS env config
-    get_arg_dict("config-path", str, "env_configs/savi/savi_ss1.yaml"),
+    get_arg_dict("config-path", str, "env_configs/savi/savi_ss1_rgb_spectro.yaml"),
 
     # Probing setting
     get_arg_dict("probe-depth", int, 1),
+    get_arg_dict("probe-gw-size", int, 512),
     get_arg_dict("probe-hid-size", int, 512),
     get_arg_dict("probe-bias", bool, False, metatype="bool"),
 
@@ -79,68 +78,30 @@ CUSTOM_ARGS = [
     get_arg_dict("norm-adv", bool, True, metatype="bool"),
     get_arg_dict("clip-coef", float, 0.1), # Surrogate loss clipping coefficient
     get_arg_dict("clip-vloss", bool, True, metatype="bool"),
-    get_arg_dict("ent-coef", float, 0.0), # Entropy loss coef; 0.2 in SS baselines
+    get_arg_dict("ent-coef", float, 0.2), # Entropy loss coef; 0.2 in SS baselines
     get_arg_dict("vf-coef", float, 0.5), # Value loss coefficient
     get_arg_dict("max-grad-norm", float, 0.5),
     get_arg_dict("target-kl", float, None),
     get_arg_dict("lr", float, 2.5e-4), # Learning rate
     get_arg_dict("optim-wd", float, 0), # weight decay for adam optim
     ## Agent network params
-    get_arg_dict("agent-type", str, "ss-default", metatype="choice",
-        choices=["ss-default", "perceiver-gwt-gwwm",
-                    "custom-gru",
-                    "custom-gwt", "custom-gwt-bu", "custom-gwt-td",
-                    "gwtv3", "gruv3"]),
-    get_arg_dict("use-pose", bool, False, metatype="bool"), # Use "pose" field iin observations
-    get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
-    ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
-    get_arg_dict("pgwt-latent-type", str, "randn", metatype="choice",
-        choices=["randn", "zeros"]), # Depth of the Perceiver
-    get_arg_dict("pgwt-latent-learned", bool, True, metatype="bool"),
-    get_arg_dict("pgwt-depth", int, 1), # Depth of the Perceiver
-    get_arg_dict("pgwt-num-latents", int, 8),
-    get_arg_dict("pgwt-latent-dim", int, 64),
-    get_arg_dict("pgwt-cross-heads", int, 1),
-    get_arg_dict("pgwt-latent-heads", int, 4),
-    get_arg_dict("pgwt-cross-dim-head", int, 64),
-    get_arg_dict("pgwt-latent-dim-head", int, 64),
-    get_arg_dict("pgwt-weight-tie-layers", bool, False, metatype="bool"),
-    get_arg_dict("pgwt-ff", bool, False, metatype="bool"),
-    get_arg_dict("pgwt-num-freq-bands", int, 6),
-    get_arg_dict("pgwt-max-freq", int, 10.),
-    get_arg_dict("pgwt-use-sa", bool, False, metatype="bool"),
-    ## Peceiver Modality Embedding related
-    get_arg_dict("pgwt-mod-embed", int, 0), # Learnable modality embeddings
-    ## Additional modalities
-    get_arg_dict("pgwt-ca-prev-latents", bool, False, metatype="bool"), # if True, passes the prev latent to CA as KV input data
+    get_arg_dict("agent-type", str, "gw", metatype="choice",
+        choices=["gw", "gru"]),
+    get_arg_dict("gru-type", str, "layernorm", metatype="choice",
+                    choices=["default", "layernorm"]),
+    get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features
 
-    ## Special BC
-    get_arg_dict("prev-actions", bool, False, metatype="bool"),
-    get_arg_dict("burn-in", int, 0), # Steps used to init the latent state for RNN component
+    ## BC related hyper parameters
     get_arg_dict("batch-chunk-length", int, 0), # For gradient accumulation
-    get_arg_dict("dataset-ce-weights", bool, True, metatype="bool"), # If True, will read CEL weights based on action dist. from the 'dataset_statistics.bz2' file.
+    get_arg_dict("dataset-ce-weights", bool, False, metatype="bool"), # If True, will read CEL weights based on action dist. from the 'dataset_statistics.bz2' file.
     get_arg_dict("ce-weights", float, None, metatype="list"), # Weights for the Cross Entropy loss
 
-    ## Custom GWT Agent with BU and TD attentions
-    get_arg_dict("gwt-hid-size", int, 512),
-    get_arg_dict("gwt-channels", int, 32),
-
-    ## GWTv3 Agent with custom attention, recurrent encoder and null inputs
-    get_arg_dict("gwtv3-use-gw", bool, True, metatype="bool"), # Use GW at Recur. Enc. level
-    get_arg_dict("gwtv3-enc-gw-detach", bool, False, metatype="bool"), # When using GW at Recurrent Encoder level, whether to detach the grads or not
-    get_arg_dict("gwtv3-use-null", bool, True, metatype="bool"), # Use Null at CrossAtt level
-    get_arg_dict("gwtv3-cross-heads", int, 1), # num_heads of the CrossAttn
-    get_arg_dict("gwtv3-gru-type", str, "default", metatype="choice",
-                    choices=["default", "layernorm"]),
-
-    ## SSL Support
-    get_arg_dict("obs-center", bool, False, metatype="bool"), # Centers the rgb_observations' range to [-0.5,0.5]
-    get_arg_dict("ssl-tasks", str, None, metatype="list"), # Expects something like ["rec-rgb-vis", "rec-depth", "rec-spectr"]
-    get_arg_dict("ssl-task-coefs", float, None, metatype="list"), # For each ssl-task, specifies the loss coeff. during computation
-    ### Further parameterization of the SSL vision reconstruction task
-    get_arg_dict("ssl-rec-rgb-mid-size", int, 512), # Size of intermediate feat in the AE
-    get_arg_dict("ssl-rec-rgb-mid-feat", bool, False, metatype="bool"), # When doing rec-rgb-vis-ae based SSL, use larger, intermediate features for rec.
-    get_arg_dict("ssl-rec-rgb-detach", bool, True, metatype="bool"), # When doing SSL rec-rgb, detach the grads. from decoder to latents
+    ## GW Agent with custom attention, recurrent encoder and null inputs
+    get_arg_dict("gw-size", int, 512), # Dim of the GW vector
+    get_arg_dict("recenc-use-gw", bool, True, metatype="bool"), # Use GW at Recur. Enc. level
+    get_arg_dict("recenc-gw-detach", bool, True, metatype="bool"), # When using GW at Recurrent Encoder level, whether to detach the grads or not
+    get_arg_dict("gw-use-null", bool, True, metatype="bool"), # Use Null at CrossAtt level
+    get_arg_dict("gw-cross-heads", int, 1), # num_heads of the CrossAttn
 
     # Eval protocol
     get_arg_dict("eval", bool, True, metatype="bool"),
@@ -148,10 +109,10 @@ CUSTOM_ARGS = [
     get_arg_dict("eval-n-episodes", int, 5),
 
     # Logging params
-    # NOTE: While supported, video logging is expensive because the RGB generation in the
-    # envs hogs a lot of GPU, especially with multiple envs 
+    # NOTE: Video logging expensive
     get_arg_dict("save-videos", bool, False, metatype="bool"),
     get_arg_dict("save-model", bool, True, metatype="bool"),
+    get_arg_dict("save-model-every", int, int(5e5)), # Every X frames || steps sampled
     get_arg_dict("log-sampling-stats-every", int, int(1.5e3)), # Every X frames || steps sampled
     get_arg_dict("log-training-stats-every", int, int(10)), # Every X model update
     get_arg_dict("logdir-prefix", str, "./logs/") # Overrides the default one
@@ -297,48 +258,18 @@ args_copy = copy.copy(args)
 #     agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space, args, extra_rgb=False,
 #         analysis_layers=models.PGWT_GWWM_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES + ["state_encoder.ca.mha"]).to(device)
 
-if args.agent_type == "ss-default":
-    agent = ActorCritic(single_observation_space, single_action_space, args, extra_rgb=agent_extra_rgb,
-        analysis_layers=models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
-elif args.agent_type == "custom-gru":
-    tmp_args = copy.copy(args)
-    analayers = models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES
-    if args.pretrained_model_name.__contains__("rec_rgb_vis_ae_5"):
-        analayers = copy.copy(models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES)
-        print("  Adding rec-rgb-vis-ae-5 arch. support")
-        tmp_args.ssl_tasks = ["rec-rgb-vis-ae-5"]
-        tmp_args.ssl_rec_rgb_mid_size = 1536
-        tmp_args.ssl_rec_rgb_mid_feat = False
-        # NOTE: obs_center = True shoud be set from commandline !
-        analayers.append("visual_encoder.linear.1")
-    agent = ActorCritic2(single_observation_space, single_action_space, tmp_args, extra_rgb=agent_extra_rgb,
-        analysis_layers=analayers).to(device)
-elif args.agent_type == "custom-gwt":
-    # raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
-    agent = GWTAgent(single_action_space, args,
-        analysis_layers=["state_encoder", "visual_embedding", "audio_embedding"]).to(device)
-elif args.agent_type == "custom-gwt-bu":
-    agent = GWTAgent_BU(single_action_space, args,
-        analysis_layers=["state_encoder", "visual_embedding", "audio_embedding"]).to(device)
-elif args.agent_type == "custom-gwt-td":
-    agent = GWTAgent_TD(single_action_space, args,
-        analysis_layers=["state_encoder", "visual_embedding", "audio_embedding"]).to(device)
-elif args.agent_type == "perceiver-gwt-gwwm":
-    agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space,
-        args, extra_rgb=agent_extra_rgb,
-        analysis_layers=models.PGWT_GWWM_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
-elif args.agent_type == "gwtv3":
-    agent = GWTv3ActorCritic(single_observation_space,
+if args.agent_type == "gwtv3":
+    agent = GW_Actor(single_observation_space,
                 single_action_space,
                 args,
                 extra_rgb=agent_extra_rgb,
-                analysis_layers=models3.GWTAGENT_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
+                analysis_layers=models.GWTAGENT_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
 elif args.agent_type == "gruv3":
-    agent = ActorCritic_GRUBaseline(single_observation_space,
+    agent = GRU_Actor(single_observation_space,
                 single_action_space,
                 args,
                 extra_rgb=agent_extra_rgb,
-                analysis_layers=models3.GWTAGENT_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
+                analysis_layers=models.GWTAGENT_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
 else:
     raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 agent.eval()
