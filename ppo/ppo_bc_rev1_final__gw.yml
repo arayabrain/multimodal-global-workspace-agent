@@ -1,0 +1,25 @@
+program:
+  ppo_bc.py
+parameters:
+  gw-size:
+    values: [32, 64, 128, 256, 512]
+  seed:
+    values: [1, 2, 3, 4, 5]
+  lr:
+    value: 0.0 
+  ent-coef:
+    value: 0.0
+  max-grad-norm:
+    value: 0.0
+  agent-type:
+    value: "gw"
+  total-steps:
+    value: 20000000
+  logdir-prefix:
+    value: "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised"
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - ${args}
+  - "--wandb"
