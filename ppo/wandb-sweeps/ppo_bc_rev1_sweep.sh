@@ -1,4 +1,4 @@
-exit 1 # Not supposed to be ran
+exit 1 # This script is not supposed to be ran, but serves as a memo of the sweep runs.
 
 conda activate ss-hab-headless-py39
 
