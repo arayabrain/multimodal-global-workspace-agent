@@ -25,7 +25,7 @@ export N_EPOCHS=10
   # region: 32
     # 1:
     # 2:
-    export EXPNAME="ppo_bc__gru_32__seed_2"
+    export EXPNAME="ppo_bc__gru_32__seed_2" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gru" \
@@ -39,7 +39,7 @@ export N_EPOCHS=10
       --seed 42 \
     ) &&
     # 3:
-    export EXPNAME="ppo_bc__gru_32__seed_3"
+    export EXPNAME="ppo_bc__gru_32__seed_3" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gru" \
@@ -53,7 +53,7 @@ export N_EPOCHS=10
       --seed 42 \
     ) &&
     # 4:
-    export EXPNAME="ppo_bc__gru_32__seed_4"
+    export EXPNAME="ppo_bc__gru_32__seed_4" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gru" \
@@ -71,7 +71,7 @@ export N_EPOCHS=10
   # region: 64
     # 1:
     # 2:
-    export EXPNAME="ppo_bc__gru_64__seed_2"
+    export EXPNAME="ppo_bc__gru_64__seed_2" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gru" \
@@ -85,7 +85,7 @@ export N_EPOCHS=10
       --seed 42 \
     ) &&
     # 3:
-    export EXPNAME="ppo_bc__gru_64__seed_3"
+    export EXPNAME="ppo_bc__gru_64__seed_3" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gru" \
@@ -99,7 +99,7 @@ export N_EPOCHS=10
       --seed 42 \
     ) &&
     # 4:
-    export EXPNAME="ppo_bc__gru_64__seed_4"
+    export EXPNAME="ppo_bc__gru_64__seed_4" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gru" \
@@ -116,7 +116,7 @@ export N_EPOCHS=10
 
   # region: 128
     # 2:
-    export EXPNAME="ppo_bc__gru_128__seed_2"
+    export EXPNAME="ppo_bc__gru_128__seed_2" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gru" \
@@ -130,7 +130,7 @@ export N_EPOCHS=10
       --seed 42 \
     ) &&
     # 3:
-    export EXPNAME="ppo_bc__gru_128__seed_3"
+    export EXPNAME="ppo_bc__gru_128__seed_3" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gru" \
@@ -144,7 +144,7 @@ export N_EPOCHS=10
       --seed 42 \
     ) &&
     # 4:
-    export EXPNAME="ppo_bc__gru_128__seed_4"
+    export EXPNAME="ppo_bc__gru_128__seed_4" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gru" \
@@ -170,7 +170,7 @@ export N_EPOCHS=10
 # region: GW
   # region: 32
     # 1:
-    export EXPNAME="ppo_bc__gw_32__seed_1"
+    export EXPNAME="ppo_bc__gw_32__seed_1" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gw" \
@@ -184,7 +184,7 @@ export N_EPOCHS=10
       --seed 42 \
     ) &&
     # 2:
-    export EXPNAME="ppo_bc__gw_32__seed_2"
+    export EXPNAME="ppo_bc__gw_32__seed_2" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gw" \
@@ -198,7 +198,7 @@ export N_EPOCHS=10
       --seed 42 \
     ) &&
     # 3:
-    export EXPNAME="ppo_bc__gw_32__seed_3"
+    export EXPNAME="ppo_bc__gw_32__seed_3" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gw" \
@@ -215,7 +215,7 @@ export N_EPOCHS=10
 
   # region: 64
     # 1:
-    export EXPNAME="ppo_bc__gw_64__seed_1"
+    export EXPNAME="ppo_bc__gw_64__seed_1" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gw" \
@@ -229,7 +229,7 @@ export N_EPOCHS=10
       --seed 42 \
     ) &&
     # 4:
-    export EXPNAME="ppo_bc__gw_64__seed_4"
+    export EXPNAME="ppo_bc__gw_64__seed_4" && \
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gw" \
@@ -243,7 +243,7 @@ export N_EPOCHS=10
       --seed 42 \
     ) &&
     # 5:
-    export EXPNAME="ppo_bc__gw_64__seed_5"
+    export EXPNAME="ppo_bc__gw_64__seed_5" && \
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gw" \
@@ -260,7 +260,7 @@ export N_EPOCHS=10
 
   # region: 128
     # 1:
-    export EXPNAME="ppo_bc__gw_128__seed_1"
+    export EXPNAME="ppo_bc__gw_128__seed_1" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gw" \
@@ -274,7 +274,7 @@ export N_EPOCHS=10
       --seed 42 \
     ) &&
     # 2:
-    export EXPNAME="ppo_bc__gw_128__seed_2"
+    export EXPNAME="ppo_bc__gw_128__seed_2" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gw" \
@@ -288,7 +288,7 @@ export N_EPOCHS=10
       --seed 42 \
     ) &&
     # 3:
-    export EXPNAME="ppo_bc__gw_128__seed_3"
+    export EXPNAME="ppo_bc__gw_128__seed_3" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gw" \
@@ -314,7 +314,6 @@ export N_EPOCHS=10
 
 # Clean up env vars
 # export CUDA_VISIBLE_DEVICES=
-export EXPNAME=
 export LOGDIR_PREFIX=
 export MASTER_PORT=
 export WANDB_DIR=
