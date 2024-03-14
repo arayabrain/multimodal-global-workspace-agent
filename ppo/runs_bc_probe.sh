@@ -160,13 +160,41 @@ export N_EPOCHS=10
   # endregion: 128
 
   # region: 256
-    # 1:
-    export EXPNAME="ppo_bc__gru_256__seed_1" &&
+    # # 1:
+    # export EXPNAME="ppo_bc__gru_256__seed_1" &&
+    # (sleep 1s && python ppo_bc_probe_train.py \
+    #   --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
+    #   --agent-type "gru" \
+    #   --gw-size 256 \
+    #   --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_1__2024_02_28_23_52_08_777211.musashi/models/ppo_agent.20001000.ckpt.pth" \
+    #   --wandb --wandb-project "ss-hab-bc-revised-finals-probing" --wandb-entity dosssman \
+    #   --num-minibatches 50 \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --total-steps $TOTAL_STEPS \
+    #   --n-epochs $N_EPOCHS \
+    #   --seed 42 \
+    # ) &&
+    # # 2:
+    # export EXPNAME="ppo_bc__gru_256__seed_2" &&
+    # (sleep 1s && python ppo_bc_probe_train.py \
+    #   --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
+    #   --agent-type "gru" \
+    #   --gw-size 256 \
+    #   --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_2__2024_02_28_23_51_36_019616.musashi/models/ppo_agent.20001000.ckpt.pth" \
+    #   --wandb --wandb-project "ss-hab-bc-revised-finals-probing" --wandb-entity dosssman \
+    #   --num-minibatches 50 \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --total-steps $TOTAL_STEPS \
+    #   --n-epochs $N_EPOCHS \
+    #   --seed 42 \
+    # ) &&
+    # 3:
+    export EXPNAME="ppo_bc__gru_256__seed_3" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gru" \
       --gw-size 256 \
-      --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_1__2024_02_28_23_52_08_777211.musashi/models/ppo_agent.20001000.ckpt.pth" \
+      --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_3__2024_03_05_16_49_23_496569.musashi/models/ppo_agent.20001000.ckpt.pth" \
       --wandb --wandb-project "ss-hab-bc-revised-finals-probing" --wandb-entity dosssman \
       --num-minibatches 50 \
       --logdir-prefix $LOGDIR_PREFIX \
@@ -174,13 +202,13 @@ export N_EPOCHS=10
       --n-epochs $N_EPOCHS \
       --seed 42 \
     ) &&
-    # 2:
-    export EXPNAME="ppo_bc__gru_256__seed_2" &&
+    # 4:
+    export EXPNAME="ppo_bc__gru_256__seed_4" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gru" \
       --gw-size 256 \
-      --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_2__2024_02_28_23_51_36_019616.musashi/models/ppo_agent.20001000.ckpt.pth" \
+      --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_4__2024_03_05_19_46_20_853524.musashi/models/ppo_agent.20001000.ckpt.pth" \
       --wandb --wandb-project "ss-hab-bc-revised-finals-probing" --wandb-entity dosssman \
       --num-minibatches 50 \
       --logdir-prefix $LOGDIR_PREFIX \
@@ -191,13 +219,27 @@ export N_EPOCHS=10
   # endregion: 256
 
   # region: 512
-    # 1:
-    export EXPNAME="ppo_bc__gru_512__seed_1" &&
+    # # 1:
+    # export EXPNAME="ppo_bc__gru_512__seed_1" &&
+    # (sleep 1s && python ppo_bc_probe_train.py \
+    #   --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
+    #   --agent-type "gru" \
+    #   --gw-size 512 \
+    #   --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_1__2024_02_28_23_51_55_870805.musashi/models/ppo_agent.20001000.ckpt.pth" \
+    #   --wandb --wandb-project "ss-hab-bc-revised-finals-probing" --wandb-entity dosssman \
+    #   --num-minibatches 50 \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --total-steps $TOTAL_STEPS \
+    #   --n-epochs $N_EPOCHS \
+    #   --seed 42 \
+    # ) &
+    # 2:
+    export EXPNAME="ppo_bc__gru_512__seed_2" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gru" \
       --gw-size 512 \
-      --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_1__2024_02_28_23_51_55_870805.musashi/models/ppo_agent.20001000.ckpt.pth" \
+      --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_2__2024_03_05_19_46_18_342650.musashi/models/ppo_agent.20001000.ckpt.pth" \
       --wandb --wandb-project "ss-hab-bc-revised-finals-probing" --wandb-entity dosssman \
       --num-minibatches 50 \
       --logdir-prefix $LOGDIR_PREFIX \
@@ -268,20 +310,20 @@ export N_EPOCHS=10
     #   --n-epochs $N_EPOCHS \
     #   --seed 42 \
     # ) &&
-    # 5:
-    export EXPNAME="ppo_bc__gw_32__seed_5" &&
-    (sleep 1s && python ppo_bc_probe_train.py \
-      --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
-      --agent-type "gw" \
-      --gw-size 32 \
-      --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_5__2024_03_01_07_19_15_527682.Loki/models/ppo_agent.20001000.ckpt.pth" \
-      --wandb --wandb-project "ss-hab-bc-revised-finals-probing" --wandb-entity dosssman \
-      --num-minibatches 50 \
-      --logdir-prefix $LOGDIR_PREFIX \
-      --total-steps $TOTAL_STEPS \
-      --n-epochs $N_EPOCHS \
-      --seed 42 \
-    ) &&
+    # # 5:
+    # export EXPNAME="ppo_bc__gw_32__seed_5" &&
+    # (sleep 1s && python ppo_bc_probe_train.py \
+    #   --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
+    #   --agent-type "gw" \
+    #   --gw-size 32 \
+    #   --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_5__2024_03_01_07_19_15_527682.Loki/models/ppo_agent.20001000.ckpt.pth" \
+    #   --wandb --wandb-project "ss-hab-bc-revised-finals-probing" --wandb-entity dosssman \
+    #   --num-minibatches 50 \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --total-steps $TOTAL_STEPS \
+    #   --n-epochs $N_EPOCHS \
+    #   --seed 42 \
+    # ) &&
   # endregion: 32
 
   # region: 64
@@ -386,20 +428,20 @@ export N_EPOCHS=10
     #   --n-epochs $N_EPOCHS \
     #   --seed 42 \
     # ) &&
-    # 5:
-    export EXPNAME="ppo_bc__gw_128__seed_5" &&
-    (sleep 1s && python ppo_bc_probe_train.py \
-      --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
-      --agent-type "gw" \
-      --gw-size 128 \
-      --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_5__2024_03_01_07_19_20_396767.Loki/models/ppo_agent.20001000.ckpt.pth" \
-      --wandb --wandb-project "ss-hab-bc-revised-finals-probing" --wandb-entity dosssman \
-      --num-minibatches 50 \
-      --logdir-prefix $LOGDIR_PREFIX \
-      --total-steps $TOTAL_STEPS \
-      --n-epochs $N_EPOCHS \
-      --seed 42 \
-    ) &&
+    # # 5:
+    # export EXPNAME="ppo_bc__gw_128__seed_5" &&
+    # (sleep 1s && python ppo_bc_probe_train.py \
+    #   --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
+    #   --agent-type "gw" \
+    #   --gw-size 128 \
+    #   --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_5__2024_03_01_07_19_20_396767.Loki/models/ppo_agent.20001000.ckpt.pth" \
+    #   --wandb --wandb-project "ss-hab-bc-revised-finals-probing" --wandb-entity dosssman \
+    #   --num-minibatches 50 \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --total-steps $TOTAL_STEPS \
+    #   --n-epochs $N_EPOCHS \
+    #   --seed 42 \
+    # ) &&
   # endregion: 128
 
   # region: 256
@@ -459,20 +501,20 @@ export N_EPOCHS=10
     #   --n-epochs $N_EPOCHS \
     #   --seed 42 \
     # ) &&
-    # 5:
-    export EXPNAME="ppo_bc__gw_256__seed_5" &&
-    (sleep 1s && python ppo_bc_probe_train.py \
-      --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
-      --agent-type "gw" \
-      --gw-size 256 \
-      --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_5__2024_03_01_07_19_24_810423.Loki/models/ppo_agent.20001000.ckpt.pth" \
-      --wandb --wandb-project "ss-hab-bc-revised-finals-probing" --wandb-entity dosssman \
-      --num-minibatches 50 \
-      --logdir-prefix $LOGDIR_PREFIX \
-      --total-steps $TOTAL_STEPS \
-      --n-epochs $N_EPOCHS \
-      --seed 42 \
-    ) &&
+    # # 5:
+    # export EXPNAME="ppo_bc__gw_256__seed_5" &&
+    # (sleep 1s && python ppo_bc_probe_train.py \
+    #   --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
+    #   --agent-type "gw" \
+    #   --gw-size 256 \
+    #   --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_5__2024_03_01_07_19_24_810423.Loki/models/ppo_agent.20001000.ckpt.pth" \
+    #   --wandb --wandb-project "ss-hab-bc-revised-finals-probing" --wandb-entity dosssman \
+    #   --num-minibatches 50 \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --total-steps $TOTAL_STEPS \
+    #   --n-epochs $N_EPOCHS \
+    #   --seed 42 \
+    # ) &&
   # endregion: 256
 
   # region: 512
@@ -490,13 +532,41 @@ export N_EPOCHS=10
     #   --n-epochs $N_EPOCHS \
     #   --seed 42 \
     # ) &
-    # 2:
-    export EXPNAME="ppo_bc__gw_512__seed_2" &&
+    # # 2:
+    # export EXPNAME="ppo_bc__gw_512__seed_2" &&
+    # (sleep 1s && python ppo_bc_probe_train.py \
+    #   --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
+    #   --agent-type "gw" \
+    #   --gw-size 512 \
+    #   --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_2__2024_03_01_16_41_13_154880.Loki/models/ppo_agent.20001000.ckpt.pth" \
+    #   --wandb --wandb-project "ss-hab-bc-revised-finals-probing" --wandb-entity dosssman \
+    #   --num-minibatches 50 \
+    #   --logdir-prefix $LOGDIR_PREFIX \
+    #   --total-steps $TOTAL_STEPS \
+    #   --n-epochs $N_EPOCHS \
+    #   --seed 42 \
+    # ) &
+    # 3:
+    export EXPNAME="ppo_bc__gw_512__seed_3" &&
     (sleep 1s && python ppo_bc_probe_train.py \
       --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
       --agent-type "gw" \
       --gw-size 512 \
-      --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_2__2024_03_01_16_41_13_154880.Loki/models/ppo_agent.20001000.ckpt.pth" \
+      --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_3__2024_03_06_00_19_57_042533.Loki/models/ppo_agent.20001000.ckpt.pth" \
+      --wandb --wandb-project "ss-hab-bc-revised-finals-probing" --wandb-entity dosssman \
+      --num-minibatches 50 \
+      --logdir-prefix $LOGDIR_PREFIX \
+      --total-steps $TOTAL_STEPS \
+      --n-epochs $N_EPOCHS \
+      --seed 42 \
+    ) &&
+    # 4:
+    export EXPNAME="ppo_bc__gw_512__seed_4" &&
+    (sleep 1s && python ppo_bc_probe_train.py \
+      --exp-name $EXPNAME --pretrained-model-name $EXPNAME \
+      --agent-type "gw" \
+      --gw-size 512 \
+      --pretrained-model-path "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final/ppo_bc_seed_4__2024_03_06_10_06_25_810958.Loki/models/ppo_agent.20001000.ckpt.pth" \
       --wandb --wandb-project "ss-hab-bc-revised-finals-probing" --wandb-entity dosssman \
       --num-minibatches 50 \
       --logdir-prefix $LOGDIR_PREFIX \
