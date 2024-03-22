@@ -44,9 +44,11 @@ wandb agent dosssman/ss-hab-bc-revised-finals/ubpu7vgx
 # 2024-02-13 Init sweeps for GRU agent
 wandb sweep --project "ss-hab-bc-revised-finals" ppo_bc_rev1_final__gru_32.yml
 wandb sweep --project "ss-hab-bc-revised-finals" ppo_bc_rev1_final__gru_32__makeup.yml
+wandb sweep --project "ss-hab-bc-revised-finals" ppo_bc_rev1_final__gru_32__makeup_2.yml
 # Sweep cmd:
 wandb agent dosssman/ss-hab-bc-revised-finals/hfzyln4n
 wandb agent dosssman/ss-hab-bc-revised-finals/2hrqrv6m # Makeup
+wandb agent dosssman/ss-hab-bc-revised-finals/kpjluaxu # Makeup 2
 
 wandb sweep --project "ss-hab-bc-revised-finals" ppo_bc_rev1_final__gru_64.yml
 wandb sweep --project "ss-hab-bc-revised-finals" ppo_bc_rev1_final__gru_64__makeup.yml
@@ -56,9 +58,11 @@ wandb agent dosssman/ss-hab-bc-revised-finals/hcd4yr3k # Makeup
 
 wandb sweep --project "ss-hab-bc-revised-finals" ppo_bc_rev1_final__gru_128.yml
 wandb sweep --project "ss-hab-bc-revised-finals" ppo_bc_rev1_final__gru_128__makeup.yml
+wandb sweep --project "ss-hab-bc-revised-finals" ppo_bc_rev1_final__gru_128__makeup_2.yml
 # Sweep cmd:
 wandb agent dosssman/ss-hab-bc-revised-finals/qixvi9fi
 wandb agent dosssman/ss-hab-bc-revised-finals/ex3p8nt0 # Makeup
+wandb agent dosssman/ss-hab-bc-revised-finals/byolbj8k # Makeup 2
 
 wandb sweep --project "ss-hab-bc-revised-finals" ppo_bc_rev1_final__gru_256.yml
 # Sweep cmd:
