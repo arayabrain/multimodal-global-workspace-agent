@@ -645,13 +645,14 @@ class GW_Actor(nn.Module):
             ) # [B, num_latents, latent_dim]
             gw_list.append(gw)
 
-        # TODO: consider dropping legacy encoder name support (YYY.cnn.7)
-        if "visual_encoder" in self.analysis_layers:
-            self._features["visual_encoder.rnn"] = th.cat(modality_features_list["visual"], dim=0)
-        if "audio_encoder" in self.analysis_layers:
-            self._features["audio_encoder.rnn"] = th.cat(modality_features_list["audio"], dim=0)
+        if "visual_encoder.rnn" in self.analysis_layers:
+            self._features["visual_encoder.rnn"] = \
+                th.stack(modality_features_list["visual"]).permute(1, 0, 2).reshape(B * T, -1)
+        if "audio_encoder.rnn" in self.analysis_layers:
+            self._features["audio_encoder.rnn"] = \
+                th.stack(modality_features_list["audio"]).permute(1, 0, 2).reshape(B * T, -1)
 
-        # Returns gw_list as B * T, GW_H, to mach "action_list" used for CE loss
+        # Returns gw_list as B * T, GW_H, to match "XXX_target_list" used for CE loss
         return th.stack(gw_list).permute(1, 0, 2).reshape(B * T, -1), \
                gw, modality_features # [B * T, H], [B, H], {k: [B, H]} for k in "visual", "audio"
 
@@ -805,7 +806,6 @@ class GRU_Actor(nn.Module):
             ) # [B, GW_H]
             gw_list.append(gw)
 
-        # TODO: consider dropping legacy encoder name support (YYY.cnn.7)
         if "visual_encoder.rnn" in self.analysis_layers:
             self._features["visual_encoder.rnn"] = \
                 th.stack(modality_features_list["visual"]).permute(1, 0, 2).reshape(B * T, -1)
