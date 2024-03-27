@@ -3,6 +3,7 @@ exit 1 # This script is not supposed to be ran, but serves as a memo of the swee
 conda activate ss-hab-headless-py39
 
 export WANDB_PROJECT="ss-hab-bc-revised-finals"
+# export WANDB_PROJECT="ss-hab-bc-revised-finals-makeup" # For 256 makeup runs
 
 export LOGDIR_PREFIX=~/random/rl/exp-logs/$WANDB_PROJECT
 if [ ! -d $LOGDIR_PREFIX ]; then
@@ -33,8 +34,10 @@ wandb sweep --project "ss-hab-bc-revised-finals" ppo_bc_rev1_final__gw_128.yml
 wandb agent dosssman/ss-hab-bc-revised-finals/kat63jyo
 
 wandb sweep --project "ss-hab-bc-revised-finals" ppo_bc_rev1_final__gw_256.yml
+wandb sweep --project "ss-hab-bc-revised-finals-makeup" ppo_bc_rev1_final__gw_256_makeup.yml
 # Sweep cmd:
 wandb agent dosssman/ss-hab-bc-revised-finals/x1h6o421
+wandb agent dosssman/ss-hab-bc-revised-finals-makeup/8j86qkw8 # Makeup 256 * 5 seeds runs
 
 wandb sweep --project "ss-hab-bc-revised-finals" ppo_bc_rev1_final__gw_512.yml
 # Sweep cmd:
