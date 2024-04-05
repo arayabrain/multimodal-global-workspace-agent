@@ -114,7 +114,17 @@ class RecurrentVisualEncoder(nn.Module):
         output_size: The size of the embedding vector
     """
 
-    def __init__(self, observation_space, gw_size, output_size, extra_rgb, use_gw=False, gw_detach=False, gru_type="default", obs_center=False):
+    def __init__(self,
+                 observation_space,
+                 gw_size,
+                 output_size,
+                 extra_rgb,
+                 use_gw=False,
+                 gw_detach=False,
+                 gru_type="default",
+                 obs_center=False,
+                 analysis_layers=[]
+                ):
         super().__init__()
         if "rgb" in observation_space.spaces and not extra_rgb:
             self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
@@ -130,6 +140,7 @@ class RecurrentVisualEncoder(nn.Module):
         self.obs_center = obs_center
         self.use_gw = use_gw
         self.gw_detach = gw_detach
+        self.analysis_layers = analysis_layers
 
         # kernel size for different CNN layers
         self._cnn_layers_kernel_size = [(8, 8), (4, 4), (3, 3)]
@@ -203,6 +214,9 @@ class RecurrentVisualEncoder(nn.Module):
 
         layer_init(self.cnn)
 
+        if len(self.analysis_layers):
+            self._features = {}
+
     @property
     def is_blind(self):
         return self._n_input_rgb + self._n_input_depth == 0
@@ -230,6 +244,13 @@ class RecurrentVisualEncoder(nn.Module):
 
         rnn_input = self.cnn(cnn_input)
 
+        # Collecting intermediate featurs of the encoder
+        if "visual_encoder.cnn" in self.analysis_layers:
+            if "cnn" not in self._features.keys():
+                self._features["cnn"] = []
+            
+            self._features["cnn"].append(rnn_input)
+
         if self.use_gw:
             assert prev_gw is not None, "RecurVisEnc requires 'gw' tensor when in GW usage mode"
             rnn_input = th.cat([
@@ -254,12 +275,22 @@ class RecurrentAudioEncoder(nn.Module):
         output_size: The size of the embedding vector
     """
 
-    def __init__(self, observation_space, gw_size, output_size, audiogoal_sensor, use_gw=False, gw_detach=False, gru_type="default",):
+    def __init__(self,
+                 observation_space,
+                 gw_size,
+                 output_size,
+                 audiogoal_sensor,
+                 use_gw=False,
+                 gw_detach=False,
+                 gru_type="default",
+                 analysis_layers=[]
+                ):
         super().__init__()
         self._n_input_audio = observation_space.spaces[audiogoal_sensor].shape[2]
         self._audiogoal_sensor = audiogoal_sensor
         self.use_gw = use_gw
         self.gw_detach = gw_detach
+        self.analysis_layers = analysis_layers
 
         cnn_dims = np.array(
             observation_space.spaces[audiogoal_sensor].shape[:2], dtype=np.float32
@@ -325,6 +356,9 @@ class RecurrentAudioEncoder(nn.Module):
         
         layer_init(self.cnn)
 
+        if len(self.analysis_layers):
+            self._features = {}
+
     def forward(self, observations, prev_states, masks, prev_gw=None):
         cnn_input = []
 
@@ -336,6 +370,12 @@ class RecurrentAudioEncoder(nn.Module):
         cnn_input = th.cat(cnn_input, dim=1)
 
         rnn_input = self.cnn(cnn_input)
+
+        if "audio_encoder.cnn" in self.analysis_layers:
+            if "cnn" not in self._features.keys():
+                self._features["cnn"] = []
+            
+            self._features["cnn"].append(rnn_input)
 
         if self.use_gw:
             assert prev_gw is not None, "RecurAudEnc requires 'gw' tensor when in GW usage mode"
@@ -547,9 +587,15 @@ class GW_Actor(nn.Module):
                     action_space,
                     config,
                     extra_rgb=False,
-                    analysis_layers=[]):
+                    analysis_layers=[],
+                    enc_analysis_layers=[]
+                ):
         super().__init__()
         self.config = config
+
+        # Layers to record for neuroscience based analysis
+        self.analysis_layers = analysis_layers
+        self.enc_analysis_layers = enc_analysis_layers
 
         self.visual_encoder = RecurrentVisualEncoder(
             observation_space,
@@ -559,6 +605,7 @@ class GW_Actor(nn.Module):
             use_gw=config.recenc_use_gw,
             gw_detach=config.recenc_gw_detach,
             gru_type=config.gru_type,
+            analysis_layers=enc_analysis_layers
         )
         self.audio_encoder = RecurrentAudioEncoder(
             observation_space,
@@ -568,6 +615,7 @@ class GW_Actor(nn.Module):
             use_gw=config.recenc_use_gw,
             gw_detach=config.recenc_gw_detach,
             gru_type=config.gru_type,
+            analysis_layers=enc_analysis_layers
         )
         
         self.state_encoder = GWStateEncoder(
@@ -581,9 +629,6 @@ class GW_Actor(nn.Module):
         self.action_distribution = CategoricalNet(config.gw_size, action_space.n) # Policy fn
 
         self.train()
-        
-        # Layers to record for neuroscience based analysis
-        self.analysis_layers = analysis_layers
 
         # Hooks for intermediate features storage
         if len(analysis_layers):
@@ -652,6 +697,19 @@ class GW_Actor(nn.Module):
             self._features["audio_encoder.rnn"] = \
                 th.stack(modality_features_list["audio"]).permute(1, 0, 2).reshape(B * T, -1)
 
+        # Get features from the underlying visual and audio encoders
+        if "visual_encoder.cnn" in self.enc_analysis_layers:
+            self._features["visual_encoder.cnn"] = \
+                th.stack(self.visual_encoder._features["cnn"]
+                    ).permute(1, 0, 2).reshape(B * T, -1)
+        if "audio_encoder.cnn" in self.enc_analysis_layers:
+            self._features["audio_encoder.cnn"] = \
+                th.stack(self.audio_encoder._features["cnn"]
+                    ).permute(1, 0, 2).reshape(B * T, -1)
+        if "prev_state_encoder" in self.enc_analysis_layers:
+            self._features["prev_state_encoder"] = \
+                th.stack([prev_gw, *gw_list[:-1]]).permute(1, 0, 2).reshape(B * T, -1)
+
         # Returns gw_list as B * T, GW_H, to match "XXX_target_list" used for CE loss
         return th.stack(gw_list).permute(1, 0, 2).reshape(B * T, -1), \
                gw, modality_features # [B * T, H], [B, H], {k: [B, H]} for k in "visual", "audio"
@@ -710,9 +768,14 @@ class GRU_Actor(nn.Module):
                     action_space,
                     config,
                     extra_rgb=False,
-                    analysis_layers=[]):
+                    analysis_layers=[],
+                    enc_analysis_layers=[]):
         super().__init__()
         self.config = config
+        
+        # Layers to record for neuroscience based analysis
+        self.analysis_layers = analysis_layers
+        self.enc_analysis_layers = enc_analysis_layers
 
         self.visual_encoder = RecurrentVisualEncoder(
             observation_space, 
@@ -722,6 +785,7 @@ class GRU_Actor(nn.Module):
             use_gw=config.recenc_use_gw,
             gw_detach=config.recenc_gw_detach,
             gru_type=config.gru_type,
+            analysis_layers=enc_analysis_layers
         )
         self.audio_encoder = RecurrentAudioEncoder(
             observation_space,
@@ -731,6 +795,7 @@ class GRU_Actor(nn.Module):
             use_gw=config.recenc_use_gw,
             gw_detach=config.recenc_gw_detach,
             gru_type=config.gru_type,
+            analysis_layers=enc_analysis_layers
         )
         
         self.state_encoder = GRUStateEncoder(
@@ -742,9 +807,6 @@ class GRU_Actor(nn.Module):
         self.action_distribution = CategoricalNet(config.gw_size, action_space.n) # Policy fn
 
         self.train()
-        
-        # Layers to record for neuroscience based analysis
-        self.analysis_layers = analysis_layers
 
         # Hooks for intermediate features storage
         if len(analysis_layers):
@@ -812,6 +874,19 @@ class GRU_Actor(nn.Module):
         if "audio_encoder.rnn" in self.analysis_layers:
             self._features["audio_encoder.rnn"] = \
                 th.stack(modality_features_list["audio"]).permute(1, 0, 2).reshape(B * T, -1)
+        
+        # Get features from the underlying visual and audio encoders
+        if "visual_encoder.cnn" in self.enc_analysis_layers:
+            self._features["visual_encoder.cnn"] = \
+                th.stack(self.visual_encoder._features["cnn"]
+                    ).permute(1, 0, 2).reshape(B * T, -1)
+        if "audio_encoder.cnn" in self.enc_analysis_layers:
+            self._features["audio_encoder.cnn"] = \
+                th.stack(self.audio_encoder._features["cnn"]
+                    ).permute(1, 0, 2).reshape(B * T, -1)
+        if "prev_state_encoder" in self.enc_analysis_layers:
+            self._features["prev_state_encoder"] = \
+                th.stack([prev_gw, *gw_list[:-1]]).permute(1, 0, 2).reshape(B * T, -1)
 
         # Returns gw_list as B * T, GW_H, to match "XXX_target_list" used for CE loss
         return th.stack(gw_list).permute(1, 0, 2).reshape(B * T, -1), \
