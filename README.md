@@ -1,13 +1,13 @@
-# Soundspaces - Habitat-lab - Habitat-sim setup
+# Design and Evaluation of a Global Workspace Agent Embodied in a Realistic Multimodal Environment | Soundspaces - Habitat-lab - Habitat-sim setup
 
-# General guideline as of 2022-07-21
+# General guideline as of 2022-07-21 for reproduction
 
 - Soundspaces currently at commit fb68e410a4a1388e2d63279e6b92b6f082371fec
 - While `habitat-lab` and `habitat-sim` recommend using python 3.7 at leats, this procedure goes as far as python 3.9 to have better compatibility with more recent Torch libraries.
 - `habitat-lab` is built at version 0.2.2
 - `habitat-sim` is built from the commit [80f8e31140eaf50fe6c5ab488525ae1bdf250bd9](https://github.com/facebookresearch/habitat-sim/tree/80f8e31140eaf50fe6c5ab488525ae1bdf250bd9).
 
-# System specifics
+# System specifications
 
 - Ubuntu 20.04
 - SuperMicro X11DAI-N Motherboard
@@ -22,7 +22,7 @@ conda create -n ss-hab-headless-py39 python=3.9 cmake=3.14.0 -y
 conda activate ss-hab
 pip install pytest-xdist
 pip install rsatoolbox # Neural activity pattern analysis
-pip install seaborn matplotlib # For plots mostly
+pip install seaborn matplotlib # For plots
 ```
 
 # Habitat-lab Stable 0.2.2
@@ -151,7 +151,7 @@ git checkout fb68e410a4a1388e2d63279e6b92b6f082371fec
 pip install -e .
 ```
 
-## Downloading the `scene_datasets` for SS 2.0 habitat audio visual simulations
+## Downloading the `scene_datasets` for Sound Spaces 2.0 habitat audio visual simulations
 Requires access to the `download_mp.py` tool from official Matterport3D.
 See https://github.com/facebookresearch/habitat-lab#matterport3d
 
@@ -181,7 +181,7 @@ wget http://dl.fbaipublicfiles.com/SoundSpaces/sounds.tar.xz && tar xvf sounds.t
 wget http://dl.fbaipublicfiles.com/SoundSpaces/datasets.tar.xz && tar xvf datasets.tar.xz #77M
 wget http://dl.fbaipublicfiles.com/SoundSpaces/pretrained_weights.tar.xz && tar xvf 
 pretrained_weights.tar.xz
-# This heavy file can be ignored for SS 2.0
+# This heavy file can be ignored for Sound Spaces 2.0
 # wget http://dl.fbaipublicfiles.com/SoundSpaces/binaural_rirs.tar && tar xvf binaural_rirs.tar # 867G
 ```
 
@@ -359,44 +359,14 @@ ln -s ../sound-spaces/data .
 ## Additional dependencies
 ```
 # Individual deps. install
-pip install wandb # 0.13.1
-pip install nvsmi # 0.4.2, for experimetn GPU usage configuration
+pip install wandb # 0.16.2
+pip install nvsmi # 0.4.2, for experiments' GPU usage configuration
 
-# One liner
+# One liner install
 pip install wandb nvsmi
 ```
 
-## Training RL agents
-
-This will use RGB + Spectrogram as input for the agent, create a timestamped TensorBoard folder automatically and log training metrics as well as video, with and without audio.
-
-```bash
-python ppo_av_nav.py
-```
-
-To train SAVi agents, load the appropraite configuration file:
-```bash
-python ppo_av_nav.py --config-path env_configs/savi/<savi_config_file>.yaml
-```
-
-Example training comments are documented in the `ppo/runs.sh` file.
-
-## Collecging dataset
-
-The process used to collect samples for Behavior Cloning and more genreally, trajectory inspection is located in the `ppo/ppo_collect_dataset.py`.
-Essentaially, just pass the path to the trained RL agent using the same configuration as during the training and it will collect a number of steps hardcoded in the script.
-
-## Traing Behavior Cloning (BC) agents
-
-Once a dataset is collect under folder `ppo_gru_dset_2022_09_21__750000_STEPS` for example, pass it with `--dataset-path` to the the `ppo_bc2.py` script.
-
-```bash
-python ppo_bc2.py --dataset-path ppo_gru_dset_2022_09_21__750000_STEPS
-```
-
-Example training comments are documented in the `ppo/runs_bc.sh` file.
-
-# SAVi
+# SAVi and Global Workspace experiments
 
 Two main features that might be of interest for this project
 - removes the limitation of only having a _ringing telephone_. Namely, adds 21 objects with their distinct sounds
@@ -404,7 +374,7 @@ Two main features that might be of interest for this project
 
 ## Addtional setup
 
-On top of all the above steps so far for the default SS installation,
+On top of all the above steps so far for the default SoundSpaces installation,
 1. Run the `python scripts/cache_observations.py`. Note that since we only use mp3d dataset for now, it will require editing that script to comment out line 105, to make it skip the `replica` data set, which proper installation is skipped in the steps above.
 Once this is done, add the symbolic link so that the training scripts can find the file at the expected path:
 ```bash
@@ -429,16 +399,76 @@ python ss_baselines/savi/run.py --exp-config ss_baselines/savi/config/semantic_a
 
 b. with pre-training
 ```bash
-
+# Unused in the end
 ```
 
 **Additional notes**
 - The pretrained weights will be found in `/path/to/sound-spaces/data/pretrained_weights`, assuming they were properly donwload in the dataset acquisition phase.
 
-## TODO:
-- [ ] Does it support continuous mode ? or just dataset based ?
+## Behavior Cloning on SAVI
 
-# Perceiver
+### Colleccting dataset with Oracle
+
+Either executre the following script, or refer to the Jupyter Notebook of the same name for a more interactive configuration and inspection process.
+
+```bash
+# --total-steps: target for the number of steps in the dataset
+# --num-envs: how many envs to use in parallel (note that each env has a large memory cost)
+python SAVI_Oracle_DataCollection.py --total-steps 500000 --num-envs 10
+```
+
+### Training Behavior cloning agent on the collected dataset
+
+Assuming a dataset was collected and stored under `/path/to/ss-hab/ppo/SAVI_Oracle_Dataset_v0` (or set approprietely with `--dataset-path` when running to the script):
+```bash
+python ppo_bc.py --agent-type gw --gw-size 64 # or `gru` for baseline agents
+```
+
+### Hyper parameter sweeps
+
+The sweeps were conducted using [Weight AND Biases (WANDB)](https://wandb.ai/site/sweeps) sweep utility.
+The WANDB configs for the search are stored in the `ss-hab/ppo/wandb-sweeps` folder.
+The usage is documented in the `ss-hab/ppo/wandb-sweeps/ppo_bc_rev1_sweep.sh` script (not runnable).
+
+### Final runs for revision
+
+We leverage WANDB sweep utility to manage the execution of runs across diverse machines.
+The configuration for each agent are stored under `ss-hab/ppo/wandb-sweeps-finals`, and their execution documented in the script in that folder.
+
+## Training RL agents on SoundSpaces AvNav (deprecated)
+
+This will use RGB + Spectrogram as input for the agent, create a timestamped TensorBoard folder automatically and log training metrics as well as video, with and without audio.
+
+```bash
+python ppo_av_nav.py
+```
+
+To train SAVi agents, load the appropraite configuration file:
+```bash
+python ppo_av_nav.py --config-path env_configs/savi/<savi_config_file>.yaml
+```
+
+Example training comments are documented in the `ppo/runs.sh` file.
+
+## Collecting dataset
+
+The process used to collect samples for Behavior Cloning and more genreally, trajectory inspection is located in the `ppo/ppo_collect_dataset.py`.
+Just pass the path to the trained RL agent weights using the same configuration as during the training and it will collect a number of steps hardcoded in the script.
+
+## Training Behavior Cloning (BC) agents
+
+Once a dataset is collect under folder `ppo_gru_dset_2022_09_21__750000_STEPS` for example, pass it with `--dataset-path` to the the `ppo_bc2.py` script.
+
+```bash
+python ppo_bc2.py --dataset-path ppo_gru_dset_2022_09_21__750000_STEPS
+```
+
+Example training comments are documented in the `ppo/runs_bc.sh` file.
+
+---
+# Other notes
+
+## Perceiver
 The base impelementation of Perceiver and PerceiverIO that I planned to use was from [lucidrains/perceiver-pytorch](https://github.com/lucidrains/perceiver-pytorch) repository.
 However it did not have support for multiple modality as input.
 Found the [oepnclimatefix/perceiver-pytorch](https://github.com/openclimatefix/perceiver-pytorch) fork that seems to have a owrking multi modal PerceiverIO, so using that as a base instead.
@@ -449,18 +479,18 @@ cd perceiver-pytorch
 pip install -e .
 ```
 
-# AudiCLIP
+## AudiCLIP
 
-Attempt at using the pre-trained audo encoder for av_nav / SAVi tasks in SS baselines
+Attempt at using the pre-trained audo encoder for av_nav / SAVi tasks in Sound Spaces baselines
 
-## Additional dependencies
+### Additional dependencies
 From conda:
 ```bash
 conda install ignite -c pytorch
 ```
 Might require a downgrade of Numpy version to <= 1.22 .
 
-## Prototype 1
+### Prototype 1
 - AudioCLIP uses the ESResNeXt to extract audio features from raw wave form files.
 - Said seems to have been trained on monoraul data from the ECS50 and US8K sound datasets.
 - In this variant, the pre-trained ESResNeXt is duplicazted at the beginning of the training, with each instance processing the left and right channel of the audio stream, respectively.
@@ -469,18 +499,17 @@ While this is relatively straight foward to implement, the downside is that the 
 As of 2022-08-18, after running the PPO based on SS's baselines on AvNav task, while the reference run reaches around 20% success rate within 1M steps, the variant that uses AudioCLIP's audio encoder iterates at least 5 times slower, hogs the hole RTX 3090 GPU memory, and has success rate near 0 for around 600K steps, show now sign of improvement.
 And avenue left to explore later.
 
-## Prototype 2:
+### Prototype 2:
 Motivated by memory capacity limit.
 The idea is to have independent "first layers" for each channel of the RIR data, then fuse the results before passing it into the shared ESResNetXt network. Should atl east reduce the burden by 75%, since there are that much layers of the network that end up being shared instead.
 - WIP
 
-## Prototype 3:
+### Prototype 3:
 The general idea is to shave of a few layers and components from the original model, and use that instead.
 Such network sould still be able to produce some features that are better suited to represent infor from audio sources ?
 - WIP
 
-# Other
-### [OUTDATED as of 2022-07-21] RLRAudioPropagationChannelLayoutType` error workaround
+## [OUTDATED as of 2022-07-21] RLRAudioPropagationChannelLayoutType` error workaround
 
 Past this point, there might be some `RLRAudioPropagationChannelLayoutType` related error when trying to run the interactive mode.
 

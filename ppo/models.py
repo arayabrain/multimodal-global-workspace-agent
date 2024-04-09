@@ -1,13 +1,18 @@
-
 from typing import Callable
 
 import numpy as np
 
 import torch as th
 import torch.nn as nn
-import torch.nn.functional as F
 
-from ss_baselines.av_nav.ppo.policy import CriticHead
+# From ss_baselines/av_nav/models/visual_cnn.py
+from ss_baselines.common.utils import CategoricalNet, Flatten
+
+GWTAGENT_DEFAULT_ANALYSIS_LAYER_NAMES = [
+  "visual_encoder.rnn",
+  "audio_encoder.rnn",
+  "state_encoder"
+]
 
 # General helpers
 def compute_grad_norm(model):
@@ -26,14 +31,44 @@ def compute_grad_norm(model):
     else:
         raise NotImplementedError(f"Unsupported grad norm computation of {type(model)}")
 
+# region: Custom recurrent Layer
+class GRUCell(nn.Module):
+
+  def __init__(self, inp_size,
+               size, norm=False, act=th.tanh, update_bias=-1):
+    super(GRUCell, self).__init__()
+    self._inp_size = inp_size
+    self._size = size
+    self._act = act
+    self._norm = norm
+    self._update_bias = update_bias
+    self._layer = nn.Linear(inp_size+size, 3*size,
+                            bias=norm is not None)
+    if norm:
+      self._norm = nn.LayerNorm(3*size)
+
+  @property
+  def state_size(self):
+    return self._size
+
+  def forward(self, inputs, state):
+    # NOTE: Removing the line below, we get closer structure to PyTorch instead.
+    # state = state[0]  # Keras wraps the state in a list.
+    parts = self._layer(th.cat([inputs, state], -1))
+    if self._norm:
+      parts = self._norm(parts)
+    reset, cand, update = th.split(parts, [self._size]*3, -1)
+    reset = th.sigmoid(reset)
+    cand = self._act(reset * cand)
+    update = th.sigmoid(update + self._update_bias)
+    output = update * cand + (1 - update) * state
+    return output
+# endregion: Custom recurrent Layer
+
 ###################################
 # region: Vision modules          #
 
-# From ss_baselines/av_nav/models/visual_cnn.py
-from ss_baselines.common.utils import CategoricalNet, CategoricalNet2, Flatten
-
-def conv_output_dim(dimension, padding, dilation, kernel_size, stride
-):
+def conv_output_dim(dimension, padding, dilation, kernel_size, stride):
     r"""Calculates the output height and width based on the input
     height and width to the convolution layer.
 
@@ -69,8 +104,7 @@ def layer_init(cnn):
             if layer.bias is not None:
                 nn.init.constant_(layer.bias, val=0)
 
-
-class VisualCNN(nn.Module):
+class RecurrentVisualEncoder(nn.Module):
     r"""A Simple 3-Conv CNN followed by a fully connected layer
 
     Takes in observations and produces an embedding of the rgb and/or depth components
@@ -80,7 +114,17 @@ class VisualCNN(nn.Module):
         output_size: The size of the embedding vector
     """
 
-    def __init__(self, observation_space, output_size, extra_rgb, obs_center=False):
+    def __init__(self,
+                 observation_space,
+                 gw_size,
+                 output_size,
+                 extra_rgb,
+                 use_gw=False,
+                 gw_detach=False,
+                 gru_type="default",
+                 obs_center=False,
+                 analysis_layers=[]
+                ):
         super().__init__()
         if "rgb" in observation_space.spaces and not extra_rgb:
             self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
@@ -94,6 +138,9 @@ class VisualCNN(nn.Module):
 
         self.output_size = output_size
         self.obs_center = obs_center
+        self.use_gw = use_gw
+        self.gw_detach = gw_detach
+        self.analysis_layers = analysis_layers
 
         # kernel size for different CNN layers
         self._cnn_layers_kernel_size = [(8, 8), (4, 4), (3, 3)]
@@ -145,19 +192,41 @@ class VisualCNN(nn.Module):
                     kernel_size=self._cnn_layers_kernel_size[2],
                     stride=self._cnn_layers_stride[2],
                 ),
-                #  nn.ReLU(True),
+                nn.ReLU(True),
                 Flatten(),
-                nn.Linear(64 * cnn_dims[0] * cnn_dims[1], output_size),
-                nn.ReLU(True),
             )
 
+            rnn_input_dim = 2304 # TODO: dynamic compute of flattened output
+            if self.use_gw:
+                rnn_input_dim += gw_size
+
+            if gru_type == "default":
+                self.rnn = nn.GRUCell(
+                    input_size=rnn_input_dim,
+                    hidden_size=output_size,
+                )
+            elif gru_type == "layernorm":
+                self.rnn = GRUCell(
+                    rnn_input_dim,
+                    output_size,
+                    norm=True
+                )
+
         layer_init(self.cnn)
+
+        # TODO: this is a work around purely for analysis,
+        # not to be used for other things so far
+        # This is because in the analysis we iterate step by step
+        # but during probing for example, we need B, T, H shape
+        # that is then reshaped to B * T, H to feed to the probe net.
+        if len(self.analysis_layers):
+            self._features = {}
 
     @property
     def is_blind(self):
         return self._n_input_rgb + self._n_input_depth == 0
 
-    def forward(self, observations):
+    def forward(self, observations, prev_states, masks, prev_gw=None):
         cnn_input = []
         if self._n_input_rgb > 0:
             rgb_observations = observations["rgb"]
@@ -178,605 +247,33 @@ class VisualCNN(nn.Module):
 
         cnn_input = th.cat(cnn_input, dim=1)
 
-        return self.cnn(cnn_input)
+        rnn_input = self.cnn(cnn_input)
+
+        # Collecting intermediate featurs of the encoder
+        if "visual_encoder.cnn" in self.analysis_layers:
+            if "cnn" not in self._features.keys():
+                self._features["cnn"] = []
+            
+            # self._features["cnn"].append(rnn_input)
+            self._features["cnn"] = [rnn_input]
+
+        if self.use_gw:
+            assert prev_gw is not None, "RecurVisEnc requires 'gw' tensor when in GW usage mode"
+            rnn_input = th.cat([
+                rnn_input, 
+                (prev_gw.detach() if self.gw_detach else prev_gw) * masks
+            ], dim=1)
+
+        return self.rnn(rnn_input, prev_states * masks)
 
-class VisualCNN3(nn.Module):
-    def __init__(self, observation_space, output_size, extra_rgb, obs_center=False):
-        super().__init__()
-        if "rgb" in observation_space.spaces and not extra_rgb:
-            self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
-        else:
-            self._n_input_rgb = 0
-
-        if "depth" in observation_space.spaces:
-            self._n_input_depth = observation_space.spaces["depth"].shape[2]
-        else:
-            self._n_input_depth = 0
-
-        self.output_size = output_size
-        self.obs_center = obs_center
-
-        # kernel size for different CNN layers
-        self._cnn_layers_kernel_size = [(3, 3), (3, 3), (4, 4), (4, 4)]
-
-        # strides for different CNN layers
-        self._cnn_layers_stride = [(2, 2), (2, 2), (2, 2), (2, 2)]
-
-        if self._n_input_rgb > 0:
-            cnn_dims = np.array(
-                observation_space.spaces["rgb"].shape[:2], dtype=np.float32
-            )
-        elif self._n_input_depth > 0:
-            cnn_dims = np.array(
-                observation_space.spaces["depth"].shape[:2], dtype=np.float32
-            )
-
-        if self.is_blind:
-            self.cnn = nn.Sequential()
-        else:
-            for kernel_size, stride in zip(
-                self._cnn_layers_kernel_size, self._cnn_layers_stride
-            ):
-                self.cnn_dims = cnn_dims = conv_output_dim(
-                    dimension=cnn_dims,
-                    padding=np.array([0, 0], dtype=np.float32),
-                    dilation=np.array([1, 1], dtype=np.float32),
-                    kernel_size=np.array(kernel_size, dtype=np.float32),
-                    stride=np.array(stride, dtype=np.float32),
-                )
-
-            self.cnn = nn.Sequential(
-                nn.Conv2d(
-                    in_channels=self._n_input_rgb + self._n_input_depth,
-                    out_channels=16,
-                    kernel_size=self._cnn_layers_kernel_size[0],
-                    stride=self._cnn_layers_stride[0]
-                ),
-                nn.ReLU(True),
-                nn.Conv2d(
-                    in_channels=16,
-                    out_channels=32,
-                    kernel_size=self._cnn_layers_kernel_size[1],
-                    stride=self._cnn_layers_stride[1],
-                ),
-                nn.ReLU(True),
-                nn.Conv2d(
-                    in_channels=32,
-                    out_channels=64,
-                    kernel_size=self._cnn_layers_kernel_size[2],
-                    stride=self._cnn_layers_stride[2],
-                ),
-
-                nn.ReLU(True),
-                nn.Conv2d(
-                    in_channels=64,
-                    out_channels=128,
-                    kernel_size=self._cnn_layers_kernel_size[3],
-                    stride=self._cnn_layers_stride[3],
-                ),
-                #  nn.ReLU(True),
-                Flatten(),
-                nn.Linear(128 * cnn_dims[0] * cnn_dims[1], output_size),
-                nn.ReLU(True),
-            )
-
-        layer_init(self.cnn)
-
-    @property
-    def is_blind(self):
-        return self._n_input_rgb + self._n_input_depth == 0
-
-    def forward(self, observations):
-        cnn_input = []
-        if self._n_input_rgb > 0:
-            rgb_observations = observations["rgb"]
-            # permute tensor to dimension [BATCH x CHANNEL x HEIGHT X WIDTH]
-            rgb_observations = rgb_observations.permute(0, 3, 1, 2)
-            rgb_observations = rgb_observations / 255.0  # normalize RGB
-            if self.obs_center:
-                rgb_observations -= 0.5
-            cnn_input.append(rgb_observations)
-
-        if self._n_input_depth > 0:
-            depth_observations = observations["depth"]
-            # permute tensor to dimension [BATCH x CHANNEL x HEIGHT X WIDTH]
-            depth_observations = depth_observations.permute(0, 3, 1, 2)
-            if self.obs_center:
-                depth_observations -= 0.5
-            cnn_input.append(depth_observations)
-
-        cnn_input = th.cat(cnn_input, dim=1)
-
-        return self.cnn(cnn_input)
-
-class VisualCNN4(nn.Module):
-    # Losely based on Dreamer's AE arch.
-    # Hypothesis to check: does having more powerful AE helps with learned vision features
-    def __init__(self, observation_space, output_size, extra_rgb, obs_center=False):
-        super().__init__()
-        if "rgb" in observation_space.spaces and not extra_rgb:
-            self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
-        else:
-            self._n_input_rgb = 0
-
-        if "depth" in observation_space.spaces:
-            self._n_input_depth = observation_space.spaces["depth"].shape[2]
-        else:
-            self._n_input_depth = 0
-
-        self.output_size = output_size
-        self.obs_center = obs_center
-
-        if self.is_blind:
-            self.cnn = nn.Sequential()
-        else:
-            self.cnn = nn.Sequential(
-                nn.Conv2d(
-                    in_channels=self._n_input_rgb + self._n_input_depth,
-                    out_channels=48,
-                    kernel_size=4,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.Conv2d(
-                    in_channels=48,
-                    out_channels=96,
-                    kernel_size=4,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.Conv2d(
-                    in_channels=96,
-                    out_channels=192,
-                    kernel_size=4,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.Conv2d(
-                    in_channels=192,
-                    out_channels=384,
-                    kernel_size=4,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.Conv2d(
-                    in_channels=384,
-                    out_channels=384,
-                    kernel_size=4,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.Flatten(),
-                nn.Linear(1536, output_size)
-            )
-
-        layer_init(self.cnn)
-
-    @property
-    def is_blind(self):
-        return self._n_input_rgb + self._n_input_depth == 0
-
-    def forward(self, observations):
-        cnn_input = []
-        if self._n_input_rgb > 0:
-            rgb_observations = observations["rgb"]
-            # permute tensor to dimension [BATCH x CHANNEL x HEIGHT X WIDTH]
-            rgb_observations = rgb_observations.permute(0, 3, 1, 2)
-            rgb_observations = rgb_observations / 255.0  # normalize RGB
-            if self.obs_center:
-                rgb_observations -= 0.5
-            cnn_input.append(rgb_observations)
-
-        if self._n_input_depth > 0:
-            depth_observations = observations["depth"]
-            # permute tensor to dimension [BATCH x CHANNEL x HEIGHT X WIDTH]
-            depth_observations = depth_observations.permute(0, 3, 1, 2)
-            if self.obs_center:
-                depth_observations -= 0.5
-            cnn_input.append(depth_observations)
-
-        cnn_input = th.cat(cnn_input, dim=1)
-
-        return self.cnn(cnn_input)
-
-class VisualCNN5(nn.Module):
-    # Losely based on Dreamer's AE arch.
-    # Hypothesis to check: does having more powerful AE helps with learned vision features
-    def __init__(self, config, observation_space, output_size, extra_rgb, obs_center=False):
-        super().__init__()
-        self.config = config
-
-        if "rgb" in observation_space.spaces and not extra_rgb:
-            self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
-        else:
-            self._n_input_rgb = 0
-
-        if "depth" in observation_space.spaces:
-            self._n_input_depth = observation_space.spaces["depth"].shape[2]
-        else:
-            self._n_input_depth = 0
-
-        self.output_size = output_size
-        self.obs_center = obs_center
-        self.mid_size = mid_size = config.ssl_rec_rgb_mid_size
-
-        if self.is_blind:
-            self.cnn = nn.Sequential()
-        else:
-            self.cnn = nn.Sequential(
-                nn.Conv2d(
-                    in_channels=self._n_input_rgb + self._n_input_depth,
-                    out_channels=48,
-                    kernel_size=4,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.Conv2d(
-                    in_channels=48,
-                    out_channels=96,
-                    kernel_size=4,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.Conv2d(
-                    in_channels=96,
-                    out_channels=192,
-                    kernel_size=4,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.Conv2d(
-                    in_channels=192,
-                    out_channels=384,
-                    kernel_size=4,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.Conv2d(
-                    in_channels=384,
-                    out_channels=384,
-                    kernel_size=4,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.Flatten(),
-                nn.Linear(1536, mid_size)
-            )
-
-        self.linear = nn.Sequential(
-            nn.ELU(True),
-            nn.Linear(mid_size, output_size)
-        )
-
-        layer_init(self.cnn)
-        layer_init(self.linear)
-
-    @property
-    def is_blind(self):
-        return self._n_input_rgb + self._n_input_depth == 0
-
-    def forward(self, observations):
-        cnn_input = []
-        if self._n_input_rgb > 0:
-            rgb_observations = observations["rgb"]
-            # permute tensor to dimension [BATCH x CHANNEL x HEIGHT X WIDTH]
-            rgb_observations = rgb_observations.permute(0, 3, 1, 2)
-            rgb_observations = rgb_observations / 255.0  # normalize RGB
-            if self.obs_center:
-                rgb_observations -= 0.5
-            cnn_input.append(rgb_observations)
-
-        if self._n_input_depth > 0:
-            depth_observations = observations["depth"]
-            # permute tensor to dimension [BATCH x CHANNEL x HEIGHT X WIDTH]
-            depth_observations = depth_observations.permute(0, 3, 1, 2)
-            if self.obs_center:
-                depth_observations -= 0.5
-            cnn_input.append(depth_observations)
-
-        cnn_input = th.cat(cnn_input, dim=1)
-
-        mid_feats = self.cnn(cnn_input) # Fixed to 1536 for now
-        features = self.linear(mid_feats)
-
-        return features, mid_feats
-
-
-"""
-    Mirrors upon the default Visual Encoder for SSL reconstruction task
-"""
-class ReshapeLayer(nn.Module):
-    def __init__(self, output_shape):
-        super().__init__()
-        self.output_shape = output_shape
-    
-    def forward(self, x):
-        B = x.shape[0]
-        return x.reshape(B, *self.output_shape)
-    
-class VisualCNNDecoder(nn.Module):
-    def __init__(self, visual_encoder):
-        super().__init__()
-        # Reference visual encoder that will be mirrored
-        # self.visual_encoder = visual_encoder
-        output_size = visual_encoder.output_size
-        cnn_dims = visual_encoder.cnn_dims
-        kernel_sizes = visual_encoder._cnn_layers_kernel_size
-        stride_sizes = visual_encoder._cnn_layers_stride
-
-        if visual_encoder.is_blind:
-            self.cnn = nn.Sequential()
-        else:
-            self.cnn = nn.Sequential(
-                nn.Linear(output_size, 64 * cnn_dims[0] * cnn_dims[1]),
-                nn.ReLU(True),
-                ReshapeLayer([64, cnn_dims[0], cnn_dims[1]]),
-
-                nn.ConvTranspose2d(
-                    in_channels=64,
-                    out_channels=64,
-                    kernel_size=kernel_sizes[-1],
-                    stride=stride_sizes[-1],
-                    output_padding=1
-                ),
-                nn.ReLU(True),
-
-                nn.ConvTranspose2d(
-                    in_channels=64,
-                    out_channels=32,
-                    kernel_size=kernel_sizes[-2],
-                    stride=stride_sizes[-2],
-                    output_padding=1
-                ),
-                nn.ReLU(True),
-
-                nn.ConvTranspose2d(
-                    in_channels=32,
-                    out_channels=3,
-                    kernel_size=kernel_sizes[-3],
-                    stride=stride_sizes[-3],
-                    # padding=2
-                )
-            )
-    
-    def forward(self, x):
-        return self.cnn(x)
-
-class VisualCNNDecoder2(nn.Module):
-    def __init__(self, visual_encoder):
-        super().__init__()
-        # Reference visual encoder that will be mirrored
-        # self.visual_encoder = visual_encoder
-        output_size = visual_encoder.output_size
-        cnn_dims = visual_encoder.cnn_dims
-        kernel_sizes = visual_encoder._cnn_layers_kernel_size
-        stride_sizes = visual_encoder._cnn_layers_stride
-
-        if visual_encoder.is_blind:
-            self.cnn = nn.Sequential()
-        else:
-            self.cnn = nn.Sequential(
-                nn.Linear(output_size, 96 * cnn_dims[0] * cnn_dims[1]),
-                nn.ReLU(True),
-                ReshapeLayer([96, cnn_dims[0], cnn_dims[1]]),
-
-                nn.ConvTranspose2d(
-                    in_channels=96,
-                    out_channels=64,
-                    kernel_size=kernel_sizes[-1],
-                    stride=stride_sizes[-1],
-                    output_padding=1
-                ),
-                nn.ReLU(True),
-
-                nn.ConvTranspose2d(
-                    in_channels=64,
-                    out_channels=48,
-                    kernel_size=kernel_sizes[-2],
-                    stride=stride_sizes[-2],
-                    output_padding=1
-                ),
-                nn.ReLU(True),
-
-                nn.ConvTranspose2d(
-                    in_channels=48,
-                    out_channels=3,
-                    kernel_size=kernel_sizes[-3],
-                    stride=stride_sizes[-3],
-                    # padding=2
-                )
-            )
-    
-    def forward(self, x):
-        return self.cnn(x)
-
-class VisualCNNDecoder3(nn.Module):
-    def __init__(self, visual_encoder):
-        super().__init__()
-        # Reference visual encoder that will be mirrored
-        # self.visual_encoder = visual_encoder
-        output_size = visual_encoder.output_size
-
-        if visual_encoder.is_blind:
-            self.cnn = nn.Sequential()
-        else:
-            self.cnn = nn.Sequential(
-                nn.Linear(output_size, 128 * cnn_dims[0] * cnn_dims[1]), # 128 * 6 * 6
-                nn.ReLU(True),
-                ReshapeLayer([128, cnn_dims[0], cnn_dims[1]]),
-
-                nn.ConvTranspose2d(
-                    in_channels=128,
-                    out_channels=64,
-                    kernel_size=8,
-                    stride=1
-                ),
-                nn.ReLU(True),
-
-                nn.ConvTranspose2d(
-                    in_channels=64,
-                    out_channels=32,
-                    kernel_size=6,
-                    stride=2
-                ),
-                nn.ReLU(True),
-
-                nn.ConvTranspose2d(
-                    in_channels=32,
-                    out_channels=16,
-                    kernel_size=6,
-                    stride=2
-                ),
-                nn.ReLU(True),
-
-                nn.ConvTranspose2d(
-                    in_channels=16,
-                    out_channels=3,
-                    kernel_size=2,
-                    stride=2
-                )
-            )
-    
-    def forward(self, x):
-        return self.cnn(x)
-
-class VisualCNNDecoder4(nn.Module):
-    def __init__(self, visual_encoder):
-        super().__init__()
-        # Reference visual encoder that will be mirrored
-        # self.visual_encoder = visual_encoder
-        output_size = visual_encoder.output_size
-
-        if visual_encoder.is_blind:
-            self.cnn = nn.Sequential()
-        else:
-            self.cnn = nn.Sequential(
-                nn.Linear(output_size, 1536),
-                nn.ELU(True),
-                ReshapeLayer([1536, 1, 1]),
-
-                nn.ConvTranspose2d(
-                    in_channels=1536,
-                    out_channels=192,
-                    kernel_size=5,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.ConvTranspose2d(
-                    in_channels=192,
-                    out_channels=96,
-                    kernel_size=5,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.ConvTranspose2d(
-                    in_channels=96,
-                    out_channels=48,
-                    kernel_size=6,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.ConvTranspose2d(
-                    in_channels=48,
-                    out_channels=16,
-                    kernel_size=6,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.ConvTranspose2d(
-                    in_channels=16,
-                    out_channels=3,
-                    kernel_size=2,
-                    stride=2
-                )
-            )
-    
-    def forward(self, x):
-        return self.cnn(x)
-
-class VisualCNNDecoder5(nn.Module):
-    def __init__(self, visual_encoder):
-        super().__init__()
-        # Reference visual encoder that will be mirrored
-        # self.visual_encoder = visual_encoder
-        config = visual_encoder.config
-        mid_size = visual_encoder.mid_size
-        output_size = visual_encoder.output_size
-        use_mid_feats = config.ssl_rec_rgb_mid_feat
-
-        if visual_encoder.is_blind:
-            self.cnn = nn.Sequential()
-        else:
-            dec_input_dim = mid_size if use_mid_feats else output_size
-            self.cnn = nn.Sequential(
-                nn.Linear(dec_input_dim, 1536),
-                nn.ELU(True),
-                ReshapeLayer([384, 2, 2]),
-
-                nn.ConvTranspose2d(
-                    in_channels=384,
-                    out_channels=384,
-                    kernel_size=4,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.ConvTranspose2d(
-                    in_channels=384,
-                    out_channels=192,
-                    kernel_size=4,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.ConvTranspose2d(
-                    in_channels=192,
-                    out_channels=96,
-                    kernel_size=4,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.ConvTranspose2d(
-                    in_channels=96,
-                    out_channels=48,
-                    kernel_size=4,
-                    stride=2
-                ),
-                nn.ELU(True),
-
-                nn.ConvTranspose2d(
-                    in_channels=48,
-                    out_channels=3,
-                    kernel_size=6,
-                    stride=2
-                )
-            )
-                
-    def forward(self, x):
-        return self.cnn(x)
 # endregion: Vision modules       #
 ###################################
 
 ###################################
-# region: Audio modules          #
+# region: Audio modules           #
 
 # From ss_baselines/av_nav/models/audio_cnn.py
-class AudioCNN(nn.Module):
+class RecurrentAudioEncoder(nn.Module):
     r"""A Simple 3-Conv CNN for processing audio spectrogram features
 
     Args:
@@ -784,10 +281,22 @@ class AudioCNN(nn.Module):
         output_size: The size of the embedding vector
     """
 
-    def __init__(self, observation_space, output_size, audiogoal_sensor):
-        super(AudioCNN, self).__init__()
+    def __init__(self,
+                 observation_space,
+                 gw_size,
+                 output_size,
+                 audiogoal_sensor,
+                 use_gw=False,
+                 gw_detach=False,
+                 gru_type="default",
+                 analysis_layers=[]
+                ):
+        super().__init__()
         self._n_input_audio = observation_space.spaces[audiogoal_sensor].shape[2]
         self._audiogoal_sensor = audiogoal_sensor
+        self.use_gw = use_gw
+        self.gw_detach = gw_detach
+        self.analysis_layers = analysis_layers
 
         cnn_dims = np.array(
             observation_space.spaces[audiogoal_sensor].shape[:2], dtype=np.float32
@@ -801,8 +310,7 @@ class AudioCNN(nn.Module):
             self._cnn_layers_stride = [(4, 4), (2, 2), (1, 1)]
 
         for kernel_size, stride in zip(
-            self._cnn_layers_kernel_size, self._cnn_layers_stride
-        ):
+            self._cnn_layers_kernel_size, self._cnn_layers_stride):
             cnn_dims = conv_output_dim(
                 dimension=cnn_dims,
                 padding=np.array([0, 0], dtype=np.float32),
@@ -832,15 +340,37 @@ class AudioCNN(nn.Module):
                 kernel_size=self._cnn_layers_kernel_size[2],
                 stride=self._cnn_layers_stride[2],
             ),
-            #  nn.ReLU(True),
-            Flatten(),
-            nn.Linear(64 * cnn_dims[0] * cnn_dims[1], output_size),
             nn.ReLU(True),
+            Flatten(),
         )
 
+        rnn_input_dim = 2496 # TODO: dynamic compute of flattened output
+        if self.use_gw:
+            rnn_input_dim += gw_size
+        
+        if gru_type == "default":
+            self.rnn = nn.GRUCell(
+                input_size=rnn_input_dim,
+                hidden_size=output_size,
+            )
+        elif gru_type == "layernorm":
+            self.rnn = GRUCell(
+                rnn_input_dim,
+                output_size,
+                norm=True
+            )
+        
         layer_init(self.cnn)
 
-    def forward(self, observations):
+        # TODO: this is a work around purely for analysis,
+        # not to be used for other things so far
+        # This is because in the analysis we iterate step by step
+        # but during probing for example, we need B, T, H shape
+        # that is then reshaped to B * T, H to feed to the probe net.
+        if len(self.analysis_layers):
+            self._features = {}
+
+    def forward(self, observations, prev_states, masks, prev_gw=None):
         cnn_input = []
 
         audio_observations = observations[self._audiogoal_sensor]
@@ -850,593 +380,356 @@ class AudioCNN(nn.Module):
 
         cnn_input = th.cat(cnn_input, dim=1)
 
-        return self.cnn(cnn_input)
+        rnn_input = self.cnn(cnn_input)
 
-# endregion: Audio modules           #
+        if "audio_encoder.cnn" in self.analysis_layers:
+            if "cnn" not in self._features.keys():
+                self._features["cnn"] = []
+            
+            # self._features["cnn"].append(rnn_input)
+            self._features["cnn"] = [rnn_input]
+
+        if self.use_gw:
+            assert prev_gw is not None, "RecurAudEnc requires 'gw' tensor when in GW usage mode"
+            rnn_input = th.cat([
+                rnn_input, 
+                (prev_gw.detach() if self.gw_detach else prev_gw) * masks
+            ], dim=1)
+
+        return self.rnn(rnn_input, prev_states * masks)
+
+
+# endregion: Audio modules        #
 ###################################
 
+######################################
+# region: GWT GW modules          #
 
-###################################
-# region: Recurrent modules       #
-
-# From ss_baselines/av_nav/models/rnn_state_encoder.py
-class RNNStateEncoder(nn.Module):
-    def __init__(
-        self,
-        input_size: int,
-        hidden_size: int,
-        num_layers: int = 1,
-        rnn_type: str = "GRU",
-    ):
-        r"""An RNN for encoding the state in RL.
-
-        Supports masking the hidden state during various timesteps in the forward lass
-
-        Args:
-            input_size: The input size of the RNN
-            hidden_size: The hidden size
-            num_layers: The number of recurrent layers
-            rnn_type: The RNN cell type.  Must be GRU or LSTM
-        """
-
+class CrossAttention(nn.Module):
+    def __init__(self, gw_size, feat_size, n_heads=1, use_null=True):
         super().__init__()
-        self._num_recurrent_layers = num_layers
-        self._rnn_type = rnn_type
+        self.n_heads = n_heads
+        self.use_null = use_null
+        self.gw_size = gw_size
+        self.feat_size = feat_size
 
-        self.rnn = getattr(nn, rnn_type)(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
+        # Linear projection to downscale input modalities
+        self.proj_vis = nn.Linear(feat_size, gw_size, bias=False)
+        self.proj_aud = nn.Linear(feat_size, gw_size, bias=False)
+
+        self.ln_q = nn.LayerNorm([gw_size])
+        self.ln_k = nn.LayerNorm([gw_size])
+        self.ln_v = nn.LayerNorm([gw_size])
+
+        self.mha = nn.MultiheadAttention(
+            gw_size,
+            n_heads,
+            dropout=0.0,
+            add_zero_attn=False,
+            batch_first=True,
+            kdim=gw_size,
+            vdim=gw_size,
         )
 
-        self.layer_init()
-
-    def layer_init(self):
-        for name, param in self.rnn.named_parameters():
-            if "weight" in name:
-                nn.init.orthogonal_(param)
-            elif "bias" in name:
-                nn.init.constant_(param, 0)
-
-    @property
-    def num_recurrent_layers(self):
-        return self._num_recurrent_layers * (2 if "LSTM" in self._rnn_type else 1)
-
-    def _pack_hidden(self, hidden_states):
-        if "LSTM" in self._rnn_type:
-            hidden_states = th.cat(
-                [hidden_states[0], hidden_states[1]], dim=0
-            )
-
-        return hidden_states
-
-    def _unpack_hidden(self, hidden_states):
-        if "LSTM" in self._rnn_type:
-            hidden_states = (
-                hidden_states[0 : self._num_recurrent_layers],
-                hidden_states[self._num_recurrent_layers :],
-            )
-
-        return hidden_states
-
-    def _mask_hidden(self, hidden_states, masks):
-        if isinstance(hidden_states, tuple):
-            hidden_states = tuple(v * masks for v in hidden_states)
-        else:
-            hidden_states = masks * hidden_states
-
-        return hidden_states
-
-    def single_forward(self, x, hidden_states, masks):
-        r"""Forward for a non-sequence input
-          - x: [NUM_ENVS, ...] is expected, then unsqueezed to [1, NUM_ENVS, ...] to match expectation of GRU
-          - hidden_states: [1, NUM_ENVS, HIDDEN_SIZE] is expected here, then no futher reshape ... a bit weird but ok
-          - masks: [NUM_ENVS, 1] is expected, then unsqueezed to [1, NUM_ENVS, ...] to match expectation of GRU
+    def forward(self, modality_features, prev_gw):
         """
-        hidden_states = self._unpack_hidden(hidden_states)
-        x, hidden_states = self.rnn(
-            x.unsqueeze(0),
-            self._mask_hidden(hidden_states, masks.unsqueeze(0)),
+            Modality features: dict of:
+                - "visual": [B, 1, H]
+                - "audio": [B, 1, H]
+        """
+        B = modality_features["audio"].shape[0]
+
+        aud_feats = self.proj_vis(modality_features["audio"]) # From H -> GW_H
+        vis_feats = self.proj_vis(modality_features["visual"])
+
+        q = th.cat([
+                aud_feats, # [B, 1, GW_H]
+                vis_feats, # [B, 1, GW_H]
+                prev_gw[:, None, :] # [B, 1, GW_H]
+            ], dim=1) # [B, 3, GW_H]
+        kv = th.cat([
+            aud_feats, # [B, 1, GW_H]
+            vis_feats, # [B, 1, GW_H]
+            prev_gw[:, None, :] # [B, 1, GW_H]
+            ], dim=1) # [B, 3, GW_H] so far
+        if self.use_null:
+            kv = th.cat([
+                kv, # [B, 3, GW_H] by this point
+                kv.new_zeros([B, 1, self.gw_size]) # Nulls: [B, 1, GW_H]
+            ], dim=1) # [B, 4, GW_H]
+        
+        q = self.ln_q(q) # [B, 3, H]
+        k = self.ln_k(kv) # [B, X, H], X = 3 or 4
+        v = self.ln_v(kv) # [B, X, H], X = 3 or 4
+
+        attn_values, attn_weights = self.mha(q, k, v)
+
+        return attn_values, attn_weights # [B, 3, H], [B, 3, X], X = 3 or 4
+
+class GWStateEncoder(nn.Module):
+    def __init__(self,
+                 gw_size,
+                 feat_size,
+                 ca_n_heads=1,
+                 ca_use_null=True,
+                 gru_type="layernorm"):
+        super().__init__()
+
+        # CrossAttention module
+        self.ca = CrossAttention(
+            gw_size=gw_size,
+            feat_size=feat_size,
+            n_heads=ca_n_heads,
+            use_null=ca_use_null
         )
-        x = x.squeeze(0)
-        hidden_states = self._pack_hidden(hidden_states)
-        return x, hidden_states
 
-    def seq_forward(self, x, hidden_states, masks):
-        r"""Forward for a sequence of length T
-
-        Args:
-            x: (T, N, -1) Tensor that has been flattened to (T * N, -1)
-            hidden_states: The starting hidden state.
-            masks: The masks to be applied to hidden state at every timestep.
-                A (T, N) tensor flatten to (T * N)
-        """
-        # x is a (T, N, -1) tensor flattened to (T * N, -1)
-        n = hidden_states.size(1)
-        t = int(x.size(0) / n)
-
-        # unflatten
-        x = x.view(t, n, x.size(1))
-        masks = masks.view(t, n)
-
-        # steps in sequence which have zero for any agent. Assume t=0 has
-        # a zero in it.
-        has_zeros = (masks[1:] == 0.0).any(dim=-1).nonzero().squeeze().cpu()
-
-        # +1 to correct the masks[1:]
-        if has_zeros.dim() == 0:
-            has_zeros = [has_zeros.item() + 1]  # handle scalar
-        else:
-            has_zeros = (has_zeros + 1).numpy().tolist()
-
-        # add t=0 and t=T to the list
-        has_zeros = [0] + has_zeros + [t]
-
-        hidden_states = self._unpack_hidden(hidden_states)
-        outputs = []
-        for i in range(len(has_zeros) - 1):
-            # process steps that don't have any zeros in masks together
-            start_idx = has_zeros[i]
-            end_idx = has_zeros[i + 1]
-
-            rnn_scores, hidden_states = self.rnn(
-                x[start_idx:end_idx],
-                self._mask_hidden(
-                    hidden_states, masks[start_idx].view(1, -1, 1)
-                ),
+        # RNN module
+        if gru_type == "default":
+            self.rnn = nn.GRUCell(
+                input_size=gw_size * 2,
+                hidden_size=gw_size,
             )
 
-            outputs.append(rnn_scores)
+            # Custom RNN params. init
+            for name, param in self.rnn.named_parameters():
+                if "weight" in name:
+                    nn.init.orthogonal_(param)
+                elif "bias" in name:
+                    nn.init.constant_(param, 0)
 
-        # x is a (T, N, -1) tensor
-        x = th.cat(outputs, dim=0)
-        x = x.view(t * n, -1)  # flatten
+        elif gru_type == "layernorm":
+            self.rnn = GRUCell(
+                gw_size * 2,
+                gw_size,
+                norm=True
+            )
+    
+    def forward(self, modality_features, prev_gw, masks):
+        """
+        - modality_features: dict of:
+            - "visual": [B, 1, H]
+            - "audio": [B, 1, H]
+        - hidden_states: [B, H] or [1, B, H] for compat. with SS1.0
+            This is the previous global workspace
+        - masks: [B, 1], marks episode end / start
+            Used to init prev_gw when a new episode starts
+        """
+        B = modality_features["audio"].shape[0]
 
-        hidden_states = self._pack_hidden(hidden_states)
-        return x, hidden_states
+        attn_values, attn_weights = self.ca(
+            modality_features, # {"visual": Tnsr, "audio": Tnsr}
+            prev_gw=prev_gw * masks # # [B, H]
+        )
 
-    def forward(self, x, hidden_states, masks):
-        if x.size(0) == hidden_states.size(1):
-            return self.single_forward(x, hidden_states, masks)
-        else:
-            return self.seq_forward(x, hidden_states, masks)
+        aud_vis_modulated = attn_values[:, :2, :].reshape(B, -1) # [B, 2 * H]
+        prev_gw_modulated = attn_values[:, 2, :].reshape(B, -1) # [B, H]
 
-# endregion: Recurrent modules    #
+        rnn_output = self.rnn(
+            aud_vis_modulated,
+            prev_gw_modulated
+        )
+
+        return rnn_output
+
+class GRUStateEncoder(nn.Module):
+    def __init__(self, 
+                gw_size,
+                feat_size,
+                gru_type="default"):
+        super().__init__()
+
+        # RNN module
+        if gru_type == "default":
+            self.rnn = nn.GRUCell(
+                input_size=gw_size * 2,
+                hidden_size=gw_size,
+            )
+
+            # Custom RNN params. init
+            for name, param in self.rnn.named_parameters():
+                if "weight" in name:
+                    nn.init.orthogonal_(param)
+                elif "bias" in name:
+                    nn.init.constant_(param, 0)
+
+        elif gru_type == "layernorm":
+            self.rnn = GRUCell(
+                gw_size * 2,
+                gw_size,
+                norm=True
+            )
+
+        # Linear projection to downscale input modalities
+        self.proj_vis = nn.Linear(feat_size, gw_size, bias=False)
+        self.proj_aud = nn.Linear(feat_size, gw_size, bias=False)
+
+    def forward(self, modality_features, prev_gw, masks):
+        """
+        - modality_features: dict of:
+            - "visual": [B, 1, H]
+            - "audio": [B, 1, H]
+        - prev_gw: [B, H] or [1, B, H] for compat. with SS1.0
+            This is the previous global workspace
+        - masks: [B, 1], marks episode end / start
+            Used to init prev_gw when a new episode starts
+        """
+
+        aud_feats = self.proj_vis(modality_features["audio"]) # From H -> GW_H
+        vis_feats = self.proj_vis(modality_features["visual"])
+        
+        x = th.cat([
+            aud_feats[:, 0, :],    # [B, GW_H]
+            vis_feats[:, 0, :],   # [B, GW_H]
+            ], dim=1)
+        rnn_output = self.rnn(
+            x,
+            prev_gw * masks, # [B, H]
+        )
+
+        return rnn_output
+
+# endregion: GWT GW modules       #
+######################################
+
 ###################################
+# region: GWT Agent            #
 
-#########################################
-# region: Actor Critic modules          #
-
-# Based on ss_baselines/av_nav/ppo/policy.py's AudioNavBaselineNet module
-# A simplified actor critic that assumes the few following points:
-## - Not blind: there is always a visual observation, and it is RGB by default
-## - Not deaf: there is always an acoustic observation, and it is Spectrogram by default
-## - extra_rgb: make the VisualCNN ignore the rgb observations even if they are in the observations
-GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES = [
-    *[f"visual_encoder.cnn.{i}" for i in range(8)], # Shared arch. for GRU and PGWT
-    *[f"audio_encoder.cnn.{i}" for i in range(8)], # Shared arch. for GRU and PGWT
-    "action_distribution.linear", # Shared arch. for any type of agent
-    "critic.fc", # Shared arch. for any type of agent
-    
-    "state_encoder", # Either GRU or PGWT based. Shape different based on nature of cell though.
-]
-class ActorCritic(nn.Module):
-    def __init__(self, 
-                 observation_space,
-                 action_space,
-                 args,
-                 extra_rgb=False,
-                 analysis_layers=[]):
-        super().__init__()
-
-        self.args = args
-
-        hidden_size = args.hidden_size
-        self.prev_actions = prev_actions = args.prev_actions
-
-        if prev_actions:
-            self.prev_action_embedding = nn.Linear(action_space.n, hidden_size)
-
-        # TODO:
-        # - support for blind agent
-        # - support for RGB + Depth as 4 channel dim (default SS / SAVi behavior)
-        # - support for RGB CNN and Depth CNN separated (geared toward PGWT modality)
-        if args.ssl_tasks is not None and ("rec-rgb-vis-ae-3" in args.ssl_tasks or "rec-rgb-ae-3" in args.ssl_tasks):
-            self.visual_encoder = VisualCNN3(observation_space, hidden_size,
-                extra_rgb=extra_rgb, obs_center=args.obs_center)
-        else:
-            self.visual_encoder = VisualCNN(observation_space, hidden_size, 
-                extra_rgb=extra_rgb, obs_center=args.obs_center)
-        self.audio_encoder = AudioCNN(observation_space, hidden_size, "spectrogram")
-        
-        if self.visual_encoder.is_blind:
-            input_dim = hidden_size
-        else:
-            input_dim = hidden_size * 2
-
-        if self.prev_actions:
-            input_dim += hidden_size
-
-        self.state_encoder = RNNStateEncoder(input_dim, hidden_size)
-
-        self.action_distribution = CategoricalNet(hidden_size, action_space.n) # Policy fn
-        self.critic = CriticHead(hidden_size) # Value fn
-
-        self.train()
-
-        # Layers to record for neuroscience based analysis
-        self.analysis_layers = analysis_layers
-
-        # Hooks for intermediate features storage
-        if len(analysis_layers):
-            self._features = {layer: th.empty(0) for layer in self.analysis_layers}
-            for layer_id in analysis_layers:
-                layer = dict([*self.named_modules()])[layer_id]
-                layer.register_forward_hook(self.save_outputs_hook(layer_id))
-        
-        # SSL tasks
-        if args.ssl_tasks is not None:
-            self.ssl_modules = nn.ModuleDict()
-            for ssl_task in args.ssl_tasks:
-                if ssl_task in ["rec-rgb-ae", "rec-rgb-vis-ae", "rec-rgb-vis-ae-mse"]:
-                    # TODO: check that the Vis. Encoder is actually using RGB, not RGBD
-                    self.ssl_modules[ssl_task] = VisualCNNDecoder(self.visual_encoder)
-                elif ssl_task in ["rec-rgb-ae-2"]:
-                    self.ssl_modules[ssl_task] = VisualCNNDecoder2(self.visual_encoder)
-                elif ssl_task in ["rec-rgb-ae-3", "rec-rgb-vis-ae-3"]:
-                    self.ssl_modules[ssl_task] = VisualCNNDecoder3(self.visual_encoder)
-                else:
-                    raise NotImplementedError(f"Unsupported ssl-task: {ssl_task}")
-    
-    def save_outputs_hook(self, layer_id: str) -> Callable:
-        def fn(_, __, output):
-            self._features[layer_id] = output
-        return fn
-
-    def forward(self, observations, rnn_hidden_states, masks, prev_actions=None):
-        x1 = []
-        modality_features = {} # For SSL namely
-
-        # Extracts audio featues
-        # TODO: consider having waveform data too ?
-        audio_features = self.audio_encoder(observations)
-        x1.append(audio_features)
-        modality_features["audio"] = audio_features
-
-        # Extracts vision features
-        ## TODO: consider having
-        ## - rgb and depth simulatenous input as 4 channel dim input
-        ## - deparate encoders for rgb and depth, give one more modality to PGWT
-        if not self.visual_encoder.is_blind:
-            video_features = self.visual_encoder(observations)
-            x1.append(video_features)
-            modality_features["vision"] = video_features
-
-        if self.prev_actions:
-            prev_actions *= masks
-            embed_prev_actions = self.prev_action_embedding(prev_actions)
-            x1.append(embed_prev_actions)
-        
-        x1 = th.cat(x1, dim=1)
-        # Current state, current rnn hidden states, respectively
-        x2, rnn_hidden_states2 = self.state_encoder(x1, rnn_hidden_states, masks)
-
-        if th.isnan(x2).any().item():
-            for key in observations:
-                print(key, th.isnan(observations[key]).any().item())
-            print('rnn_old', th.isnan(rnn_hidden_states).any().item())
-            print('rnn_new', th.isnan(rnn_hidden_states2).any().item())
-            print('mask', th.isnan(masks).any().item())
-            assert True
-        
-
-        return x2, rnn_hidden_states2, modality_features
-    
-    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None, prev_actions=None,
-                  value_feat_detach=False, actor_feat_detach=False, ssl_tasks=None):
-        features, rnn_hidden_states, modality_features = \
-            self(observations, rnn_hidden_states, masks, prev_actions=prev_actions)
-
-        # Estimate the value function
-        values = self.critic(features.detach() if value_feat_detach else features)
-
-        # Estimate the policy as distribution to sample actions from
-        distribution, action_logits = self.action_distribution(features.detach() if actor_feat_detach else features)
-
-        if actions is None:
-            if deterministic:
-                actions = distribution.mode()
-            else:
-                actions = distribution.sample()
-        # TODO: maybe some assert on the 
-        action_log_probs = distribution.log_probs(actions)
-
-        distribution_entropy = distribution.entropy()
-
-        # Additonal SSL tasks outputs
-        ssl_outputs = {}
-        if ssl_tasks is not None:
-            for ssl_task in ssl_tasks:
-                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3"]:
-                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](features)
-                elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-mse"]:
-                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](modality_features["vision"])
-                else:
-                    raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
-
-        return actions, distribution.probs, action_log_probs, action_logits, \
-               distribution_entropy, values, rnn_hidden_states, ssl_outputs
-    
-    def get_value(self, observations, rnn_hidden_states, masks, prev_actions=None):
-        features, _ = self(observations, rnn_hidden_states, masks, prev_actions=prev_actions)
-
-        return self.critic(features)
-
-    def get_grad_norms(self):
-        modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution", "critic"]
-        return {mod_name: compute_grad_norm(self.__getattr__(mod_name)) for mod_name in modules}
-
-# Based on ActorCritc, with additional modalities and a different workflow
-# maps to "custom-gru" in the ppo_bc.py
-class ActorCritic2(nn.Module):
-    def __init__(self, 
-                 observation_space,
-                 action_space,
-                 args,
-                 extra_rgb=False,
-                 analysis_layers=[]):
-        super().__init__()
-
-        self.args = self.config = args
-
-        hidden_size = args.hidden_size
-        input_dim = 0
-
-        self.prev_actions = prev_actions = args.prev_actions
-
-        if prev_actions:
-            self.prev_action_embedding = nn.Linear(action_space.n, hidden_size)
-
-        # TODO:
-        # - support for blind agent
-        # - support for RGB + Depth as 4 channel dim (default SS / SAVi behavior)
-        # - support for RGB CNN and Depth CNN separated (geared toward PGWT modality)
-        if args.ssl_tasks is not None and ("rec-rgb-vis-ae-3" in args.ssl_tasks or "rec-rgb-ae-3" in args.ssl_tasks):
-            self.visual_encoder = VisualCNN3(observation_space, hidden_size,
-                extra_rgb=extra_rgb, obs_center=args.obs_center)
-        elif args.ssl_tasks is not None and ("rec-rgb-vis-ae-4" in args.ssl_tasks or "rec-rgb-ae-4" in args.ssl_tasks):
-            self.visual_encoder = VisualCNN4(observation_space, hidden_size,
-                extra_rgb=extra_rgb, obs_center=args.obs_center)
-        elif args.ssl_tasks is not None and ("rec-rgb-vis-ae-5" in args.ssl_tasks or "rec-rgb-ae-5" in args.ssl_tasks):
-            self.visual_encoder = VisualCNN5(args, observation_space, hidden_size,
-                extra_rgb=extra_rgb, obs_center=args.obs_center)
-        else:
-            self.visual_encoder = VisualCNN(observation_space, hidden_size, 
-                extra_rgb=extra_rgb, obs_center=args.obs_center)
-        self.audio_encoder = AudioCNN(observation_space, hidden_size, "spectrogram")
-        
-        self.use_proprio = False
-        if args.use_pose and "pose" in list(observation_space.keys()):
-            self.use_proprio = True
-            self.proprio_encoder = nn.Linear(4, hidden_size)
-            input_dim += hidden_size
-
-        if self.visual_encoder.is_blind:
-            input_dim += hidden_size
-        else:
-            input_dim += hidden_size * 2
-
-        if self.prev_actions:
-            input_dim += hidden_size
-
-        self.state_encoder = RNNStateEncoder(input_dim, hidden_size)
-
-        self.action_distribution = CategoricalNet2(input_dim + hidden_size, hidden_size, action_space.n) # Policy fn
-        self.critic = CriticHead(hidden_size) # Value fn
-
-        self.train()
-
-        # Layers to record for neuroscience based analysis
-        self.analysis_layers = analysis_layers
-
-        # Hooks for intermediate features storage
-        if len(analysis_layers):
-            self._features = {layer: th.empty(0) for layer in self.analysis_layers}
-            for layer_id in analysis_layers:
-                layer = dict([*self.named_modules()])[layer_id]
-                layer.register_forward_hook(self.save_outputs_hook(layer_id))
-        
-        # SSL tasks
-        if args.ssl_tasks is not None:
-            self.ssl_modules = nn.ModuleDict()
-            for ssl_task in args.ssl_tasks:
-                if ssl_task in ["rec-rgb-ae", "rec-rgb-vis-ae", "rec-rgb-vis-ae-mse"]:
-                    # TODO: check that the Vis. Encoder is actually using RGB, not RGBD
-                    self.ssl_modules[ssl_task] = VisualCNNDecoder(self.visual_encoder)
-                elif ssl_task in ["rec-rgb-ae-2"]:
-                    self.ssl_modules[ssl_task] = VisualCNNDecoder2(self.visual_encoder)
-                elif ssl_task in ["rec-rgb-ae-3", "rec-rgb-vis-ae-3"]:
-                    self.ssl_modules[ssl_task] = VisualCNNDecoder3(self.visual_encoder)
-                elif ssl_task in ["rec-rgb-ae-4", "rec-rgb-vis-ae-4"]:
-                    self.ssl_modules[ssl_task] = VisualCNNDecoder4(self.visual_encoder)
-                elif ssl_task in ["rec-rgb-ae-5", "rec-rgb-vis-ae-5"]:
-                    self.ssl_modules[ssl_task] = VisualCNNDecoder5(self.visual_encoder)
-                else:
-                    raise NotImplementedError(f"Unsupported ssl-task: {ssl_task}")
-
-    def save_outputs_hook(self, layer_id: str) -> Callable:
-        def fn(_, __, output):
-            self._features[layer_id] = output
-        return fn
-
-    def forward(self, observations, rnn_hidden_states, masks, prev_actions=None):
-        x1 = []
-        modality_features = {} # For SSL namely
-
-        # Extracts audio featues
-        # TODO: consider having waveform data too ?
-        audio_features = self.audio_encoder(observations)
-        x1.append(audio_features)
-        modality_features["audio"] = audio_features
-
-        # Extracts vision features
-        ## TODO: consider having
-        ## - rgb and depth simulatenous input as 4 channel dim input
-        ## - deparate encoders for rgb and depth, give one more modality to PGWT
-        if not self.visual_encoder.is_blind:
-            if isinstance(self.visual_encoder, VisualCNN5):
-                video_features, video_mid_features = \
-                    self.visual_encoder(observations)
-                modality_features["vision_mid_features"] = video_mid_features
-            else:
-                video_features = self.visual_encoder(observations)
-            x1.append(video_features)
-            modality_features["vision"] = video_features
-
-        if self.use_proprio:
-            proprio_features = self.proprio_encoder(observations["pose"]. view(-1, 4))
-            x1.append(proprio_features)
-            modality_features["proprio"] = proprio_features
-
-        if self.prev_actions:
-            prev_actions *= masks
-            embed_prev_actions = self.prev_action_embedding(prev_actions)
-            x1.append(embed_prev_actions)
-        
-        x1 = th.cat(x1, dim=1)
-        # Current state, current rnn hidden states, respectively
-        x2, rnn_hidden_states2 = self.state_encoder(x1, rnn_hidden_states, masks)
-
-        if th.isnan(x2).any().item():
-            for key in observations:
-                print(key, th.isnan(observations[key]).any().item())
-            print('rnn_old', th.isnan(rnn_hidden_states).any().item())
-            print('rnn_new', th.isnan(rnn_hidden_states2).any().item())
-            print('mask', th.isnan(masks).any().item())
-            assert True
-
-        return x2, rnn_hidden_states2, modality_features
-    
-    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None, prev_actions=None,
-                  value_feat_detach=False, actor_feat_detach=False, ssl_tasks=None):
-        features, rnn_hidden_states, modality_features = \
-            self(observations, rnn_hidden_states, masks, prev_actions=prev_actions)
-
-        # Estimate the value function
-        values = self.critic(features.detach() if value_feat_detach else features)
-
-        # Estimate the policy as distribution to sample actions from
-        policy_features = th.cat([
-            features,
-            *[v for k, v in modality_features.items() if k not in ["vision_mid_features"]]
-        ], dim=1)
-        distribution, action_logits = self.action_distribution(policy_features.detach() if actor_feat_detach else policy_features)
-
-        if actions is None:
-            if deterministic:
-                actions = distribution.mode()
-            else:
-                actions = distribution.sample()
-        # TODO: maybe some assert on the 
-        action_log_probs = distribution.log_probs(actions)
-
-        distribution_entropy = distribution.entropy()
-
-        # Additonal SSL tasks outputs
-        ssl_outputs = {}
-        if ssl_tasks is not None:
-            for ssl_task in ssl_tasks:
-                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3", "rec-rgb-ae-4"]:
-                    ssl_features = features.detach() if self.config.ssl_rec_rgb_detach else features
-                elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-4", "rec-rgb-vis-ae-5", "rec-rgb-vis-ae-mse"]:
-                     ssl_features = modality_features["vision"]
-                     if ssl_task == "rec-rgb-vis-ae-5": # Special case, use larger intermediate features for the reconstruction
-                        if self.config.ssl_rec_rgb_mid_feat:
-                            ssl_features = modality_features["vision_mid_features"]
-                     if self.config.ssl_rec_rgb_detach:
-                         ssl_features = ssl_features.detach()
-                else:
-                    raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
-                
-                ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](ssl_features)
-
-        return actions, distribution.probs, action_log_probs, action_logits, \
-               distribution_entropy, values, rnn_hidden_states, ssl_outputs
-    
-    def get_value(self, observations, rnn_hidden_states, masks, prev_actions=None):
-        features, _ = self(observations, rnn_hidden_states, masks, prev_actions=prev_actions)
-
-        return self.critic(features)
-
-    def get_grad_norms(self):
-        modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution", "critic"]
-        if self.use_proprio:
-            modules.append("proprio_encoder")
-        
-        return {mod_name: compute_grad_norm(self.__getattr__(mod_name)) for mod_name in modules}
-
-# Actor critic variant that uses Perceiver as an RNN internally
-# This variant uses the same visual and audio encoder as SS baseline
-# TODO: clean up the followign variant, and make the PGWT GWWM one the main.
-from perceiver_gwt import Perceiver_GWT
-from perceiverio_gwt import PerceiverIO_GWT
-
-class Perceiver_GWT_ActorCritic(nn.Module):
-    def __init__(self, observation_space, action_space, config, extra_rgb=False, obs_center=False):
+class GW_Actor(nn.Module):
+    def __init__(self,
+                    observation_space,
+                    action_space,
+                    config,
+                    extra_rgb=False,
+                    analysis_layers=[],
+                    enc_analysis_layers=[]
+                ):
         super().__init__()
         self.config = config
 
-        # TODO: later, we might want to augment the RGB info with the depth.
-        self.visual_encoder = VisualCNN(observation_space, config.hidden_size, extra_rgb=extra_rgb, obs_center=False)
-        self.audio_encoder = AudioCNN(observation_space, config.hidden_size, "spectrogram")
+        # Layers to record for neuroscience based analysis
+        self.analysis_layers = analysis_layers
+        self.enc_analysis_layers = enc_analysis_layers
 
-        self.state_encoder = Perceiver_GWT(
-            depth = config.pgwt_depth, # Our default: 4; Perceiver default: 6
-            input_channels = config.hidden_size * 2, # ???
-            latent_type = config.pgwt_latent_type,
-            latent_learned = config.pgwt_latent_learned,
-            num_latents = config.pgwt_num_latents, # Our default: 32, Perceiver: 512
-            latent_dim = config.pgwt_latent_dim, # Our default: 32, Perceiver default: 512
-            cross_heads = config.pgwt_cross_heads, # Default: 1
-            latent_heads = config.pgwt_latent_heads, # Default: 8
-            cross_dim_head = config.pgwt_cross_dim_head, # Default: 64
-            latent_dim_head = config.pgwt_latent_dim_head, # Default: 64
-            attn_dropout = 0.,
-            ff_dropout = 0.,
-            self_per_cross_attn = 1,
-            weight_tie_layers = config.pgwt_weight_tie_layers, # Default: False
-            # Fourier Features related
-            max_freq = config.pgwt_max_freq, # Default: 10.
-            num_freq_bands = config.pgwt_num_freq_bands, # Default: 6
-            fourier_encode_data = config.pgwt_ff,
-            input_axis = 1,
-            # Modality embedding related
-            mod_embed = config.pgwt_mod_embed, # Using / dimension of mdality embeddings
-            hidden_size = config.hidden_size,
-            use_sa = config.pgwt_use_sa
+        self.visual_encoder = RecurrentVisualEncoder(
+            observation_space,
+            config.gw_size,
+            config.hidden_size,
+            extra_rgb=extra_rgb,
+            use_gw=config.recenc_use_gw,
+            gw_detach=config.recenc_gw_detach,
+            gru_type=config.gru_type,
+            analysis_layers=enc_analysis_layers
+        )
+        self.audio_encoder = RecurrentAudioEncoder(
+            observation_space,
+            config.gw_size,
+            config.hidden_size,
+            "spectrogram",
+            use_gw=config.recenc_use_gw,
+            gw_detach=config.recenc_gw_detach,
+            gru_type=config.gru_type,
+            analysis_layers=enc_analysis_layers
+        )
+        
+        self.state_encoder = GWStateEncoder(
+            gw_size=config.gw_size,
+            feat_size=config.hidden_size,
+            ca_n_heads=config.gw_cross_heads,
+            ca_use_null=config.gw_use_null,
+            gru_type=config.gru_type,
         )
 
-        # input_dim for policy / value is num_latents * latent_dim of the Perceiver
-        self.action_distribution = CategoricalNet(config.pgwt_num_latents * config.pgwt_latent_dim,
-            action_space.n) # Policy fn
-        self.critic = CriticHead(config.pgwt_num_latents * config.pgwt_latent_dim) # Value fn
+        self.action_distribution = CategoricalNet(config.gw_size, action_space.n) # Policy fn
 
         self.train()
 
-    def forward(self, observations, prev_latents, masks):
-        video_features = self.visual_encoder(observations)
-        audio_features = self.audio_encoder(observations)
+        # Hooks for intermediate features storage
+        if len(analysis_layers):
+            self._features = {layer: th.empty(0) for layer in self.analysis_layers}
+            for layer_id in analysis_layers:
+                layer = dict([*self.named_modules()])[layer_id]
+                layer.register_forward_hook(self.save_outputs_hook(layer_id))
 
-        obs_feat = th.cat([audio_features, video_features], dim=1)
-        state_feat, latents = self.state_encoder(obs_feat, prev_latents, masks) # [B, num_latents, latent_dim]
+    def forward(self, observations, prev_gw, masks, prev_modality_features):
+        if masks.dim() == 2: # single step, during eval
+            observations = {
+                k: v[:, None, :] for k, v in observations.items()
+                if k in ["spectrogram", "rgb"]
+            }
+            masks = masks[:, None, :]
 
-        return state_feat, latents
+        B, T = observations["spectrogram"].shape[:2]
+        modality_features = {}
 
-    def act(self, observations, prev_latents, masks, deterministic=False, actions=None):
-        features, latents = self(observations, prev_latents, masks)
+        # List of state features for actor-critic
+        gw_list = []
+        modality_features_list = {"audio": [], "visual": []}
 
-        # Estimate the value function
-        values = self.critic(features)
+        for t in range(T):
+            # Extracts audio featues
+            obs_dict_t = {
+                k: v[:, t] for k, v in observations.items()
+                if k in ["spectrogram", "audiogoal", "depth", "rgb"]
+            }
+            masks_t = masks[:, t]
+
+            audio_features = \
+                self.audio_encoder(
+                    obs_dict_t,
+                    prev_modality_features["audio"],
+                    masks_t,
+                    prev_gw=prev_gw)
+            modality_features["audio"] = audio_features
+            modality_features_list["audio"].append(audio_features)
+
+            # Extracts vision features
+            if not self.visual_encoder.is_blind:
+                visual_features = \
+                    self.visual_encoder(
+                        obs_dict_t,
+                        prev_modality_features["visual"], 
+                        masks_t,
+                        prev_gw=prev_gw)
+                modality_features["visual"] = visual_features
+                modality_features_list["visual"].append(visual_features)
+
+            gw = self.state_encoder(
+                # Reshape each mod feat to [B, 1, H]
+                modality_features = {
+                    k: v[:, None, :] for k, v in modality_features.items()
+                },
+                prev_gw=prev_gw,
+                masks=masks_t
+            ) # [B, num_latents, latent_dim]
+            gw_list.append(gw)
+
+        if "visual_encoder.rnn" in self.analysis_layers:
+            self._features["visual_encoder.rnn"] = \
+                th.stack(modality_features_list["visual"]).permute(1, 0, 2).reshape(B * T, -1)
+        if "audio_encoder.rnn" in self.analysis_layers:
+            self._features["audio_encoder.rnn"] = \
+                th.stack(modality_features_list["audio"]).permute(1, 0, 2).reshape(B * T, -1)
+
+        # Get features from the underlying visual and audio encoders
+        if "visual_encoder.cnn" in self.enc_analysis_layers:
+            self._features["visual_encoder.cnn"] = \
+                th.stack(self.visual_encoder._features["cnn"]
+                    ).permute(1, 0, 2).reshape(B * T, -1)
+        if "audio_encoder.cnn" in self.enc_analysis_layers:
+            self._features["audio_encoder.cnn"] = \
+                th.stack(self.audio_encoder._features["cnn"]
+                    ).permute(1, 0, 2).reshape(B * T, -1)
+        if "prev_state_encoder" in self.enc_analysis_layers:
+            self._features["prev_state_encoder"] = \
+                th.stack([prev_gw, *gw_list[:-1]]).permute(1, 0, 2).reshape(B * T, -1)
+
+        # Returns gw_list as B * T, GW_H, to match "XXX_target_list" used for CE loss
+        return th.stack(gw_list).permute(1, 0, 2).reshape(B * T, -1), \
+               gw, modality_features # [B * T, H], [B, H], {k: [B, H]} for k in "visual", "audio"
+
+    def act(self, observations, rnn_hidden_states, masks, modality_features, deterministic=False, actions=None):
+        features, gw, modality_features = self(observations, rnn_hidden_states,
+                                            masks, modality_features)
 
         # Estimate the policy as distribution to sample actions from
         distribution, action_logits = self.action_distribution(features)
@@ -1446,96 +739,87 @@ class Perceiver_GWT_ActorCritic(nn.Module):
                 actions = distribution.mode()
             else:
                 actions = distribution.sample()
-        # TODO: maybe some assert on the 
         action_log_probs = distribution.log_probs(actions)
 
         distribution_entropy = distribution.entropy()
 
-        return actions, distribution.probs, action_log_probs, action_logits, distribution_entropy, values, latents
-    
-    def get_value(self, observations, prev_latents, masks):
-        features, _ = self(observations, prev_latents, masks)
+        modality_features_detached = {
+            k: v.detach() for k,v in modality_features.items()
+        }
 
-        return self.critic(features)
+        # Compatibility for probing layers of GWT v2 agents
+        # Override the features of shape [B, H] to [B*T, H] instead
+        if "state_encoder" in self.analysis_layers:
+            self._features["state_encoder"] = features
+
+        return actions, distribution.probs, action_log_probs, action_logits, \
+               distribution_entropy, gw.detach(), modality_features_detached
 
     def get_grad_norms(self):
-        modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution", "critic"]
-        return {mod_name: compute_grad_norm(self.__getattr__(mod_name)) for mod_name in modules}
-
+        modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution"]
+        grad_norm_dict = {mod_name: compute_grad_norm(self.__getattr__(mod_name)) for mod_name in modules}
+        
+        return grad_norm_dict
+    
     def save_outputs_hook(self, layer_id: str) -> Callable:
         def fn(_, __, output):
             self._features[layer_id] = output
         return fn
-    
-# TODO: clean up and make this variant the main one.
-from perceiver_gwt_gwwm import Perceiver_GWT_GWWM, Perceiver_GWT_AttGRU
-# Layer names for recording intermediate features, for a PGWT GWWM network with a single CA, no SA, no modality embeddings
-PGWT_GWWM_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES = [
-    *[f"visual_encoder.cnn.{i}" for i in range(8)], # Shared arch. for GRU and PGWT
-    *[f"audio_encoder.cnn.{i}" for i in range(8)], # Shared arch. for GRU and PGWT
-    "action_distribution.linear", # Shared arch. for any type of agent
-    "critic.fc", # Shared arch. for any type of agent
 
-    "state_encoder", # Either GRU or PGWT based. Shape different based on nature of cell though.
-    ## PGWT GWWM specific
-    "state_encoder.ca", # This will have the output of the residual conn. self.ff_self(attention_value) + attention_value
-    "state_encoder.ca.mha", # Note: output here is tuple (attention_value, attention_weight)
-    "state_encoder.ca.ln_q",
-    "state_encoder.ca.ln_kv",
-    "state_encoder.ca.ff_self", # No residual connection output
-    *[f"state_encoder.ca.ff_self.{i}" for i in range(4)], # [LayerNorm, Linear, GELU, Linear]
-    ## TODO: add support for the SA layers too
-]
+    def get_n_params(self):
+        return sum(p.numel() for p in self.parameters())
 
-class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
+# endregion: GWT Agent         #
+###################################
+
+###################################
+# region: GRU v3 Baseline         #
+
+class GRU_Actor(nn.Module):
     def __init__(self,
-                 observation_space,
-                 action_space,
-                 config,
-                 extra_rgb=False,
-                 analysis_layers=[]):
-        
+                    observation_space,
+                    action_space,
+                    config,
+                    extra_rgb=False,
+                    analysis_layers=[],
+                    enc_analysis_layers=[]):
         super().__init__()
         self.config = config
-
-        # TODO: 
-        # - support for blind agent
-        # - support for RGB + Depth as 4 channel dim (default SS / SAVi behavior)
-        # - support for RGB CNN and Depth CNN separated (geared toward PGWT modality)
-        if config.ssl_tasks is not None and ("rec-rgb-vis-ae-3" in config.ssl_tasks or "rec-rgb-ae-3" in config.ssl_tasks):
-            self.visual_encoder = VisualCNN3(observation_space, config.hidden_size,
-                extra_rgb=extra_rgb, obs_center=config.obs_center)
-        else:
-            self.visual_encoder = VisualCNN(observation_space, config.hidden_size, 
-                extra_rgb=extra_rgb, obs_center=config.obs_center)
-        self.audio_encoder = AudioCNN(observation_space, config.hidden_size, "spectrogram")
-        
-        # Override the state encoder with a custom PerceiverIO
-        self.state_encoder = Perceiver_GWT_GWWM(
-            input_dim = config.hidden_size,
-            latent_type = config.pgwt_latent_type,
-            latent_learned = config.pgwt_latent_learned,
-            num_latents = config.pgwt_num_latents, # Our default: 32, Perceiver: 512
-            latent_dim = config.pgwt_latent_dim, # Our default: 32, Perceiver default: 512
-            cross_heads = config.pgwt_cross_heads, # Default: 1
-            latent_heads = config.pgwt_latent_heads, # Default: 8
-            # cross_dim_head = config.pgwt_cross_dim_head, # Default: 64
-            # latent_dim_head = config.pgwt_latent_dim_head, # Default: 64
-            # self_per_cross_attn = 1,
-            # Modality embedding related
-            mod_embed = config.pgwt_mod_embed, # Using / dimension of mdality embeddings
-            hidden_size = config.hidden_size,
-            use_sa = config.pgwt_use_sa,
-            ca_prev_latents = config.pgwt_ca_prev_latents
-        )
-
-        self.action_distribution = CategoricalNet(config.hidden_size, action_space.n) # Policy fn
-        self.critic = CriticHead(config.hidden_size) # Value fn
-
-        self.train()
         
         # Layers to record for neuroscience based analysis
         self.analysis_layers = analysis_layers
+        self.enc_analysis_layers = enc_analysis_layers
+
+        self.visual_encoder = RecurrentVisualEncoder(
+            observation_space, 
+            config.gw_size,
+            config.hidden_size,
+            extra_rgb=extra_rgb,
+            use_gw=config.recenc_use_gw,
+            gw_detach=config.recenc_gw_detach,
+            gru_type=config.gru_type,
+            analysis_layers=enc_analysis_layers
+        )
+        self.audio_encoder = RecurrentAudioEncoder(
+            observation_space,
+            config.gw_size,
+            config.hidden_size,
+            "spectrogram",
+            use_gw=config.recenc_use_gw,
+            gw_detach=config.recenc_gw_detach,
+            gru_type=config.gru_type,
+            analysis_layers=enc_analysis_layers
+        )
+        
+        self.state_encoder = GRUStateEncoder(
+            gw_size=config.gw_size,
+            feat_size=config.hidden_size,
+            gru_type=config.gru_type
+        )
+
+        self.action_distribution = CategoricalNet(config.gw_size, action_space.n) # Policy fn
+
+        self.train()
 
         # Hooks for intermediate features storage
         if len(analysis_layers):
@@ -1544,95 +828,114 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
                 layer = dict([*self.named_modules()])[layer_id]
                 layer.register_forward_hook(self.save_outputs_hook(layer_id))
 
-        # SSL tasks
-        if config.ssl_tasks is not None:
-            self.ssl_modules = nn.ModuleDict()
-            for ssl_task in config.ssl_tasks:
-                if ssl_task in ["rec-rgb-ae", "rec-rgb-vis-ae", "rec-rgb-vis-ae-mse"]:
-                    # TODO: check that the Vis. Encoder is actually using RGB, not RGBD
-                    self.ssl_modules[ssl_task] = VisualCNNDecoder(self.visual_encoder)
-                elif ssl_task in ["rec-rgb-ae-2"]:
-                    self.ssl_modules[ssl_task] = VisualCNNDecoder2(self.visual_encoder)
-                elif ssl_task in ["rec-rgb-ae-3", "rec-rgb-vis-ae-3"]:
-                    self.ssl_modules[ssl_task] = VisualCNNDecoder3(self.visual_encoder)
-                else:
-                    raise NotImplementedError(f"Unsupported ssl-task: {ssl_task}")
-                # elif ssl_task == "rec-spectr":
-                #     pass
+    def forward(self, observations, prev_gw, masks, prev_modality_features):
+        if masks.dim() == 2: # single step, during eval
+            observations = {
+                k: v[:, None, :] for k, v in observations.items()
+                if k in ["spectrogram", "rgb"]
+            }
+            masks = masks[:, None, :]
+
+        B, T = observations["spectrogram"].shape[:2]
+        modality_features = {}
+
+        # List of state features for actor-critic
+        gw_list = []
+        modality_features_list = {"audio": [], "visual": []}
+
+        for t in range(T):
+            # Extracts audio featues
+            obs_dict_t = {
+                k: v[:, t] for k, v in observations.items()
+                if k in ["spectrogram", "audiogoal", "depth", "rgb"]
+            }
+            masks_t = masks[:, t]
+
+            audio_features = \
+                self.audio_encoder(
+                    obs_dict_t,
+                    prev_modality_features["audio"],
+                    masks_t,
+                    prev_gw=prev_gw)
+            modality_features["audio"] = audio_features
+            modality_features_list["audio"].append(audio_features)
+
+            # Extracts vision features
+            if not self.visual_encoder.is_blind:
+                visual_features = \
+                    self.visual_encoder(
+                        obs_dict_t,
+                        prev_modality_features["visual"], 
+                        masks_t,
+                        prev_gw=prev_gw)
+                modality_features["visual"] = visual_features
+                modality_features_list["visual"].append(visual_features)
+
+            gw = self.state_encoder(
+                # Reshape each mod feat to [B, 1, H]
+                modality_features = {
+                    k: v[:, None, :] for k, v in modality_features.items()
+                },
+                prev_gw=prev_gw,
+                masks=masks_t
+            ) # [B, GW_H]
+            gw_list.append(gw)
+
+        if "visual_encoder.rnn" in self.analysis_layers:
+            self._features["visual_encoder.rnn"] = \
+                th.stack(modality_features_list["visual"]).permute(1, 0, 2).reshape(B * T, -1)
+        if "audio_encoder.rnn" in self.analysis_layers:
+            self._features["audio_encoder.rnn"] = \
+                th.stack(modality_features_list["audio"]).permute(1, 0, 2).reshape(B * T, -1)
         
-    def forward(self, observations, prev_latents, masks):
-        x1 = []
-        modality_features = {} # For SSL namely
+        # Get features from the underlying visual and audio encoders
+        if "visual_encoder.cnn" in self.enc_analysis_layers:
+            self._features["visual_encoder.cnn"] = \
+                th.stack(self.visual_encoder._features["cnn"]
+                    ).permute(1, 0, 2).reshape(B * T, -1)
+        if "audio_encoder.cnn" in self.enc_analysis_layers:
+            self._features["audio_encoder.cnn"] = \
+                th.stack(self.audio_encoder._features["cnn"]
+                    ).permute(1, 0, 2).reshape(B * T, -1)
+        if "prev_state_encoder" in self.enc_analysis_layers:
+            self._features["prev_state_encoder"] = \
+                th.stack([prev_gw, *gw_list[:-1]]).permute(1, 0, 2).reshape(B * T, -1)
 
-        # Extracts audio featues
-        # TODO: consider having waveform data too ?
-        audio_features = self.audio_encoder(observations)
-        modality_features["audio"] = audio_features
-        x1.append(audio_features[:, None, :]) # [B, H] -> [B, 1, H]
+        # Returns gw_list as B * T, GW_H, to match "XXX_target_list" used for CE loss
+        return th.stack(gw_list).permute(1, 0, 2).reshape(B * T, -1), \
+               gw, modality_features # [B * T, H], [B, H], {k: [B, H]} for k in "visual", "audio"
 
-        # Extracts vision features
-        ## TODO: consider having
-        ## - rgb and depth simulatenous input as 4 channel dim input
-        ## - deparate encoders for rgb and depth, give one more modality to PGWT
-        if not self.visual_encoder.is_blind:
-            video_features = self.visual_encoder(observations)
-            modality_features["vision"] = video_features
-            x1.append(video_features[:, None, :]) # [B, H] -> [B, 1, H]
-        
-        # For the transformer, prepaer the input data in the [B, N_MODALITY, H] shape
-        obs_feat = th.cat(x1, dim=1)
-
-        state_feat, latents = self.state_encoder(obs_feat, prev_latents, masks) # [B, num_latents, latent_dim]
-
-        return state_feat, latents, modality_features
-    
-    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None,
-                  value_feat_detach=False, actor_feat_detach=False, ssl_tasks=None):
-        features, rnn_hidden_states, modality_features = self(observations, rnn_hidden_states, masks)
-
-        # Estimate the value function
-        values = self.critic(features.detach() if value_feat_detach else features)
+    def act(self, observations, rnn_hidden_states, masks, modality_features, deterministic=False, actions=None):
+        features, gw, modality_features = self(observations, rnn_hidden_states,
+                                            masks, modality_features)
 
         # Estimate the policy as distribution to sample actions from
-        distribution, action_logits = self.action_distribution(features.detach() if actor_feat_detach else features)
+        distribution, action_logits = self.action_distribution(features)
 
         if actions is None:
             if deterministic:
                 actions = distribution.mode()
             else:
                 actions = distribution.sample()
-        # TODO: maybe some assert on the 
         action_log_probs = distribution.log_probs(actions)
 
         distribution_entropy = distribution.entropy()
 
-        # Additonal SSL tasks outputs
-        ssl_outputs = {}
-        if ssl_tasks is not None:
-            for ssl_task in ssl_tasks:
-                if ssl_task in ["rec-rgb-ae", "rec-rgb-ae-2", "rec-rgb-ae-3"]:
-                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](features)
-                elif ssl_task in ["rec-rgb-vis-ae", "rec-rgb-vis-ae-3", "rec-rgb-vis-ae-mse"]:
-                    ssl_outputs[ssl_task] = self.ssl_modules[ssl_task](modality_features["vision"])
-                else:
-                    raise NotImplementedError(f"Unsupported SSL task: {ssl_task}")
-
+        modality_features_detached = {
+            k: v.detach() for k,v in modality_features.items()
+        }
+        
+        # Compatibility for probing layers of GWT v2 agents
+        # Override the features of shape [B, H] to [B*T, H] instead
+        if "state_encoder" in self.analysis_layers:
+            self._features["state_encoder"] = features
+        
         return actions, distribution.probs, action_log_probs, action_logits, \
-               distribution_entropy, values, rnn_hidden_states, ssl_outputs
-    
-    def get_value(self, observations, rnn_hidden_states, masks):
-        features, _ = self(observations, rnn_hidden_states, masks)
-
-        return self.critic(features)
+               distribution_entropy, gw.detach(), modality_features_detached
 
     def get_grad_norms(self):
-        modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution", "critic"]
+        modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution"]
         grad_norm_dict = {mod_name: compute_grad_norm(self.__getattr__(mod_name)) for mod_name in modules}
-        # More specific grad norms for the Perceiver GWT GWWM
-        if self.state_encoder.mod_embed:
-            grad_norm_dict["mod_embed"] = compute_grad_norm(self.state_encoder.modality_embeddings)
-        if self.state_encoder.latent_learned:
-            grad_norm_dict["init_rnn_states"] = compute_grad_norm(self.state_encoder.latents)
         
         return grad_norm_dict
     
@@ -1641,102 +944,8 @@ class Perceiver_GWT_GWWM_ActorCritic(nn.Module):
             self._features[layer_id] = output
         return fn
 
-class Perceiver_GWT_AttGRU_ActorCritic(Perceiver_GWT_ActorCritic):
-    def __init__(self, observation_space, action_space, config, extra_rgb=False):
-        super().__init__(observation_space, action_space, config, extra_rgb)
-        self.config = config
+    def get_n_params(self):
+        return sum(p.numel() for p in self.parameters())
 
-        # Override the state encoder with a custom PerceiverIO
-        self.state_encoder = Perceiver_GWT_AttGRU(
-            input_dim = config.hidden_size,
-            latent_type = config.pgwt_latent_type,
-            latent_learned = config.pgwt_latent_learned,
-            num_latents = config.pgwt_num_latents, # Our default: 32, Perceiver: 512
-            latent_dim = config.pgwt_latent_dim, # Our default: 32, Perceiver default: 512
-            cross_heads = config.pgwt_cross_heads, # Default: 1
-            latent_heads = config.pgwt_latent_heads, # Default: 8
-            # cross_dim_head = config.pgwt_cross_dim_head, # Default: 64
-            # latent_dim_head = config.pgwt_latent_dim_head, # Default: 64
-            # self_per_cross_attn = 1,
-            # Modality embedding related
-            mod_embed = config.pgwt_mod_embed, # Using / dimension of mdality embeddings
-            hidden_size = config.hidden_size,
-            use_sa = config.pgwt_use_sa
-        )
-
-    def get_grad_norms(self):
-        modules = ["visual_encoder", "audio_encoder", "state_encoder", "action_distribution", "critic"]
-        grad_norm_dict = {mod_name: compute_grad_norm(self.__getattr__(mod_name)) for mod_name in modules}
-        # More specific grad norms for the Perceiver GWT GWWM
-        if self.state_encoder.mod_embed:
-            grad_norm_dict["mod_embed"] = compute_grad_norm(self.state_encoder.modality_embeddings)
-        if self.state_encoder.latent_learned:
-            grad_norm_dict["init_rnn_states"] = compute_grad_norm(self.state_encoder.latents)
-        
-        return grad_norm_dict
-
-## ActorCritic based on the Deep Ethorlogy Virtual Rodent paper
-class ActorCritic_DeepEthologyVirtualRodent(nn.Module):
-    def __init__(self, observation_space, action_space, hidden_size):
-        super().__init__()
-        self.hidden_size = hidden_size
-
-        # TODO: later, we might want to augment the RGB info with the depth.
-        self.visual_encoder = VisualCNN(observation_space, hidden_size, extra_rgb=False)
-        self.audio_encoder = AudioCNN(observation_space, hidden_size, "spectrogram")
-        
-        self.core_state_encoder = RNNStateEncoder(hidden_size * 2, hidden_size)
-        self.policy_state_encoder = RNNStateEncoder(hidden_size * 3, hidden_size)
-
-        self.action_distribution = CategoricalNet(hidden_size, action_space.n) # Policy fn
-        self.critic = CriticHead(hidden_size) # Value fn
-
-        self.train()
-    
-    def forward(self, observations, rnn_hidden_states, masks):
-        video_features = self.visual_encoder(observations)
-        audio_features = self.audio_encoder(observations)
-
-        x1 = th.cat([audio_features, video_features], dim=1)
-        # Current state, current rnn hidden states, respectively
-        # Core module RNN step
-        core_rnn_hidden_states = rnn_hidden_states[:, :, :self.hidden_size]
-        core_x2, core_rnn_hidden_states2 = self.core_state_encoder(x1, core_rnn_hidden_states, masks)
-        # Policy module RNN step
-        policy_rnn_hidden_states = rnn_hidden_states[:, :, self.hidden_size:]
-        policy_x1 = th.cat([x1, core_rnn_hidden_states2[0].detach()], dim=1) # They mention this in Fig 2.3 in the paper
-        policy_x2, policy_rnn_hidden_states2 = self.policy_state_encoder(policy_x1, policy_rnn_hidden_states, masks)
-        
-        return core_x2, policy_x2, core_rnn_hidden_states2, policy_rnn_hidden_states2
-    
-    def act(self, observations, rnn_hidden_states, masks, deterministic=False, actions=None):
-        core_features, policy_features, core_rnn_hidden_states, policy_rnn_hidden_states = \
-            self(observations, rnn_hidden_states, masks)
-
-        # Estimate the value function
-        values = self.critic(core_features)
-
-        # Estimate the policy as distribution to sample actions from
-        distribution, action_logits = self.action_distribution(policy_features)
-
-        if actions is None:
-            if deterministic:
-                actions = distribution.mode()
-            else:
-                actions = distribution.sample()
-        # TODO: maybe some assert on the 
-        action_log_probs = distribution.log_probs(actions)
-
-        distribution_entropy = distribution.entropy().mean()
-
-        return actions, action_log_probs, action_logits, distribution_entropy, values, \
-            th.cat([core_rnn_hidden_states, policy_rnn_hidden_states], dim=2) # Very workaround-y method
-    
-    def get_value(self, observations, rnn_hidden_states, masks):
-        core_features, _, _, _ = \
-            self(observations, rnn_hidden_states, masks)
-
-        return self.critic(core_features)
-
-# endregion: Actor Critic modules       #
-#########################################
+# endregion: GRU v3 Baseline      #
+###################################
