@@ -214,6 +214,11 @@ class RecurrentVisualEncoder(nn.Module):
 
         layer_init(self.cnn)
 
+        # TODO: this is a work around purely for analysis,
+        # not to be used for other things so far
+        # This is because in the analysis we iterate step by step
+        # but during probing for example, we need B, T, H shape
+        # that is then reshaped to B * T, H to feed to the probe net.
         if len(self.analysis_layers):
             self._features = {}
 
@@ -249,7 +254,8 @@ class RecurrentVisualEncoder(nn.Module):
             if "cnn" not in self._features.keys():
                 self._features["cnn"] = []
             
-            self._features["cnn"].append(rnn_input)
+            # self._features["cnn"].append(rnn_input)
+            self._features["cnn"] = [rnn_input]
 
         if self.use_gw:
             assert prev_gw is not None, "RecurVisEnc requires 'gw' tensor when in GW usage mode"
@@ -356,6 +362,11 @@ class RecurrentAudioEncoder(nn.Module):
         
         layer_init(self.cnn)
 
+        # TODO: this is a work around purely for analysis,
+        # not to be used for other things so far
+        # This is because in the analysis we iterate step by step
+        # but during probing for example, we need B, T, H shape
+        # that is then reshaped to B * T, H to feed to the probe net.
         if len(self.analysis_layers):
             self._features = {}
 
@@ -375,7 +386,8 @@ class RecurrentAudioEncoder(nn.Module):
             if "cnn" not in self._features.keys():
                 self._features["cnn"] = []
             
-            self._features["cnn"].append(rnn_input)
+            # self._features["cnn"].append(rnn_input)
+            self._features["cnn"] = [rnn_input]
 
         if self.use_gw:
             assert prev_gw is not None, "RecurAudEnc requires 'gw' tensor when in GW usage mode"
@@ -385,6 +397,7 @@ class RecurrentAudioEncoder(nn.Module):
             ], dim=1)
 
         return self.rnn(rnn_input, prev_states * masks)
+
 
 # endregion: Audio modules        #
 ###################################
