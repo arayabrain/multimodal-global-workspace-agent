@@ -1,0 +1,26 @@
+program:
+  ppo_bc.py
+method: grid
+parameters:
+  seed:
+    values: [1, 2, 3, 4, 5]
+  agent-type:
+    value: "gw"
+  gw-size:
+    value: 256
+  lr:
+    value: 0.004502
+  ent-coef:
+    value: 0.200
+  max-grad-norm:
+    value: 4.817
+  total-steps:
+    value: 20000000
+  logdir-prefix:
+    value: "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-finals-makeup"
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - ${args}
+  - "--wandb"

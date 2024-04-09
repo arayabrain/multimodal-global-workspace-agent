@@ -22,12 +22,11 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
+from torchinfo import summary
+
 # Env config related
 from ss_baselines.av_nav.config import get_config
 from ss_baselines.savi.config.default import get_config as get_savi_config
-from ss_baselines.common.env_utils import construct_envs
-from ss_baselines.common.environments import get_env_class
-from ss_baselines.common.utils import plot_top_down_map
 
 # Dataset utils
 from torch.utils.data import IterableDataset, DataLoader
@@ -36,7 +35,7 @@ import compress_pickle as cpkl
 # Loading pretrained agent
 import tools
 import models
-from models import ActorCritic, Perceiver_GWT_GWWM_ActorCritic
+from models import GW_Actor, GRU_Actor
 
 # Helpers
 def dict_without_keys(d, keys_to_ignore):
@@ -53,16 +52,16 @@ CUSTOM_ARGS = [
 
     
     # SS env config
-    get_arg_dict("config-path", str, "env_configs/savi/savi_ss1.yaml"),
+    get_arg_dict("config-path", str, "env_configs/savi/savi_ss1_rgb_spectro.yaml"),
 
     # Probing setting
-    get_arg_dict("probe-depth", int, 1),
+    get_arg_dict("probe-depth", int, 2),
     get_arg_dict("probe-hid-size", int, 512),
     get_arg_dict("probe-bias", bool, False, metatype="bool"),
 
     get_arg_dict("probing-targets", str, ["category", "scene"], metatype="list"), # What to probe for 
     get_arg_dict("probing-inputs", str, 
-        ["state_encoder", "visual_encoder.cnn.7", "audio_encoder.cnn.7"], metatype="list"), # What to base the probe on
+        ["state_encoder", "visual_encoder.rnn", "audio_encoder.rnn"], metatype="list"), # What to base the probe on
     get_arg_dict("pretrained-model-name", str, None), # Simplified model name; required
     get_arg_dict("pretrained-model-path", str, None), # Path to the weights of the pre-trained model; required
     get_arg_dict("n-epochs", int, 1), # How many iteration over the whole dataset (* with caveat)
@@ -77,43 +76,30 @@ CUSTOM_ARGS = [
     get_arg_dict("norm-adv", bool, True, metatype="bool"),
     get_arg_dict("clip-coef", float, 0.1), # Surrogate loss clipping coefficient
     get_arg_dict("clip-vloss", bool, True, metatype="bool"),
-    get_arg_dict("ent-coef", float, 0.0), # Entropy loss coef; 0.2 in SS baselines
+    get_arg_dict("ent-coef", float, 0.2), # Entropy loss coef; 0.2 in SS baselines
     get_arg_dict("vf-coef", float, 0.5), # Value loss coefficient
     get_arg_dict("max-grad-norm", float, 0.5),
     get_arg_dict("target-kl", float, None),
     get_arg_dict("lr", float, 2.5e-4), # Learning rate
     get_arg_dict("optim-wd", float, 0), # weight decay for adam optim
     ## Agent network params
-    get_arg_dict("agent-type", str, "ss-default", metatype="choice",
-        choices=["ss-default", "perceiver-gwt-gwwm"]),
-    get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features and RNN hidden states 
-    ## Perceiver / PerceiverIO params: TODO: num_latnets, latent_dim, etc...
-    get_arg_dict("pgwt-latent-type", str, "randn", metatype="choice",
-        choices=["randn", "zeros"]), # Depth of the Perceiver
-    get_arg_dict("pgwt-latent-learned", bool, True, metatype="bool"),
-    get_arg_dict("pgwt-depth", int, 1), # Depth of the Perceiver
-    get_arg_dict("pgwt-num-latents", int, 8),
-    get_arg_dict("pgwt-latent-dim", int, 64),
-    get_arg_dict("pgwt-cross-heads", int, 1),
-    get_arg_dict("pgwt-latent-heads", int, 4),
-    get_arg_dict("pgwt-cross-dim-head", int, 64),
-    get_arg_dict("pgwt-latent-dim-head", int, 64),
-    get_arg_dict("pgwt-weight-tie-layers", bool, False, metatype="bool"),
-    get_arg_dict("pgwt-ff", bool, False, metatype="bool"),
-    get_arg_dict("pgwt-num-freq-bands", int, 6),
-    get_arg_dict("pgwt-max-freq", int, 10.),
-    get_arg_dict("pgwt-use-sa", bool, False, metatype="bool"),
-    ## Peceiver Modality Embedding related
-    get_arg_dict("pgwt-mod-embed", int, 0), # Learnable modality embeddings
-    ## Additional modalities
-    get_arg_dict("pgwt-ca-prev-latents", bool, False, metatype="bool"), # if True, passes the prev latent to CA as KV input data
+    get_arg_dict("agent-type", str, "gw", metatype="choice",
+        choices=["gw", "gru"]),
+    get_arg_dict("gru-type", str, "layernorm", metatype="choice",
+                    choices=["default", "layernorm"]),
+    get_arg_dict("hidden-size", int, 512), # Size of the visual / audio features
 
-    ## Special BC
-    get_arg_dict("prev-actions", bool, False, metatype="bool"),
-    get_arg_dict("burn-in", int, 0), # Steps used to init the latent state for RNN component
+    ## BC related hyper parameters
     get_arg_dict("batch-chunk-length", int, 0), # For gradient accumulation
-    get_arg_dict("dataset-ce-weights", bool, True, metatype="bool"), # If True, will read CEL weights based on action dist. from the 'dataset_statistics.bz2' file.
+    get_arg_dict("dataset-ce-weights", bool, False, metatype="bool"), # If True, will read CEL weights based on action dist. from the 'dataset_statistics.bz2' file.
     get_arg_dict("ce-weights", float, None, metatype="list"), # Weights for the Cross Entropy loss
+
+    ## GW Agent with custom attention, recurrent encoder and null inputs
+    get_arg_dict("gw-size", int, 512), # Dim of the GW vector
+    get_arg_dict("recenc-use-gw", bool, True, metatype="bool"), # Use GW at Recur. Enc. level
+    get_arg_dict("recenc-gw-detach", bool, True, metatype="bool"), # When using GW at Recurrent Encoder level, whether to detach the grads or not
+    get_arg_dict("gw-use-null", bool, True, metatype="bool"), # Use Null at CrossAtt level
+    get_arg_dict("gw-cross-heads", int, 1), # num_heads of the CrossAttn
 
     # Eval protocol
     get_arg_dict("eval", bool, True, metatype="bool"),
@@ -121,10 +107,10 @@ CUSTOM_ARGS = [
     get_arg_dict("eval-n-episodes", int, 5),
 
     # Logging params
-    # NOTE: While supported, video logging is expensive because the RGB generation in the
-    # envs hogs a lot of GPU, especially with multiple envs 
+    # NOTE: Video logging expensive
     get_arg_dict("save-videos", bool, False, metatype="bool"),
     get_arg_dict("save-model", bool, True, metatype="bool"),
+    get_arg_dict("save-model-every", int, int(5e5)), # Every X frames || steps sampled
     get_arg_dict("log-sampling-stats-every", int, int(1.5e3)), # Every X frames || steps sampled
     get_arg_dict("log-training-stats-every", int, int(10)), # Every X model update
     get_arg_dict("logdir-prefix", str, "./logs/") # Overrides the default one
@@ -149,10 +135,6 @@ if is_SAVi:
     env_config = get_savi_config(config_paths=args.config_path)
 else:
     env_config = get_config(config_paths=args.config_path)
-
-# Additional PPO overrides
-args.batch_size = int(args.num_envs * args.num_steps)
-args.minibatch_size = int(args.batch_size // args.num_minibatches)
 
 # Gradient accumulation support
 if args.batch_chunk_length == 0:
@@ -231,20 +213,13 @@ print("")
 # can be evaluated at thet same time
 from gym import spaces
 single_action_space = spaces.Discrete(4)
-if args.pretrained_model_name.__contains__("rgb"):
-    single_observation_space = spaces.Dict({
-        "rgb": spaces.Box(shape=[128,128,3], low=0, high=255, dtype=np.uint8),
-        "audiogoal": spaces.Box(shape=[2,16000], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32),
-        "spectrogram": spaces.Box(shape=[65,26,2], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32)
-    })
-if args.pretrained_model_name.__contains__("rgbd"):
-    # Override the single action space in case "rgbd" is in the experiment name
-    single_observation_space = spaces.Dict({
-        "rgb": spaces.Box(shape=[128,128,3], low=0, high=255, dtype=np.uint8),
-        "depth": spaces.Box(shape=[128,128,1], low=0, high=255, dtype=np.uint8),
-        "audiogoal": spaces.Box(shape=[2,16000], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32),
-        "spectrogram": spaces.Box(shape=[65,26,2], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32)
-    })
+single_observation_space = spaces.Dict({
+    "rgb": spaces.Box(shape=[128,128,3], low=0, high=255, dtype=np.uint8),
+    # "depth": spaces.Box(shape=[128,128,1], low=0, high=255, dtype=np.uint8),
+    "audiogoal": spaces.Box(shape=[2,16000], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32),
+    "spectrogram": spaces.Box(shape=[65,26,2], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32),
+    "pose": spaces.Box(shape=[4], low=-3.4028235e+38, high=3.4028235e+38, dtype=np.float32)
+})
 
 # Define the target of probing
 ## "category" -> how easy to predict category based on the learned features / inputs
@@ -263,13 +238,32 @@ PROBING_INPUTS = args.probing_inputs
 
 # Load the model which features will be probed
 args_copy = copy.copy(args)
-if args.pretrained_model_name.__contains__("gru"):
-    agent = ActorCritic(single_observation_space, single_action_space, args.hidden_size, extra_rgb=False,
-        analysis_layers=models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
-elif args.pretrained_model_name.__contains__("pgwt"):
-    agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space, args, extra_rgb=False,
-        analysis_layers=models.PGWT_GWWM_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES + ["state_encoder.ca.mha"]).to(device)
+# if args.pretrained_model_name.__contains__("gru"):
+#     agent = ActorCritic(single_observation_space, single_action_space, args.hidden_size, extra_rgb=False,
+#         analysis_layers=models.GRU_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
+# elif args.pretrained_model_name.__contains__("pgwt"):
+#     agent = Perceiver_GWT_GWWM_ActorCritic(single_observation_space, single_action_space, args, extra_rgb=False,
+#         analysis_layers=models.PGWT_GWWM_ACTOR_CRITIC_DEFAULT_ANALYSIS_LAYER_NAMES + ["state_encoder.ca.mha"]).to(device)
+
+if args.agent_type == "gw":
+    agent = GW_Actor(single_observation_space,
+                single_action_space,
+                args,
+                extra_rgb=agent_extra_rgb,
+                analysis_layers=models.GWTAGENT_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
+elif args.agent_type == "gru":
+    agent = GRU_Actor(single_observation_space,
+                single_action_space,
+                args,
+                extra_rgb=agent_extra_rgb,
+                analysis_layers=models.GWTAGENT_DEFAULT_ANALYSIS_LAYER_NAMES).to(device)
+else:
+    raise NotImplementedError(f"Unsupported agent-type:{args.agent_type}")
 agent.eval()
+
+print(agent)
+print(summary(agent))
+
 
 # TODO: add more controls on the model path ?
 if args.pretrained_model_path is not None:
@@ -279,8 +273,9 @@ if args.pretrained_model_path is not None:
 # Class for a generic linear probe network
 # TODO: might want to add a few layers layer ?
 class GenericProbeNetwork(nn.Module):
-    def __init__(self, input_dim, output_dim, depth=1, hid_size=512, bias=False):
+    def __init__(self, name, input_dim, output_dim, depth=1, hid_size=512, bias=False):
         super().__init__()
+        self.name = name
         assert depth >= 1, "Probe not deep enough: {depth}"
             
         hiddens = [hid_size for _ in range(depth)]
@@ -306,7 +301,10 @@ for probe_target_name, probe_target_info in PROBING_TARGETS.items():
             PROBES_METADATA[probe_target_name][probe_input] = {}
 
         # TODO: make the probe's input dim adapt to what will actually be probed.
-        PROBES_METADATA[probe_target_name][probe_input]["probe_input_dim"] = 512
+        H = args.hidden_size
+        if probe_input == "state_encoder":
+            H = args.gw_size
+        PROBES_METADATA[probe_target_name][probe_input]["probe_input_dim"] = H
         PROBES_METADATA[probe_target_name][probe_input]["probe_output_dim"] = probe_target_info["n_classes"]
 
 # Dictionary that will holds the probe networks and their optimizers
@@ -316,9 +314,13 @@ for probe_target_name, probe_target_info in PROBING_TARGETS.items():
         probe_input_dim = PROBES[probe_target_name][probe_input]["probe_input_dim"]
         probe_output_dim = PROBES[probe_target_name][probe_input]["probe_output_dim"]
 
-        probe_network = GenericProbeNetwork(probe_input_dim, probe_output_dim,
+        probe_name = f"{probe_target_name} | {probe_input}"
+        probe_network = GenericProbeNetwork(probe_name, probe_input_dim, probe_output_dim,
                                             args.probe_depth, args.probe_hid_size, args.probe_bias).to(device)
+        print(f"# probe: {probe_name}")
         print(probe_network)
+        print("")
+
         if not args.cpu and th.cuda.is_available():
             # TODO: GPU only. But what if we still want to use the default pytorch one ?
             optimizer = apex.optimizers.FusedAdam(probe_network.parameters(), lr=args.lr, eps=1e-5, weight_decay=args.optim_wd)
@@ -471,6 +473,13 @@ steps_per_update = args.num_envs * args.num_steps
 total_updates = int((args.total_steps * args.n_epochs) / args.num_envs / args.num_steps) + 1# How many updates expected in total for one epoch ?
 print(f"Expected number of updates: {total_updates}")
 
+# This will be used to recompute the rnn_hidden_strates when computiong the new action logprobs
+rnn_hidden_state = th.zeros((args.batch_chunk_length, args.gw_size), device=device)
+modality_features = {
+    "audio": rnn_hidden_state.new_zeros([args.batch_chunk_length, args.hidden_size]),
+    "visual": rnn_hidden_state.new_zeros([args.batch_chunk_length, args.hidden_size])
+}
+
 for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update, steps_per_update):
     # Load batch data
     obs_list, action_list, _, done_list = \
@@ -478,37 +487,7 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
             b.float().to(device) for b in next(dloader)]
     
     # NOTE: RGB are normalized in the VisualCNN module
-    # PPO networks expect input of shape T,B, ... so doing the permutation first
-    # then flatten over T x B dimensions. The RNN will reshape it as necessary
-    for k, v in obs_list.items():
-        if k in ["rgb", "spectrogram", "depth"]:
-            obs_list[k] = v.permute(1, 0, 2, 3, 4) # BTCHW -> TBCHW
-            obs_list[k] = obs_list[k].reshape(-1, *obs_list[k].shape[-3:])
-        elif k in ["audiogoal"]:
-            obs_list[k] = v.permute(1, 0, 2, 3) # BTCL -> TBCL
-            obs_list[k] = obs_list[k].reshape(-1, *obs_list[k].shape[-2:])
-        elif k in ["category"]:
-            obs_list[k] = v.permute(1, 0, 2) # BTC -> TBC
-        elif k in ["scene"]:
-            obs_list[k] = v.permute(1, 0) # BT -> TB
-        else:
-            # TODO: handle other fields like "category", etc...
-            pass
-    
-    action_list = action_list.permute(1, 0, 2) # TODO: probably uneeded for probing ?
-    done_list = done_list.permute(1, 0, 2)
     mask_list = 1. - done_list
-    
-    prev_actions_list = th.zeros_like(action_list)
-    prev_actions_list[1:] = action_list[:-1]
-    prev_actions_list = F.one_hot(prev_actions_list.long()[:, :, 0], num_classes=4).float()
-    prev_actions_list[0] = prev_actions_list[0] * 0.0
-
-    # Finally, also flatten across T x B, let the RNN do the unflattening if needs be
-    action_list = action_list.reshape(-1) # TODO: probably uneeded for probing ?
-    done_list = done_list.reshape(-1, 1)
-    mask_list = mask_list.reshape(-1, 1)
-    prev_actions_list = prev_actions_list.reshape(-1, 1)
 
     # Holder for the probe losses and accs.
     probe_losses_dict = {}
@@ -516,42 +495,34 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
     # For each "agent_variant", iterate
     # TODO: once we have more than "category", it is more efficient to iterate over the agent first,
     # Do the forward pass, then iterate over the probe target (category, scene, etc...) then
-
-    # Forward pass with the agent model to collect the intermediate features
-    # Stores in agent_features
-    # This will be used to recompute the rnn_hidden_states when computiong the new action logprobs
-    if args.pretrained_model_name.__contains__("gru"):
-        rnn_hidden_state = th.zeros((1, args.batch_chunk_length, args.hidden_size), device=device)
-    elif args.pretrained_model_name.__contains__("pgwt"):
-        rnn_hidden_state = agent.state_encoder.latents.repeat(args.batch_chunk_length, 1, 1)
-    else:
-        raise NotImplementedError(f"Unsupported agent-type:{args.pretrained_agent_name}")
     
     with th.no_grad():
-        agent_outputs = agent.act(obs_list, rnn_hidden_state, masks=mask_list) #, prev_actions=prev_actions_list)
-        
+        _, _, _, _, \
+        entropies, rnn_hidden_state, modality_features = \
+            agent.act(obs_list, rnn_hidden_state, masks=mask_list,
+                    modality_features=modality_features) #, prev_actions=prev_actions_list)
+
     for probe_target_name, probe_target_dict in PROBES.items():
         # probe_target_name: "category", "scene", more generally the targeted concept of the probing
         # probe_target_dict: { "state_encoder": {"agent_variant": Torch Model} }
         for probe_target_input_name, agent_variant_probes in probe_target_dict.items():
             # probe_target_input_name: the input of the probe, such as "state_encoder", and other
             # agent_variant_probes: dict taht holds {"agent_variant": Torch Model}
-            
+
             probe = agent_variant_probes["probe_network"]
             probe_optim = agent_variant_probes["probe_optimizer"]
-            probe_optim.zero_grad()
 
             # Forward pass of the probe network itself
             if probe_target_input_name == "state_encoder":
-                probe_inputs = agent._features["state_encoder"][0]
+                probe_inputs = agent._features["state_encoder"]
             elif probe_target_input_name.__contains__("visual_encoder") or \
-                    probe_target_input_name.__contains__("audio_encoder"):
+                    probe_target_input_name.__contains__("audio_encoder") or \
+                    probe_target_input_name.__contains__("visual_embedding") or \
+                    probe_target_input_name.__contains__("audio_embedding"):
                 probe_inputs = agent._features[probe_target_input_name]
             else:
                 raise NotImplementedError(f"Attempt to use {probe_target_input_name} as probe input.")
-            
-            probe_logits = probe(probe_inputs)
-            
+
             # TODO: generate probe_targets
             if probe_target_name == "category":
                 probe_targets = obs_list["category"].reshape(-1, N_CATEGORIES).argmax(axis=1)
@@ -559,20 +530,46 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
                 probe_targets = obs_list["scene"].long().reshape(-1)
             else:
                 raise NotImplementedError(f"Unsupported probe target: {probe_target_name}.")
-            
-            # Loss
-            # TODO: CE weights depending on the probing target and such
-            probe_ce_loss = F.cross_entropy(probe_logits, probe_targets)
 
-            probe_ce_loss.backward()
-            probe_optim.step()
+            probe_ce_loss = 0.
+            probe_acc = 0.
+            
+            for mb_idx in range(args.num_minibatches):
+                mb_start = mb_idx * args.minibatch_size
+                mb_end = (mb_idx + 1) * args.minibatch_size
+
+                probe_optim.zero_grad()
+                
+                # Special case if the agent if PGWT: state_encoder is tuple of shapes ([B_T, H], [B_T, X, H])
+                # if isinstance(probe_inputs, tuple):
+                #     probe_inputs = probe_inputs[0]
+
+                mb_probe_inputs = probe_inputs[mb_start:mb_end]
+                mb_probe_targets = probe_targets[mb_start:mb_end]
+
+                mb_probe_logits = probe(mb_probe_inputs)
+                
+                # Loss
+                # TODO: CE weights depending on the probing target and such
+                mb_probe_ce_loss = F.cross_entropy(mb_probe_logits, mb_probe_targets)
+
+                mb_probe_ce_loss.backward()
+                probe_optim.step()
+
+                mb_probe_acc = (F.softmax(mb_probe_logits, dim=1).argmax(1) == mb_probe_targets).float().mean().item()
+
+                probe_ce_loss += mb_probe_ce_loss.item()
+                probe_acc += mb_probe_acc
+
+            probe_ce_loss /= args.num_minibatches
+            probe_acc /= args.num_minibatches
 
             # Store the loss valuesl for logging later
             metric_stem = f"{probe_target_name}|{probe_target_input_name}"
             loss_name = f"{metric_stem}__probe_loss"
-            probe_losses_dict[loss_name] = probe_ce_loss.item()
+            probe_losses_dict[loss_name] = probe_ce_loss
             acc_name = f"{metric_stem}__probe_acc"
-            probe_losses_dict[acc_name] = (F.softmax(probe_logits, dim=1).argmax(1) == probe_targets).float().mean().item()
+            probe_losses_dict[acc_name] = probe_acc
 
     # Tracking the number of NN updates (for all probes)
     n_updates += 1
@@ -591,12 +588,13 @@ for global_step in range(1, args.total_steps * args.n_epochs + steps_per_update,
             "global_step": global_step,
         }, global_step)
 
-# Saving models after the training
-for probe_target_name, probe_target_dict in PROBES.items():
-    for probe_target_input_name, agent_variant_probes in probe_target_dict.items():
-        probe = agent_variant_probes["probe_network"]
-        probe_statedict_filename = f"{probe_target_name}__{probe_target_input_name}__probe.pth"
-        
-        tblogger.save_model_dict(probe.state_dict(), probe_statedict_filename)
+    # Periodic model save queued to the "eval-every"=1.5e4 hyparam by default
+    if should_eval(global_step):
+        for probe_target_name, probe_target_dict in PROBES.items():
+            for probe_target_input_name, agent_variant_probes in probe_target_dict.items():
+                probe = agent_variant_probes["probe_network"]
+                probe_statedict_filename = f"{probe_target_name}__{probe_target_input_name}__probe.pth"
+                
+                tblogger.save_model_dict(probe.state_dict(), probe_statedict_filename)
 
 tblogger.close()

@@ -1,0 +1,26 @@
+program:
+  ppo_bc.py
+method: grid
+parameters:
+  seed:
+    values: [1, 2, 3, 4, 5]
+  agent-type:
+    value: "gw"
+  gw-size:
+    value: 32
+  lr:
+    value: 0.001231
+  ent-coef:
+    value: 0.420
+  max-grad-norm:
+    value: 1.890
+  total-steps:
+    value: 20000000
+  logdir-prefix:
+    value: "/home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-final"
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - ${args}
+  - "--wandb"
