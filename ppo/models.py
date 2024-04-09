@@ -949,3 +949,25 @@ class GRU_Actor(nn.Module):
 
 # endregion: GRU v3 Baseline      #
 ###################################
+
+###################################
+# region: Random policy           #
+
+class Random_Actor():
+    def __init__(self,
+                 observation_space,
+                 action_space):
+        self.observation_space = observation_space
+        self.action_space = action_space
+
+    def act(self, observations, rnn_hidden_states, masks, modality_features, deterministic=False, actions=None):
+
+        actions = np.random.randint(low=0, high=self.action_space.n, size=1)
+
+        return actions, None, None, None, \
+               None, None, None
+    
+    def get_n_params(self):
+        return 0
+# endregion: Random policy        #
+###################################

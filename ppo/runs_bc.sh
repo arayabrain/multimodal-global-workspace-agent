@@ -2,7 +2,7 @@
 NUM_CORES=$(nproc --all)
 export MKL_NUM_THREADS=$NUM_CORES OMP_NUM_THREADS=$NUM_CORES
 
-export WANDB_PROJECT="ss-hab-bc-revised"
+export WANDB_PROJECT="ss-hab-bc-revised-finals"
 
 export LOGDIR_PREFIX=~/random/rl/exp-logs/$WANDB_PROJECT
 if [ ! -d $LOGDIR_PREFIX ]; then
@@ -22,6 +22,24 @@ echo $WANDB_DIR
 # TODO: Fix the issue that requires this kind of hardcoding
 # export LD_LIBRARY_PATH="/usr/local/cudnn-8.4.1_cuda_11.x:/usr/local/cuda-11.7/lib64:"
 # echo "${LD_LIBRARY_PATH}"
+
+# region: Random policy
+  for seed in 1 2 3 4 5; do
+    export TOTAL_STEPS=20000000
+    (sleep 1s && python ppo_bc_rndpol.py \
+      --exp-name "ppo_bc__rnd" \
+      --config-path "env_configs/savi/savi_ss1_rgb_spectro.yaml" \
+      --ent-coef 0.2  \
+      --gw-size 64 \
+      --agent-type "random" \
+      --save-videos False \
+      --wandb --wandb-project $WANDB_PROJECT --wandb-entity dosssman \
+      --logdir-prefix $LOGDIR_PREFIX \
+      --total-steps $TOTAL_STEPS \
+      --seed $seed \
+    ) & # >& /dev/null &
+  done
+# endregion: Random policy
 
 # region: GRU
 
