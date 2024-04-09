@@ -343,7 +343,7 @@ A demonstration is given in the `sound-spaces/env_test.ipynb` notebook in this r
 Unfortunately, Tensorboard does not seem to support logging of video with incorporated audio.
 However, WANDB is capable of doing so, but the logging step will be out of sync with the actual training step (Tensorboard logging step) of the agent.
 
-# Custom PPO Implementation
+# Global global workspace agent
 
 A simplified PPO + GRU implementation that exposes the core of the algorithm, as well interactoins with the environment.
 
@@ -359,7 +359,7 @@ ln -s ../sound-spaces/data .
 ## Additional dependencies
 ```
 # Individual deps. install
-pip install wandb # 0.13.1
+pip install wandb # 0.16.5
 pip install nvsmi # 0.4.2, for experimetn GPU usage configuration
 
 # One liner
@@ -427,57 +427,8 @@ a. without pre-training, continuous simulator
 python ss_baselines/savi/run.py --exp-config ss_baselines/savi/config/semantic_audionav/savi.yaml --model-dir data/models/savi CONTINUOUS True
 ```
 
-b. with pre-training
-```bash
-
-```
-
 **Additional notes**
 - The pretrained weights will be found in `/path/to/sound-spaces/data/pretrained_weights`, assuming they were properly donwload in the dataset acquisition phase.
-
-## TODO:
-- [ ] Does it support continuous mode ? or just dataset based ?
-
-# Perceiver
-The base impelementation of Perceiver and PerceiverIO that I planned to use was from [lucidrains/perceiver-pytorch](https://github.com/lucidrains/perceiver-pytorch) repository.
-However it did not have support for multiple modality as input.
-Found the [oepnclimatefix/perceiver-pytorch](https://github.com/openclimatefix/perceiver-pytorch) fork that seems to have a owrking multi modal PerceiverIO, so using that as a base instead.
-After forking into [dosssman/perceiver-pytorch](https://github.com/dosssman/perceiver-pytorch), install the `main-ofc` branch for PerceiverIO with multi-modal support.
-```
-git clone git@github.com:dosssman/perceiver-pytorch.git --branch main-ocf
-cd perceiver-pytorch
-pip install -e .
-```
-
-# AudiCLIP
-
-Attempt at using the pre-trained audo encoder for av_nav / SAVi tasks in SS baselines
-
-## Additional dependencies
-From conda:
-```bash
-conda install ignite -c pytorch
-```
-Might require a downgrade of Numpy version to <= 1.22 .
-
-## Prototype 1
-- AudioCLIP uses the ESResNeXt to extract audio features from raw wave form files.
-- Said seems to have been trained on monoraul data from the ECS50 and US8K sound datasets.
-- In this variant, the pre-trained ESResNeXt is duplicazted at the beginning of the training, with each instance processing the left and right channel of the audio stream, respectively.
-While this is relatively straight foward to implement, the downside is that the memory cost of maintaining two of such wide model is non-negligible
-
-As of 2022-08-18, after running the PPO based on SS's baselines on AvNav task, while the reference run reaches around 20% success rate within 1M steps, the variant that uses AudioCLIP's audio encoder iterates at least 5 times slower, hogs the hole RTX 3090 GPU memory, and has success rate near 0 for around 600K steps, show now sign of improvement.
-And avenue left to explore later.
-
-## Prototype 2:
-Motivated by memory capacity limit.
-The idea is to have independent "first layers" for each channel of the RIR data, then fuse the results before passing it into the shared ESResNetXt network. Should atl east reduce the burden by 75%, since there are that much layers of the network that end up being shared instead.
-- WIP
-
-## Prototype 3:
-The general idea is to shave of a few layers and components from the original model, and use that instead.
-Such network sould still be able to produce some features that are better suited to represent infor from audio sources ?
-- WIP
 
 # Other
 ### [OUTDATED as of 2022-07-21] RLRAudioPropagationChannelLayoutType` error workaround
