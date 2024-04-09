@@ -19,9 +19,8 @@ echo $LOGDIR_PREFIX
 echo $WANDB_DIR
 
 # echo $PATH
-# TODO: Fix the issue that requires this kind of hardcoding
-# export LD_LIBRARY_PATH="/usr/local/cudnn-8.4.1_cuda_11.x:/usr/local/cuda-11.7/lib64:"
-# echo "${LD_LIBRARY_PATH}"
+export LD_LIBRARY_PATH="/usr/local/cudnn-8.4.1_cuda_11.x:/usr/local/cuda-11.7/lib64:"
+echo "${LD_LIBRARY_PATH}"
 
 # region: GRU
 
