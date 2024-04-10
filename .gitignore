@@ -15,8 +15,9 @@ rsatoolbox
 perceiver-pytorch
 
 # Datasets and related
-ppo/data
 ppo/cached_data
+ppo/data
+ppo/exp-logs
 SAVI_Oracle_Dataset_*
 ppo/AvNav_Oracle_Dataset_v0
 ppo_gru_dset_2022_09_21__750000_STEPS
