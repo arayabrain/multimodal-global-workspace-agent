@@ -416,6 +416,8 @@ Assuming a dataset was collected and stored under `/path/to/ss-hab/ppo/SAVI_Orac
 python ppo_bc.py --agent-type gw --gw-size 64 # or `gru` for baseline agents
 ```
 
+The dataset path, SAVI environment configs can be found in the `ppo_bc.py` argparser config section and updated accordingly to the collected dataset.
+
 ### Hyper parameter sweeps
 
 The sweeps were conducted using [Weight AND Biases (WANDB)](https://wandb.ai/site/sweeps) sweep utility.
@@ -476,7 +478,7 @@ Just pass the path to the trained RL agent weights using the same configuration 
 Once a dataset is collect under folder `ppo_gru_dset_2022_09_21__750000_STEPS` for example, pass it with `--dataset-path` to the the `ppo_bc2.py` script.
 
 ```bash
-python ppo_bc2.py --dataset-path ppo_gru_dset_2022_09_21__750000_STEPS
+python ppo_bc.py --dataset-path ppo_gru_dset_2022_09_21__750000_STEPS
 ```
 
 Example training comments are documented in the `ppo/runs_bc.sh` file.
