@@ -1,0 +1,5 @@
+
+[34m[1mwandb[39m[22m: [33mWARNING[39m Found log directory outside of given root_logdir, dropping given root_logdir for event file in /home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-finals/ppo_bc__rnd_seed_5__2024_04_09_21_22_52_560732.conan
+# Logdir: /home/rousslan/random/rl/exp-logs/ss-hab-bc-revised-finals/ppo_bc__rnd_seed_5__2024_04_09_21_22_52_560732.conan
+ ### INFO: Agent summary and structure ###
+<models.Random_Actor object at 0x7f74c215bfa0>
