@@ -375,7 +375,7 @@ python ss_baselines/savi/run.py --exp-config ss_baselines/savi/config/semantic_a
 - The pretrained weights will be found in `/path/to/sound-spaces/data/pretrained_weights`, assuming they were properly donwload in the dataset acquisition phase.
 
 
-# > Global Workspace Agent <>
+# > Global Workspace Agent <
 
 A simplified PPO + GRU implementation that exposes the core of the algorithm, as well interactoins with the environment.
 
