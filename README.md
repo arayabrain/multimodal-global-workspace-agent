@@ -141,7 +141,7 @@ python examples/example.py
 It should say "... ran for 200 steps" or something similar.
 
 
-# Soundspaces 2.0
+# Soundspaces 2.0 (Unused)
 
 ```bash
 # git clone https://github.com/facebookresearch/sound-spaces.git # Currently @ fb68e410a4a1388e2d63279e6b92b6f082371fec
@@ -203,42 +203,6 @@ too, to mirror the data available to all three libraries.
 NOTE: Maybe not. Maybe because I did not use the proper link when donwloading with wget, result in an HTML code source page instead of JSON.
 -->
 
-## Torch
-
-The `torch` install that comes with the dependencies should work by default on something like GTX 1080 Ti.
-However, because that one relies on `CUDA 10.2` it cannot be used with an RTX 3090 for example (_CUDA Error: no kernel image is available for execution on the device ..._).
-Training on an RTX 3090 as of 2022-07-21, thus requires upgrading to a `torch` version that supports `CUDA 11`.
-```bash
-conda install pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch
-```
-This will install `torch==1.12.0`.
-
-CUDA 11.6 unfortunately seems to create too many conflicts with other dependencies, solving the environment ad infinitum.
-```bash
-conda install pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch
-```
-
-<!-- Also take this change to get `torchvision`:
-```bash
-pip install torchvision
-``` -->
-
-## APEX for Pytorch optimizers alternative
-Documentation here: https://nvidia.github.io/apex/optimizers.html
-Github here: https://github.com/NVIDIA/apex
-
-```bash
-git clone https://github.com/NVIDIA/apex
-cd apex
-pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
-```
-
-In case it throws a CUDA related error, make sure that the version used to compile Pytorch is the same.
-If not, overrides the last command with something like:
-```bash
-CUDA_HOME=/usr/local/cuda-11.3 pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
-```
-
 ### Testing SS2.0 in interactive mode
 
 For a machine with display, and with `habitat-sim` not being built with the `--headless` flag.
@@ -262,8 +226,7 @@ python ss_baselines/av_nav/run.py --exp-config ss_baselines/av_nav/config/audion
 ```bash
 python ss_baselines/av_nav/run.py --exp-config ss_baselines/av_nav/config/audionav/mp3d/train_telephone/audiogoal_depth.yaml --model-dir data/models/ss2/mp3d/dav_nav_ppo/ CONTINUOUS True
 ```
-
-### Evulating the trained agent
+### Evaluating the trained agent
 
 This is done using the test confgurations suggested in the `sound-spaces/ss_baselines/av_nav/README.md` file.
 
@@ -343,36 +306,47 @@ A demonstration is given in the `sound-spaces/env_test.ipynb` notebook in this r
 Unfortunately, Tensorboard does not seem to support logging of video with incorporated audio.
 However, WANDB is capable of doing so, but the logging step will be out of sync with the actual training step (Tensorboard logging step) of the agent.
 
-# Global global workspace agent
 
-A simplified PPO + GRU implementation that exposes the core of the algorithm, as well interactoins with the environment.
+## Torch
 
-The custom Perciever-based GW-inspired RNN cell is located in `ppo/perceiver_gwt_gwwm.py`.
-The corresponding ActorCritic agent is defined in `ppo/models.py`, along with other variants of the agent.
-
-Also need to add a link to the `data` folder from `sound-spaces` for the environments to be properly created.
+The `torch` install that comes with the dependencies should work by default on something like GTX 1080 Ti.
+However, because that one relies on `CUDA 10.2` it cannot be used with an RTX 3090 for example (_CUDA Error: no kernel image is available for execution on the device ..._).
+Training on an RTX 3090 as of 2022-07-21, thus requires upgrading to a `torch` version that supports `CUDA 11`.
 ```bash
-cd /path/to/ss-hab/ppo
-ln -s ../sound-spaces/data .
+conda install pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch
+```
+This will install `torch==1.12.0`.
+
+CUDA 11.6 unfortunately seems to create too many conflicts with other dependencies, solving the environment ad infinitum.
+```bash
+conda install pytorch torchvision torchaudio cudatoolkit=11.3 -c pytorch
 ```
 
-## Additional dependencies
+
+## APEX for Pytorch optimizers alternative
+Documentation here: https://nvidia.github.io/apex/optimizers.html
+Github here: https://github.com/NVIDIA/apex
+
+```bash
+git clone https://github.com/NVIDIA/apex
+cd apex
+pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
 ```
-# Individual deps. install
-pip install wandb # 0.16.2
-pip install nvsmi # 0.4.2, for experiments' GPU usage configuration
 
-# One liner install
-pip install wandb nvsmi
+In case it throws a CUDA related error, make sure that the version used to compile Pytorch is the same.
+If not, overrides the last command with something like:
+```bash
+CUDA_HOME=/usr/local/cuda-11.3 pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./
 ```
 
-# SAVi and Global Workspace experiments
+# SAVi for Global Workspace Agents experiments
 
-Two main features that might be of interest for this project
+Three main features that might be of interest for this project
 - removes the limitation of only having a _ringing telephone_. Namely, adds 21 objects with their distinct sounds
 - the sound is not continuous over the whole episode, but of variable length insetad. This supposedly forces the agent to learn the association between the category of the object and its acoustic features.
+- Can also probe for the scene, on top of the target object's category.
 
-## Addtional setup
+## Addtional setup on top of SoundSpaces 1.0
 
 On top of all the above steps so far for the default SoundSpaces installation,
 1. Run the `python scripts/cache_observations.py`. Note that since we only use mp3d dataset for now, it will require editing that script to comment out line 105, to make it skip the `replica` data set, which proper installation is skipped in the steps above.
@@ -400,6 +374,29 @@ python ss_baselines/savi/run.py --exp-config ss_baselines/savi/config/semantic_a
 **Additional notes**
 - The pretrained weights will be found in `/path/to/sound-spaces/data/pretrained_weights`, assuming they were properly donwload in the dataset acquisition phase.
 
+
+# > Global Workspace Agent <>
+
+A simplified PPO + GRU implementation that exposes the core of the algorithm, as well interactoins with the environment.
+
+To run training code from the `ppo` folder, need to add a link to the `data` folder from `sound-spaces` for the environments to be properly created.
+```bash
+cd /path/to/ss-hab/ppo
+ln -s ../sound-spaces/data .
+```
+
+## Additional dependencies
+```
+# Individual deps. install
+pip install wandb # 0.16.2
+pip install nvsmi # 0.4.2, for experiments' GPU usage configuration
+
+# One liner install
+pip install wandb nvsmi
+```
+
+The agent architectures are located in `ppo/models.py`
+
 ## Behavior Cloning on SAVI
 
 ### Colleccting dataset with Oracle
@@ -425,10 +422,34 @@ The sweeps were conducted using [Weight AND Biases (WANDB)](https://wandb.ai/sit
 The WANDB configs for the search are stored in the `ss-hab/ppo/wandb-sweeps` folder.
 The usage is documented in the `ss-hab/ppo/wandb-sweeps/ppo_bc_rev1_sweep.sh` script (not runnable).
 
+For example, the hyparam search for `GW 128` variant is done by creating the configuration `wandb-sweeps/ppo_bc_rev1_sweep__gw_128.yml`, then running the following commnd to create the WandB sweep.
+```bash
+wandb sweep --project "ss-hab-bc-revised-sweep" ppo_bc_rev1_sweep__gw_128.yml
+```
+This would return the Sweep ID, such as: `dosssman/ss-hab-bc-revised-sweep/altdwxen`.
+
+Then, a WandB agent can be instantiated with using said Sweep id as follows:
+```bash
+wandb agent dosssman/ss-hab-bc-revised-sweep/altdwxen --count 10
+```
+Multiple agents can be run in parallel, each taking care of a run of the sweep.
+
+
 ### Final runs for revision
 
 We leverage WANDB sweep utility to manage the execution of runs across diverse machines.
 The configuration for each agent are stored under `ss-hab/ppo/wandb-sweeps-finals`, and their execution documented in the script in that folder.
+
+Similary to the hyper parameter sweep, the final configuration for the `GW 128`
+variant ca be found in `wandb-sweeps-finals/ppo_bc_rev1_final__gw_128.yml`.
+The same procedure as with the hyper parameter sweep described above apply.
+
+### Analysis
+
+The IQM-based performance plots were generated using the `SAVI_PerfPlots_IQM.ipynb` Jupyter Notebook.
+
+The attention weights, probing, and broadcast importance weights were generated by the `SAVI_Analysis_Revised.ipynb`.
+
 
 ## Training RL agents on SoundSpaces AvNav (deprecated)
 
