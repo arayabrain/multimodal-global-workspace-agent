@@ -1,6 +1,32 @@
 # Design and Evaluation of a Global Workspace Agent Embodied in a Realistic Multimodal Environment | Soundspaces - Habitat-lab - Habitat-sim setup
 
-# General guideline as of 2022-07-21 for reproduction
+- [Introduction](#introduction)
+- [General guidelines for reproduction](#general-guidelines-for-reproduction-as-of-2022-07-21)
+- [System Specifications](#system-specifications)
+- [Habitat-lab Stable 0.2.2](#habitat-lab-stable-022)
+- [Habitat-sim](#habitat-sim)
+    - [Preliminary testing](#preliminary-testing)
+    - [Acquiring datasets necessary for simulations](#acquiring-datasets-necessary-for-simulations)
+- [SoundSpaces 2.0 (can be skipped)](#soundspaces-20-unused)
+- [SAVi for Global Workspace Agents experiments](#savi-for-global-workspace-agents-experiments)
+    - [Addtional setup on top of SoundSpaces 1.0](#addtional-setup-on-top-of-soundspaces-10)
+- [> Global Workspace Agent <](#-global-workspace-agent-)
+    - [Additional dependencies](#additional-dependencies)
+    - [Behavior Cloning on SAVI](#behavior-cloning-on-savi)
+        - [Training Behavior cloning agent on the collected dataset](#training-behavior-cloning-agent-on-the-collected-dataset)
+        - [Hyper parameter sweeps](#hyper-parameter-sweeps)
+        - [Final runs for revision](#final-runs-for-revision)
+        - [Analysis](#analysis)
+    - [Collecting dataset](#collecting-dataset)
+
+# Introduction
+*TODO*: add abstract
+
+Paper can be found at *TODO*: add publication link
+
+Please cite this work as: *TODO*: add citation as based on the publication link.
+
+# General guidelines for reproduction (as of 2022-07-21)
 
 - Soundspaces currently at commit fb68e410a4a1388e2d63279e6b92b6f082371fec
 - While `habitat-lab` and `habitat-sim` recommend using python 3.7 at leats, this procedure goes as far as python 3.9 to have better compatibility with more recent Torch libraries.
@@ -475,7 +501,7 @@ Just pass the path to the trained RL agent weights using the same configuration 
 
 ## Training Behavior Cloning (BC) agents
 
-Once a dataset is collect under folder `ppo_gru_dset_2022_09_21__750000_STEPS` for example, pass it with `--dataset-path` to the the `ppo_bc2.py` script.
+Once a dataset is collect under folder `ppo_gru_dset_2022_09_21__750000_STEPS` for example, pass it with `--dataset-path` to the the `ppo_bc.py` script.
 
 ```bash
 python ppo_bc.py --dataset-path ppo_gru_dset_2022_09_21__750000_STEPS
