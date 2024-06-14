@@ -20,11 +20,21 @@
     - [Collecting dataset](#collecting-dataset)
 
 # Introduction
-*TODO*: add abstract
+Link to the paper: [Design and evaluation of a global workspace agent embodied in a realistic multimodal environment, Frontiers in Computational Neuroscience](https://www.frontiersin.org/articles/10.3389/fncom.2024.1352685/full)
 
-Paper can be found at *TODO*: add publication link
-
-Please cite this work as: *TODO*: add citation as based on the publication link.
+Please cite it as:
+```
+@article{dossa2024gw_agent
+	author={Dossa, Rousslan Fernand Julien and Arulkumaran, Kai and Juliani, Arthur and Sasai, Shuntaro and Kanai, Ryota},
+	title={Design and evaluation of a global workspace agent embodied in a realistic multimodal environment},
+	journal={Frontiers in Computational Neuroscience},
+	volume={18},
+	year={2024},
+	url={https://www.frontiersin.org/articles/10.3389/fncom.2024.1352685},
+	doi={10.3389/fncom.2024.1352685},
+	issn={1662-5188},
+}
+```
 
 # General guidelines for reproduction (as of 2022-07-21)
 
