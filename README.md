@@ -24,7 +24,7 @@ Link to the paper: [Design and evaluation of a global workspace agent embodied i
 
 Please cite it as:
 ```
-@article{dossa2024gw_agent
+@article{dossa2024gw_agent,
 	author={Dossa, Rousslan Fernand Julien and Arulkumaran, Kai and Juliani, Arthur and Sasai, Shuntaro and Kanai, Ryota},
 	title={Design and evaluation of a global workspace agent embodied in a realistic multimodal environment},
 	journal={Frontiers in Computational Neuroscience},
